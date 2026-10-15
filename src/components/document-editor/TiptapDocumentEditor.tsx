@@ -19,11 +19,10 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useCallback, useEffect, useMemo, useRef, useState, type Key, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { appFileName, cleanName, fileRepository, nextFileName, uniqueFileName } from '../../database/repositories'
+import { appFileName, cleanName, fileRepository, folderRepository, nextFileName, uniqueFileName } from '../../database/repositories'
 import { ExclamationCircleIcon } from '@heroicons/react/20/solid'
 import { isLocalWorkspace } from '../../stores/useWorkspaceStore'
 import { Switch } from '../ui/switch'
-import { Popover, PopoverContent } from '../ui/popover'
 import { useAutosave } from '../../hooks/useAutosave'
 import { registerUnsavedEditsProbe } from '../../services/localEditState'
 import { broadcastDocUpdate, subscribeToTabDocUpdates } from '../../services/tabSyncChannel'
@@ -37,6 +36,7 @@ import { contentToMarkdown, documentToMyBookMarkdown, downloadMyBookMarkdown, is
 import { EmptyState } from '../common/EmptyState'
 import { AppHeader } from '../common/AppHeader'
 import { DeleteFileDialog } from '../files/DeleteFileDialog'
+import { MoveItemDialog } from '../files/MoveItemDialog'
 import { getFolderPath } from '../files/FolderBreadcrumb'
 import { ChecklistActionsMenu } from './ChecklistActionsMenu'
 import { DocumentToolbar } from './DocumentToolbar'
@@ -69,6 +69,7 @@ import { EditorKeyboardShortcuts } from './extensions/EditorKeyboardShortcuts'
 import { BlockMarkdownShortcuts } from './extensions/BlockMarkdownShortcuts'
 import { SearchHighlight } from './extensions/SearchHighlight'
 import { convertSelectedBlocks, isFormatCommand } from './blockConversion'
+import { matchesEditorMenuShortcut } from './editorMenuShortcuts'
 import { DocumentLinkProvider } from './DocumentLinkContext'
 import { documentLinkLocation, documentLinkTargets, pastedDocumentLink } from './documentLinkModel'
 import { clearTableSelection, isBlankEditorPoint, isEditorInteractiveTarget, keepEditorFocusedOnBlankClick } from './editorFocus'
@@ -982,8 +983,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const navigate = useNavigate()
   const isMobile = useIsMobile()
   const isMacPlatform = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/u.test(navigator.platform)
-  const duplicateShortcut = isMacPlatform ? '⌃⌥D' : 'Ctrl+Alt+D'
-  const moveShortcut = isMacPlatform ? '⌃⌥M' : 'Ctrl+Alt+M'
+  const duplicateShortcut = isMacPlatform ? '⌃⌘D' : 'Ctrl+Alt+D'
+  const moveShortcut = isMacPlatform ? '⌃⌘M' : 'Ctrl+Alt+M'
   const undoShortcut = isMacPlatform ? '⌘Z' : 'Ctrl+Z'
   const redoShortcut = isMacPlatform ? '⌘⇧Z' : 'Ctrl+Shift+Z'
   const { files, folders } = useLibraryData(true)
@@ -1049,14 +1050,14 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const blankSelectionRangeRef = useRef<{ from: number; to: number } | null>(null)
   useEffect(() => {
     const handleEditorMenuShortcuts = (event: KeyboardEvent) => {
-      if (!((event.ctrlKey || event.metaKey) && event.altKey) || event.shiftKey) return
       const target = event.target
-      if (target instanceof HTMLElement && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || (target.isContentEditable && !target.closest('.tiptap')))) return
-      if (event.key.toLowerCase() === 'd') {
+      const isPageTitle = target === pageTitleRef.current
+      if (target instanceof HTMLElement && !isPageTitle && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || (target.isContentEditable && !target.closest('.tiptap')))) return
+      if (matchesEditorMenuShortcut(event, 'd', isMacPlatform)) {
         event.preventDefault()
         event.stopPropagation()
         void duplicateDocumentRef.current()
-      } else if (event.key.toLowerCase() === 'm') {
+      } else if (matchesEditorMenuShortcut(event, 'm', isMacPlatform)) {
         event.preventDefault()
         event.stopPropagation()
         setIsMoveToOpen(true)
@@ -1064,7 +1065,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     window.addEventListener('keydown', handleEditorMenuShortcuts, true)
     return () => window.removeEventListener('keydown', handleEditorMenuShortcuts, true)
-  }, [])
+  }, [isMacPlatform])
   const lastActiveSelectionRef = useRef({ from: 1, to: 1 })
   const contentSyncTimerRef = useRef<number | null>(null)
   const flushContentSync = useCallback((currentEditor?: NonNullable<ReturnType<typeof useEditor>> | null) => {
@@ -2320,11 +2321,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
 
   const moveDocument = async (folderId: string | null) => {
     const result = await fileRepository.update(file.id, { folderId })
-    if (!result.success) {
-      toast.add({ title: 'Could not move document', description: result.error, type: 'error', priority: 'low' })
-      return
-    }
-    toast.add({ title: 'Document moved', type: 'success', priority: 'low' })
+    if (result.success) toast.add({ title: 'Document moved', type: 'success', priority: 'low' })
+    return result
   }
 
   const insertDocumentLink = (target: { id: string; name: string }) => {
@@ -2803,14 +2801,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => void duplicateDocument()}><span>Duplicate</span><kbd className="ml-auto text-xs text-muted-foreground">{duplicateShortcut}</kbd></DropdownMenuItem>
             <DropdownMenuItem onClick={() => void copyDocumentContent()}>Copy content</DropdownMenuItem>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger shortcut={moveShortcut}><span>Move to</span></DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                {file.folderId ? <DropdownMenuItem onClick={() => void moveDocument(null)}>Writin root</DropdownMenuItem> : null}
-                {folders.filter((folder) => folder.id !== file.folderId).map((folder) => <DropdownMenuItem key={folder.id} onClick={() => void moveDocument(folder.id)}>{folder.name}</DropdownMenuItem>)}
-                {!folders.some((folder) => folder.id !== file.folderId) && !file.folderId ? <DropdownMenuItem disabled>No other folders</DropdownMenuItem> : null}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+            <DropdownMenuItem onClick={() => setIsMoveToOpen(true)}>
+              <span>Move…</span><kbd className="ml-auto text-xs text-muted-foreground">{moveShortcut}</kbd>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem disabled={isPageLocked || !editor.can().chain().focus().undo().run()} onClick={() => editor.chain().focus().undo().run()}><span>Undo</span><kbd className="ml-auto text-xs text-muted-foreground">{undoShortcut}</kbd></DropdownMenuItem>
             <DropdownMenuItem disabled={isPageLocked || !editor.can().chain().focus().redo().run()} onClick={() => editor.chain().focus().redo().run()}><span>Redo</span><kbd className="ml-auto text-xs text-muted-foreground">{redoShortcut}</kbd></DropdownMenuItem>
@@ -3091,14 +3084,15 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       }} /> : null}
       {pasteAsMenu ? <PasteAsMenu menu={pasteAsMenu} onChoose={choosePasteAs} onClose={closePasteAsMenu} /> : null}
       <FindReplaceDialog editor={editor} open={isFindReplaceOpen} onOpenChange={setIsFindReplaceOpen} anchorRef={moreTriggerRef} />
-      <Popover open={isMoveToOpen} onOpenChange={setIsMoveToOpen}>
-        <PopoverContent anchor={moreTriggerRef} side="left" align="start" className="w-64 gap-1 rounded-xl p-2" aria-label="Move document to folder">
-          <h2 className="px-2 py-1 text-sm font-semibold">Move to</h2>
-          {file.folderId ? <button type="button" onClick={() => { void moveDocument(null); setIsMoveToOpen(false) }} className="w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent">Writin root</button> : null}
-          {folders.filter((folder) => folder.id !== file.folderId).map((folder) => <button key={folder.id} type="button" onClick={() => { void moveDocument(folder.id); setIsMoveToOpen(false) }} className="w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent">{folder.name}</button>)}
-          {!folders.some((folder) => folder.id !== file.folderId) && !file.folderId ? <p className="px-2 py-1.5 text-sm text-muted-foreground">No other folders</p> : null}
-        </PopoverContent>
-      </Popover>
+      <MoveItemDialog
+        itemKind="file"
+        itemName={file.name}
+        folders={folders}
+        disabledFolderIds={file.folderId === null ? ['root'] : [file.folderId]}
+        onClose={() => setIsMoveToOpen(false)}
+        onMove={moveDocument}
+        onCreateFolder={(name, parentId) => folderRepository.create(name, parentId)}
+      />
       {inlineLinkToolbar ? <InlineLinkToolbar toolbar={inlineLinkToolbar} onAction={runInlineLinkAction} onClose={closeInlineLinkToolbar} /> : null}
       {!isPageLocked ? <SelectionFormattingToolbar editor={editor} onInsertBlock={(commandId) => insertBlock(commandId)} /> : null}
       {!isPageLocked ? <EditorBlockControls editor={editor} onInsertBlock={insertBlock} /> : null}

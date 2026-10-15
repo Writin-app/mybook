@@ -107,7 +107,8 @@ export function SearchPage() {
                       currentParentId={folder.parentId}
                       isFavorite={Boolean(folder.isFavorite)}
                       onRename={() => setFolderRenameTarget(folder)}
-                      onMove={(folderId) => void folderRepository.update(folder.id, { parentId: folderId })}
+                      onMove={(folderId) => folderRepository.update(folder.id, { parentId: folderId })}
+                      onCreateFolder={(name, parentId) => folderRepository.create(name, parentId)}
                       onToggleFavorite={() => void folderRepository.setFavorite(folder.id, !folder.isFavorite)}
                       onDelete={() => setFolderDeleteTarget(folder)}
                     />
@@ -133,7 +134,8 @@ export function SearchPage() {
                     isFavorite={Boolean(file.isFavorite)}
                     onRename={() => setRenameTarget(file)}
                     onDuplicate={() => void fileRepository.duplicate(file.id)}
-                    onMove={(folderId) => void fileRepository.update(file.id, { folderId })}
+                    onMove={(folderId) => fileRepository.update(file.id, { folderId })}
+                    onCreateFolder={(name, parentId) => folderRepository.create(name, parentId)}
                     onToggleFavorite={() => void fileRepository.setFavorite(file.id, !file.isFavorite)}
                     onDelete={() => setFileDeleteTarget(file)}
                   />
