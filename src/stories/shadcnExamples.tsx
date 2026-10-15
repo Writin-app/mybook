@@ -1294,17 +1294,17 @@ export function AppFilesExample() {
           type={cardFile.type}
           syncStatus="backed-up"
           onOpen={() => undefined}
-          action={<FileActionsMenu fileName={cardFile.name} folders={[folder]} currentFolderId={null} onRename={() => undefined} onDuplicate={() => undefined} onMove={() => undefined} onDelete={() => undefined} />}
+          action={<FileActionsMenu fileName={cardFile.name} folders={[folder]} currentFolderId={null} onRename={() => undefined} onDuplicate={() => undefined} onMove={() => Promise.resolve({ success: true })} onCreateFolder={async (name, parentId) => ({ success: true, data: { ...folder, id: `created-${name}`, name, parentId } })} onDelete={() => undefined} />}
         />
         <FolderCard
           name={folder.name}
           fileCount={3}
           folderCount={1}
           onOpen={() => undefined}
-          action={<FolderActionsMenu folderName={folder.name} folders={[folder]} folderId={folder.id} currentParentId={null} onRename={() => undefined} onMove={() => undefined} onDelete={() => undefined} />}
+          action={<FolderActionsMenu folderName={folder.name} folders={[folder]} folderId={folder.id} currentParentId={null} onRename={() => undefined} onMove={() => Promise.resolve({ success: true })} onCreateFolder={async (name, parentId) => ({ success: true, data: { ...folder, id: `created-${name}`, name, parentId } })} onDelete={() => undefined} />}
         />
       </div>
-      <MoveFileMenu fileName={cardFile.name} folders={[folder]} currentFolderId={null} onMove={() => undefined} />
+      <MoveFileMenu fileName={cardFile.name} folders={[folder]} currentFolderId={null} onMove={() => Promise.resolve({ success: true })} onCreateFolder={async (name, parentId) => ({ success: true, data: { ...folder, id: `created-${name}`, name, parentId } })} />
       <TrashActionsMenu fileName={cardFile.name} onRestore={() => undefined} onDelete={() => undefined} />
     </div>
   )

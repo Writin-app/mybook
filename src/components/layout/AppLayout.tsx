@@ -15,6 +15,7 @@ import { AppHeader } from '../common/AppHeader'
 import { LoadingOverlay } from '../common/LoadingOverlay'
 import { SyncProgressToast } from '../common/SyncProgressToast'
 import { getFolderPath } from '../files/FolderBreadcrumb'
+import { MoveItemDialog } from '../files/MoveItemDialog'
 import { FolderNameDialog } from '../files/FolderNameDialog'
 import { DeleteFolderDialog } from '../files/DeleteFolderDialog'
 import { fileRepository, folderRepository } from '../../database/repositories'
@@ -47,9 +48,6 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu'
 import {
@@ -163,6 +161,7 @@ export function AppLayout() {
       ].slice(0, 8)
     : recentFiles.map((file) => ({ kind: 'file' as const, id: file.id, name: file.name, type: file.type }))
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
+  const [isMoveFolderDialogOpen, setIsMoveFolderDialogOpen] = useState(false)
   const [renameFolderTarget, setRenameFolderTarget] = useState<MyBookFolder | null>(null)
   const [deleteFolderTarget, setDeleteFolderTarget] = useState<MyBookFolder | null>(null)
   const folderMatch = pathname.match(/^\/folders\/([^/]+)/)
@@ -550,30 +549,9 @@ export function AppLayout() {
                     Rename
                   </DropdownMenuItem>
                   {currentFolder.parentId || moveDestinations.length > 0 ? (
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>Move</DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent className="min-w-44">
-                        {currentFolder.parentId ? (
-                          <DropdownMenuItem
-                            onClick={() => {
-                              void folderRepository.update(currentFolder.id, { parentId: null })
-                            }}
-                          >
-                            Move to Library root
-                          </DropdownMenuItem>
-                        ) : null}
-                        {moveDestinations.map((dest) => (
-                          <DropdownMenuItem
-                            key={dest.id}
-                            onClick={() => {
-                              void folderRepository.update(currentFolder.id, { parentId: dest.id })
-                            }}
-                          >
-                            Move to {dest.name}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
+                    <DropdownMenuItem onClick={() => setIsMoveFolderDialogOpen(true)}>
+                      Move…
+                    </DropdownMenuItem>
                   ) : null}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -671,6 +649,22 @@ export function AppLayout() {
           })
         }}
       />
+      {currentFolder ? (
+        <MoveItemDialog
+          isOpen={isMoveFolderDialogOpen}
+          itemKind="folder"
+          itemName={currentFolder.name}
+          folders={folders}
+          disabledFolderIds={[
+            currentFolder.id,
+            ...currentFolderDescendants,
+            ...(currentFolder.parentId ? [currentFolder.parentId] : ['root']),
+          ]}
+          onClose={() => setIsMoveFolderDialogOpen(false)}
+          onMove={(parentId) => folderRepository.update(currentFolder.id, { parentId })}
+          onCreateFolder={(name, parentId) => folderRepository.create(name, parentId)}
+        />
+      ) : null}
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
         <DialogContent className="max-w-xl gap-4 p-4 sm:p-5">
           <DialogHeader>

@@ -92,7 +92,8 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
                 isFavorite={Boolean(file.isFavorite)}
                 onRename={() => setFileRenameTarget(file)}
                 onDuplicate={() => void fileRepository.duplicate(file.id)}
-                onMove={(destination) => void fileRepository.update(file.id, { folderId: destination })}
+                onMove={(destination) => fileRepository.update(file.id, { folderId: destination })}
+                onCreateFolder={(name, parentId) => folderRepository.create(name, parentId)}
                 onToggleFavorite={() => void fileRepository.setFavorite(file.id, !file.isFavorite)}
                 onDelete={() => setFileDeleteTarget(file)}
               />
@@ -115,7 +116,8 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
                 currentParentId={folder.parentId}
                 isFavorite={Boolean(folder.isFavorite)}
                 onRename={() => setRenameTarget(folder)}
-                onMove={(destination) => void folderRepository.update(folder.id, { parentId: destination })}
+                onMove={(destination) => folderRepository.update(folder.id, { parentId: destination })}
+                onCreateFolder={(name, parentId) => folderRepository.create(name, parentId)}
                 onToggleFavorite={() => void folderRepository.setFavorite(folder.id, !folder.isFavorite)}
                 onDelete={() => setDeleteTarget(folder)}
               />

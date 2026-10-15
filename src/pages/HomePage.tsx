@@ -161,7 +161,8 @@ export function HomePage({ initialTab = 'recent' }: HomePageProps) {
             isFavorite={Boolean(file.isFavorite)}
             onRename={() => setRenameTarget(file)}
             onDuplicate={() => void fileRepository.duplicate(file.id)}
-            onMove={(folderId) => void fileRepository.update(file.id, { folderId })}
+            onMove={(folderId) => fileRepository.update(file.id, { folderId })}
+            onCreateFolder={(name, parentId) => folderRepository.create(name, parentId)}
             onToggleFavorite={() => void fileRepository.setFavorite(file.id, !file.isFavorite)}
             onDelete={() => setDeleteTarget(file)}
           />
@@ -186,7 +187,8 @@ export function HomePage({ initialTab = 'recent' }: HomePageProps) {
             currentParentId={folder.parentId}
             isFavorite={Boolean(folder.isFavorite)}
             onRename={() => setFolderRenameTarget(folder)}
-            onMove={(destination) => void folderRepository.update(folder.id, { parentId: destination })}
+            onMove={(destination) => folderRepository.update(folder.id, { parentId: destination })}
+            onCreateFolder={(name, parentId) => folderRepository.create(name, parentId)}
             onToggleFavorite={() => void folderRepository.setFavorite(folder.id, !folder.isFavorite)}
             onDelete={() => setFolderDeleteTarget(folder)}
           />
