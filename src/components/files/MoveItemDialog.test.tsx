@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MoveItemDialog } from './MoveItemDialog'
+
+afterEach(() => {
+  cleanup()
+})
 import type { MyBookFolder } from '../../types/files'
 
 vi.mock('../../hooks/use-mobile', () => ({ useIsMobile: () => false }))

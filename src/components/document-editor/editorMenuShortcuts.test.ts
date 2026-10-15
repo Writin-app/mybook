@@ -10,7 +10,7 @@ describe('editor menu shortcuts', () => {
   })
 
   it('rejects a move shortcut without its required modifiers', () => {
-    const event = { code: 'KeyM', metaKey: false, ctrlKey: true, altKey: true, shiftKey: false }
+    const event = { code: 'KeyM', metaKey: false, ctrlKey: true, altKey: false, shiftKey: false }
 
     expect(matchesEditorMenuShortcut(event, 'm', false)).toBe(false)
   })

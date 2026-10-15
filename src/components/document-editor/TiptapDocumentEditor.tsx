@@ -3085,6 +3085,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       {pasteAsMenu ? <PasteAsMenu menu={pasteAsMenu} onChoose={choosePasteAs} onClose={closePasteAsMenu} /> : null}
       <FindReplaceDialog editor={editor} open={isFindReplaceOpen} onOpenChange={setIsFindReplaceOpen} anchorRef={moreTriggerRef} />
       <MoveItemDialog
+        isOpen={isMoveToOpen}
         itemKind="file"
         itemName={file.name}
         folders={folders}

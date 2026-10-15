@@ -11,7 +11,7 @@ interface MoveFileMenuProps {
   folders: MyBookFolder[]
   currentFolderId: string | null
   onMove: (folderId: string | null) => Promise<RepositoryResult>
-  onCreateFolder: (name: string, parentId: string) => Promise<RepositoryResult<MyBookFolder>>
+  onCreateFolder: (name: string, parentId: string | null) => Promise<RepositoryResult<MyBookFolder>>
 }
 
 export function MoveFileMenu({ fileName, folders, currentFolderId, onMove, onCreateFolder }: MoveFileMenuProps) {

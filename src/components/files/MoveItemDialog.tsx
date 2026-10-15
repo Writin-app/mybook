@@ -37,6 +37,7 @@ export function MoveItemDialog({
   const createInputRef = useRef<HTMLInputElement>(null)
   const selectedFolderIdRef = useRef<string | null | undefined>(undefined)
   const createRequestRef = useRef(false)
+  const cancelledCreateRef = useRef(false)
   const [selectedFolderId, setSelectedFolderIdState] = useState<string | null | undefined>(undefined)
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set())
   const [isRootExpanded, setIsRootExpanded] = useState(true)
@@ -111,6 +112,7 @@ export function MoveItemDialog({
     disabledFolderIds.includes(folderId ?? 'root')
 
   const selectFolder = (folderId: string | null) => {
+    if (folderId !== null && isInvalidMoveTarget(folderId)) return
     setSelectedFolderId(folderId)
     setError(null)
   }
@@ -191,8 +193,8 @@ export function MoveItemDialog({
     setError(null)
     const result = await onCreateFolder(normalizedName, parentId)
     createRequestRef.current = false
-    if (!result.success || !result.data) {
-      setError(result.error ?? 'Unable to create this folder.')
+    if (!result?.success || !result?.data) {
+      setError(result?.error ?? 'Unable to create this folder.')
       return
     }
     const createdFolder = result.data
@@ -241,6 +243,10 @@ export function MoveItemDialog({
         onSubmit={handleCreateSubmit}
         onBlur={(event) => {
           if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+          if (cancelledCreateRef.current) {
+            cancelledCreateRef.current = false
+            return
+          }
           if (newFolderName.trim()) void createFolderAt(parentId, newFolderName)
           else {
             setCreateParentId(undefined)
@@ -251,6 +257,7 @@ export function MoveItemDialog({
           if (event.key === 'Escape') {
             event.preventDefault()
             event.stopPropagation()
+            cancelledCreateRef.current = true
             setCreateParentId(undefined)
             setNewFolderName('')
             setError(null)
@@ -285,6 +292,7 @@ export function MoveItemDialog({
     return (
       <TreeItem
         key={folder.id}
+        aria-label={folder.name}
         selected={isSelected}
         aria-expanded={hasChildren ? isExpanded : undefined}
         aria-level={getFolderDepth(folder, folderList) + 2}
@@ -352,6 +360,7 @@ export function MoveItemDialog({
         if (selectedFolderId === undefined) return
         setError(null)
         setNewFolderName('')
+        cancelledCreateRef.current = false
         setCreateParentId(selectedFolderId)
         if (selectedFolderId === null) setIsRootExpanded(true)
       }}
@@ -398,6 +407,7 @@ export function MoveItemDialog({
           className="gap-0.5"
         >
           <TreeItem
+            aria-label="Writin root"
             selected={selectedFolderId === null}
             aria-expanded={isRootExpanded}
             aria-level={1}

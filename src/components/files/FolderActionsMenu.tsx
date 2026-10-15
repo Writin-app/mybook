@@ -17,7 +17,7 @@ interface FolderActionsMenuProps {
   isFavorite?: boolean
   onRename: () => void
   onMove: (folderId: string | null) => Promise<RepositoryResult>
-  onCreateFolder: (name: string, parentId: string) => Promise<RepositoryResult<MyBookFolder>>
+  onCreateFolder: (name: string, parentId: string | null) => Promise<RepositoryResult<MyBookFolder>>
   onToggleFavorite?: () => void
   onDelete: () => void
 }
