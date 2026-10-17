@@ -532,4 +532,63 @@ describe('localWorkspace service', () => {
     expect(saved).toBeDefined()
     expect(saved?.isDeleted).toBe(false)
   })
+
+  it('does not overwrite file content or name from disk when the file has active unsaved local edits', async () => {
+    const { registerUnsavedEditsProbe } = await import('./localEditState')
+    const fileId = 'active-edit-doc'
+    const unregister = registerUnsavedEditsProbe(fileId, () => true)
+
+    try {
+      const activeFile = {
+        id: fileId,
+        driveFileId: null,
+        workspaceType: 'local' as const,
+        name: 'In Progress Title',
+        type: 'document' as const,
+        folderId: null,
+        content: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'new text' }] }] }),
+        mimeType: 'application/x-mybook-document',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: null,
+        syncStatus: 'local' as const,
+        isDeleted: false,
+      }
+      await db.files.add(activeFile)
+
+      const fileEntries = new Map<string, FileSystemHandle>([
+        [
+          'In Progress Title.md',
+          {
+            kind: 'file',
+            name: 'In Progress Title.md',
+            getFile: async () => ({
+              text: async () => '---\nmybook_version: 1\ntype: document\ndocument_id: "active-edit-doc"\n---\n\nold stale text on disk',
+              lastModified: Date.now() - 5000,
+            }),
+          } as unknown as FileSystemHandle,
+        ],
+      ])
+
+      const mockRootHandle = {
+        kind: 'directory',
+        name: 'MockRoot',
+        getDirectoryHandle: vi.fn().mockRejectedValue(new Error('No Writin folder')),
+        entries: async function* () {
+          for (const entry of fileEntries.entries()) {
+            yield entry
+          }
+        },
+      } as unknown as FileSystemDirectoryHandle
+
+      await scanAndHydrateLocalWorkspace(mockRootHandle, { targetWorkspaceType: 'local' })
+
+      const saved = await db.files.get(fileId)
+      expect(saved?.name).toBe('In Progress Title')
+      expect(saved?.content).toContain('new text')
+      expect(saved?.content).not.toContain('old stale text on disk')
+    } finally {
+      unregister()
+    }
+  })
 })

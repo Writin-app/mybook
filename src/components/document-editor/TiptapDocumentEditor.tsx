@@ -1031,6 +1031,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const titleRef = useRef('')
   const lastSavedTitleRef = useRef('')
   const loadedTitleFileIdRef = useRef<string | null>(null)
+  const titleAutosaveTimerRef = useRef<number | null>(null)
+  const saveTitleRef = useRef<() => Promise<void>>(async () => undefined)
   const slashMenuRef = useRef<SlashMenuState | null>(null)
   const mentionMenuRef = useRef<SlashMenuState | null>(null)
   const mentionSelectedIndexRef = useRef(0)
@@ -1085,8 +1087,22 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
   }, [file?.id, setContent])
 
+  const hasUnsavedTitleEdits = useCallback(() => {
+    if (!file) return false
+    const currentTitle = titleRef.current.trim()
+    const currentSaved = file.name.trim()
+    const inputSaved = titleInputValue(currentSaved).trim()
+    if (!currentTitle) return false
+    return currentTitle !== currentSaved && currentTitle !== inputSaved
+  }, [file])
+
   useEffect(() => {
-    const handleFlush = () => flushContentSync()
+    const handleFlush = () => {
+      flushContentSync()
+      if (hasUnsavedTitleEdits()) {
+        void saveTitleRef.current()
+      }
+    }
     window.addEventListener('pagehide', handleFlush)
     document.addEventListener('visibilitychange', handleFlush)
     return () => {
@@ -1094,14 +1110,24 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         window.clearTimeout(contentSyncTimerRef.current)
         contentSyncTimerRef.current = null
       }
+      if (titleAutosaveTimerRef.current !== null) {
+        window.clearTimeout(titleAutosaveTimerRef.current)
+        titleAutosaveTimerRef.current = null
+      }
       window.removeEventListener('pagehide', handleFlush)
       document.removeEventListener('visibilitychange', handleFlush)
     }
-  }, [flushContentSync])
+  }, [flushContentSync, hasUnsavedTitleEdits])
+
   useEffect(() => {
     if (!file?.id) return
-    return registerUnsavedEditsProbe(file.id, () => contentSyncTimerRef.current !== null || hasUnsavedChanges())
-  }, [file?.id, hasUnsavedChanges])
+    return registerUnsavedEditsProbe(file.id, () =>
+      contentSyncTimerRef.current !== null ||
+      hasUnsavedChanges() ||
+      hasUnsavedTitleEdits() ||
+      titleAutosaveTimerRef.current !== null
+    )
+  }, [file?.id, hasUnsavedChanges, hasUnsavedTitleEdits])
 
   const restoreLastActiveSelection = useCallback(() => {
     const currentEditor = editorRef.current
@@ -1122,7 +1148,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (!file?.id) return
     return subscribeToTabDocUpdates((msg) => {
       if (msg.fileId !== file.id) return
-      if (hasUnsavedChanges()) {
+      const hasLocalChanges = hasUnsavedChanges() || contentSyncTimerRef.current !== null
+      if (hasLocalChanges) {
         const merged = mergeDocuments(lastBackedUpContentRef.current, editorContentRef.current, msg.content)
         if (merged.success) {
           editorContentRef.current = merged.content
@@ -1132,11 +1159,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         editorContentRef.current = msg.content
         replaceContent(msg.content, 'saved-locally')
       }
-      if (msg.title && msg.title !== titleRef.current) {
+      if (msg.title && msg.title !== titleRef.current && !hasUnsavedTitleEdits() && titleAutosaveTimerRef.current === null) {
         updateTitle(msg.title)
       }
     })
-  }, [file?.id, hasUnsavedChanges, replaceContent, updateTitle])
+  }, [file?.id, hasUnsavedChanges, hasUnsavedTitleEdits, replaceContent, updateTitle])
 
   const duplicateTitleFile = useMemo(() => {
     if (!file) return null
@@ -2098,14 +2125,20 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       return
     }
     if (file.name === lastSavedTitleRef.current) return
+    if (hasUnsavedTitleEdits() || titleAutosaveTimerRef.current !== null) return
     if (titleRef.current === titleInputValue(lastSavedTitleRef.current)) {
       lastSavedTitleRef.current = file.name
       updateTitle(titleInputValue(file.name))
     }
-  }, [file, updateTitle])
+  }, [file, hasUnsavedTitleEdits, updateTitle])
   useEffect(() => {
     if (!editor || !file || !isHydrated || isImportingRef.current) return
-    if (loadedId === file.id && (content === editorContentRef.current || (editor.isFocused && (status === 'editing' || hasUnsavedChanges())))) return
+    const hasActiveEdits =
+      status === 'editing' ||
+      status === 'saving-locally' ||
+      hasUnsavedChanges() ||
+      contentSyncTimerRef.current !== null
+    if (loadedId === file.id && (content === editorContentRef.current || hasActiveEdits)) return
     if (loadedId === file.id && (!content || content === emptyDocumentJson) && editorContentRef.current && editorContentRef.current !== emptyDocumentJson) return
     if (loadedId === file.id && lastImportedContentRef.current && editorContentRef.current === lastImportedContentRef.current && content !== editorContentRef.current) return
     const isFocused = editor.isFocused
@@ -2161,9 +2194,19 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   useDriveLiveSync(file?.id, file?.driveFileId, {
     enabled: Boolean(file && !file.isDeleted && !isLocalWorkspace()),
     intervalMs: 2500,
-    isEditing: status === 'editing' || status === 'saving-locally' || hasUnsavedChanges(),
+    isEditing:
+      status === 'editing' ||
+      status === 'saving-locally' ||
+      hasUnsavedChanges() ||
+      hasUnsavedTitleEdits() ||
+      contentSyncTimerRef.current !== null ||
+      titleAutosaveTimerRef.current !== null,
   })
   const saveTitle = useCallback(async () => {
+    if (titleAutosaveTimerRef.current !== null) {
+      window.clearTimeout(titleAutosaveTimerRef.current)
+      titleAutosaveTimerRef.current = null
+    }
     const nextTitle = titleRef.current.trim()
     if (!file || !nextTitle || nextTitle === file.name) return
     const cleanedNext = cleanName(nextTitle)
@@ -2178,9 +2221,39 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const result = await fileRepository.update(file.id, { name: nextTitle, syncStatus: isLocalWorkspace() ? 'local' : 'pending' })
     if (result.success) {
       lastSavedTitleRef.current = nextTitle
-      updateTitle(nextTitle)
+      if (file.id) {
+        broadcastDocUpdate(file.id, editorContentRef.current, nextTitle)
+      }
     }
-  }, [file, updateTitle])
+  }, [file])
+  saveTitleRef.current = saveTitle
+
+  useEffect(() => {
+    if (!file) return
+    const currentTitle = title.trim()
+    const currentSaved = file.name.trim()
+    const inputSaved = titleInputValue(currentSaved).trim()
+    if (!currentTitle || currentTitle === currentSaved || currentTitle === inputSaved) {
+      if (titleAutosaveTimerRef.current !== null) {
+        window.clearTimeout(titleAutosaveTimerRef.current)
+        titleAutosaveTimerRef.current = null
+      }
+      return
+    }
+    if (titleAutosaveTimerRef.current !== null) {
+      window.clearTimeout(titleAutosaveTimerRef.current)
+    }
+    titleAutosaveTimerRef.current = window.setTimeout(() => {
+      titleAutosaveTimerRef.current = null
+      void saveTitle()
+    }, 400)
+    return () => {
+      if (titleAutosaveTimerRef.current !== null) {
+        window.clearTimeout(titleAutosaveTimerRef.current)
+        titleAutosaveTimerRef.current = null
+      }
+    }
+  }, [file, saveTitle, title])
   useEffect(() => {
     if (!file || file.isDeleted || file.workspaceType === 'local' || file.syncStatus === 'local') return
     if (cloudTimerRef.current !== null) window.clearTimeout(cloudTimerRef.current)
@@ -2238,6 +2311,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
 
   const saveAll = async () => {
     flushContentSync()
+    if (titleAutosaveTimerRef.current !== null) {
+      window.clearTimeout(titleAutosaveTimerRef.current)
+      titleAutosaveTimerRef.current = null
+    }
     await Promise.all([save(), saveTitle()])
   }
   const backupNow = async () => {
