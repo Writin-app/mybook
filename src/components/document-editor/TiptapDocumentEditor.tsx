@@ -84,6 +84,7 @@ import { toast } from '../ui/toast'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { FindReplaceDialog } from './FindReplaceDialog'
+import { normalizeLinkUrl } from './linkUrl'
 import { ArrowPathIcon } from '@heroicons/react/24/outline'
 const emptyDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
 const emptyDocumentJson = JSON.stringify(emptyDocument)
@@ -136,7 +137,9 @@ interface PasteAsMenuState {
 interface InlineLinkToolbarState {
   href: string
   text: string
-  anchor: HTMLAnchorElement
+  anchor: HTMLAnchorElement | null
+  anchorBottom?: number
+  startInEdit?: boolean
   range: { from: number; to: number }
   position: { left: number; top: number }
   canEmbed: boolean
@@ -864,7 +867,8 @@ function InlineLinkToolbar({
   onAction: (action: 'copy' | 'edit' | 'bookmark' | 'mention' | 'embed' | 'image' | 'page' | 'remove', values?: { href: string; text: string }) => void
   onClose: () => void
 }) {
-  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [isEditOpen, setIsEditOpen] = useState(Boolean(toolbar.startInEdit))
+  const [hrefError, setHrefError] = useState(false)
   const [isChangeOpen, setIsChangeOpen] = useState(false)
   const [href, setHref] = useState(toolbar.href)
   const [text, setText] = useState(toolbar.text)
@@ -889,7 +893,7 @@ function InlineLinkToolbar({
         return
       }
       const target = event.target
-      if (target instanceof Node && (toolbar.anchor.contains(target) || toolbarRef.current?.contains(target))) {
+      if (target instanceof Node && (toolbar.anchor?.contains(target) || toolbarRef.current?.contains(target))) {
         cancelScheduledClose()
         return
       }
@@ -898,12 +902,12 @@ function InlineLinkToolbar({
     const closeOnPointerOut = (event: PointerEvent) => {
       const target = event.target
       const related = event.relatedTarget
-      const isInLinkOrToolbar = target instanceof Node && (toolbar.anchor.contains(target) || toolbarRef.current?.contains(target))
-      const isMovingIntoLinkOrToolbar = related instanceof Node && (toolbar.anchor.contains(related) || toolbarRef.current?.contains(related))
+      const isInLinkOrToolbar = target instanceof Node && (toolbar.anchor?.contains(target) || toolbarRef.current?.contains(target))
+      const isMovingIntoLinkOrToolbar = related instanceof Node && (toolbar.anchor?.contains(related) || toolbarRef.current?.contains(related))
       if (isInLinkOrToolbar && !isMovingIntoLinkOrToolbar && !isEditOpen && !isChangeOpen) {
         cancelScheduledClose()
-        const anchorRect = toolbar.anchor.getBoundingClientRect()
-        if (toolbar.anchor.contains(target) && event.clientY <= anchorRect.top + 4) scheduleClose(300)
+        const anchorRect = toolbar.anchor?.getBoundingClientRect()
+        if (anchorRect && toolbar.anchor?.contains(target) && event.clientY <= anchorRect.top + 4) scheduleClose(300)
         else onClose()
       }
     }
@@ -917,20 +921,39 @@ function InlineLinkToolbar({
   }, [cancelScheduledClose, isChangeOpen, isEditOpen, onClose, scheduleClose, toolbar.anchor])
   const closeIfOutside = (event: React.PointerEvent) => {
     const related = event.relatedTarget
-    if (related instanceof Node && (toolbar.anchor.contains(related) || toolbarRef.current?.contains(related) || editRef.current?.contains(related))) return
+    if (related instanceof Node && (toolbar.anchor?.contains(related) || toolbarRef.current?.contains(related) || editRef.current?.contains(related))) return
     if (isEditOpen || isChangeOpen) return
     scheduleClose()
   }
   const submitEdit = (event: React.FormEvent) => {
     event.preventDefault()
-    onAction('edit', { href: href.trim(), text: text.trim() || href.trim() })
+    const normalizedHref = normalizeLinkUrl(href)
+    if (!normalizedHref) {
+      setHrefError(true)
+      return
+    }
+    onAction('edit', { href: normalizedHref, text: text.trim() || normalizedHref })
     setIsEditOpen(false)
   }
+  const compact = Boolean(toolbar.startInEdit)
+  const cancelEdit = () => {
+    setIsEditOpen(false)
+    if (toolbar.startInEdit) onClose()
+  }
+  useEffect(() => {
+    if (!toolbar.startInEdit) return
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && editRef.current?.contains(event.target)) return
+      onClose()
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointerDown)
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointerDown)
+  }, [onClose, toolbar.startInEdit])
 
   return (
     <div
       ref={toolbarRef}
-      className="mybook-inline-link-toolbar"
+      className={toolbar.startInEdit ? 'mybook-inline-link-toolbar mybook-inline-link-toolbar-bare' : 'mybook-inline-link-toolbar'}
       role="toolbar"
       aria-label="Link actions"
       style={{
@@ -963,14 +986,16 @@ function InlineLinkToolbar({
         <form
           ref={editRef}
           className="mybook-inline-link-edit-popover"
-          style={{ top: toolbar.anchor.getBoundingClientRect().bottom - toolbar.position.top + 8 }}
+          data-compact={toolbar.startInEdit ? 'true' : undefined}
+          style={toolbar.startInEdit ? { top: 0 } : { top: (toolbar.anchor?.getBoundingClientRect().bottom ?? toolbar.anchorBottom ?? toolbar.position.top + 42) - toolbar.position.top + 8 }}
           onSubmit={submitEdit}
         >
-          <label>Page or URL<Input value={href} onChange={(event) => setHref(event.target.value)} autoFocus /></label>
-          <label>Link Name<Input value={text} onChange={(event) => setText(event.target.value)} /></label>
+          <label>{compact ? null : 'Page or URL'}<Input placeholder={compact ? 'Paste or type a link' : undefined} aria-label="Page or URL" value={href} aria-invalid={hrefError} onChange={(event) => { setHref(event.target.value); setHrefError(false) }} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancelEdit() } }} autoFocus /></label>
+          {hrefError ? <p role="alert" className="text-xs text-destructive">Enter a valid http, https, mailto or tel link.</p> : null}
+          {compact ? null : <label>Link Name<Input value={text} onChange={(event) => setText(event.target.value)} /></label>}
           <div className="mybook-inline-link-edit-actions">
-            <Button type="button" variant="destructive" size="sm" className="mybook-inline-link-remove" onClick={() => { onAction('remove'); setIsEditOpen(false) }}>Remove link</Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+            {toolbar.href ? <Button type="button" variant="destructive" size="sm" className="mybook-inline-link-remove" onClick={() => { onAction('remove'); setIsEditOpen(false) }}>Remove link</Button> : null}
+            {compact ? null : <Button type="button" variant="outline" size="sm" onClick={cancelEdit}>Cancel</Button>}
             <Button type="submit" variant="default" size="sm" className="mybook-inline-link-apply">Apply</Button>
           </div>
         </form>
@@ -989,8 +1014,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const redoShortcut = isMacPlatform ? '⌘⇧Z' : 'Ctrl+Shift+Z'
   const { files, folders } = useLibraryData(true)
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
-  const { content, hasUnsavedChanges, isHydrated, replaceContent, save, setContent, status } = useAutosave(file)
+  const { content, hasUnsavedChanges, hydratedFileId, isHydrated, replaceContent, save, setContent, status } = useAutosave(file)
   const [title, setTitle] = useState('')
+  const [titleFileId, setTitleFileId] = useState<string | null>(null)
   const [loadedId, setLoadedId] = useState<string | null>(null)
   const [docxBlob, setDocxBlob] = useState<Blob | null>(null)
   const [docxMessage, setDocxMessage] = useState('')
@@ -1000,6 +1026,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0)
   const [isFullWidth, setIsFullWidth] = useState(() => window.localStorage.getItem(documentViewModeStorageKey) === 'full')
   const [zoom, setZoom] = useState(100)
+  const zoomContentRef = useRef<HTMLDivElement>(null)
+  const [zoomContentHeight, setZoomContentHeight] = useState(0)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false)
   const [isMoveToOpen, setIsMoveToOpen] = useState(false)
@@ -1106,10 +1134,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     window.addEventListener('pagehide', handleFlush)
     document.addEventListener('visibilitychange', handleFlush)
     return () => {
-      if (contentSyncTimerRef.current !== null) {
-        window.clearTimeout(contentSyncTimerRef.current)
-        contentSyncTimerRef.current = null
-      }
+      // Hand pending edits to autosave before they are dropped (file switch or unmount).
+      if (contentSyncTimerRef.current !== null) flushContentSync()
       if (titleAutosaveTimerRef.current !== null) {
         window.clearTimeout(titleAutosaveTimerRef.current)
         titleAutosaveTimerRef.current = null
@@ -1166,7 +1192,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }, [file?.id, hasUnsavedChanges, hasUnsavedTitleEdits, replaceContent, updateTitle])
 
   const duplicateTitleFile = useMemo(() => {
-    if (!file) return null
+    if (!file || titleFileId !== file.id) return null
     const cleanedCurrent = cleanName(title)
     if (!cleanedCurrent) return null
     const normalizedCurrent = appFileName(cleanedCurrent, file.type).toLocaleLowerCase()
@@ -1175,7 +1201,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       if (candidate.folderId !== file.folderId) return false
       return appFileName(candidate.name, candidate.type).toLocaleLowerCase() === normalizedCurrent
     }) ?? null
-  }, [file, files, title])
+  }, [file, files, title, titleFileId])
 
   const duplicateTitleWarning = duplicateTitleFile
     ? `A document named "${appFileName(duplicateTitleFile.name, duplicateTitleFile.type)}" already exists in this folder.`
@@ -1223,7 +1249,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       setSlashMenu(null)
       return
     }
-    const next = getSlashMenuState(currentEditor)
+    // A restored document that contains "/" must not reopen the menu until the user is typing in it.
+    const next = currentEditor.isFocused ? getSlashMenuState(currentEditor) : null
     slashMenuRef.current = next
     setSlashMenu(next)
     if (!next) {
@@ -1857,6 +1884,17 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     editorRef.current = editor
   }, [editor])
 
+  // CSS scale does not change layout size, so measure the content to give the zoomed frame a real, scrollable size.
+  useEffect(() => {
+    const content = zoomContentRef.current
+    if (!content || zoom <= 100 || typeof ResizeObserver === 'undefined') return
+    const measure = () => setZoomContentHeight(content.offsetHeight)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [zoom, file?.id])
+
   const isPageLocked = Boolean(file?.isLocked)
   useEffect(() => {
     if (!editor) return
@@ -2122,6 +2160,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       loadedTitleFileIdRef.current = file.id
       lastSavedTitleRef.current = file.name
       updateTitle(titleInputValue(file.name))
+      setTitleFileId(file.id)
       return
     }
     if (file.name === lastSavedTitleRef.current) return
@@ -2132,7 +2171,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
   }, [file, hasUnsavedTitleEdits, updateTitle])
   useEffect(() => {
-    if (!editor || !file || !isHydrated || isImportingRef.current) return
+    if (!editor || !file || !isHydrated || hydratedFileId !== file.id || isImportingRef.current) return
     const hasActiveEdits =
       status === 'editing' ||
       status === 'saving-locally' ||
@@ -2156,7 +2195,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         })
       }
     }
-  }, [content, editor, file, hasUnsavedChanges, isHydrated, loadedId, status])
+  }, [content, editor, file, hasUnsavedChanges, hydratedFileId, isHydrated, loadedId, status])
 
   useEffect(() => {
     if (!editor || !file || !isHydrated || loadedId !== file.id || handledPendingImportRef.current === file.id) return
@@ -2465,7 +2504,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (action === 'edit') {
       const url = values?.href.trim() ?? toolbar.href
       const text = values?.text.trim() || toolbar.text
-      if (url) {
+      if (url && text === toolbar.text) {
+        editor.chain().focus().setTextSelection(toolbar.range).setLink({ href: url }).setTextSelection(toolbar.range.to).run()
+      } else if (url) {
         editor.chain().focus().insertContentAt(toolbar.range, {
           type: 'text',
           text,
@@ -2520,6 +2561,31 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       }))
       closeInlineLinkToolbar()
     }
+  }
+
+  const openSelectionLinkEditor = () => {
+    const { from, to, empty } = editor.state.selection
+    if (empty) return
+    const existingHref = editor.getAttributes('link').href as string | undefined
+    const existing = existingHref ? linkRangeAtPosition(editor.view, from, existingHref) : null
+    const range = existing ?? { from, to }
+    const start = editor.view.coordsAtPos(range.from)
+    const end = editor.view.coordsAtPos(range.to)
+    const selectionToolbarRect = document.querySelector('[aria-label="Selected text formatting"]')?.getBoundingClientRect()
+    const nextToolbar: InlineLinkToolbarState = {
+      href: existingHref ?? '',
+      text: existing?.text ?? editor.state.doc.textBetween(range.from, range.to, ' '),
+      anchor: null,
+      anchorBottom: Math.max(start.bottom, end.bottom),
+      startInEdit: true,
+      range: { from: range.from, to: range.to },
+      position: selectionToolbarRect
+        ? { left: selectionToolbarRect.left, top: selectionToolbarRect.bottom + 4 }
+        : { left: start.left, top: Math.max(start.bottom, end.bottom) + 8 },
+      canEmbed: false,
+    }
+    inlineLinkToolbarRef.current = nextToolbar
+    setInlineLinkToolbar(nextToolbar)
   }
 
   const setEditorLink = () => {
@@ -2815,6 +2881,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }
 
   const pageScale = zoom / 100
+  const zoomedIn = pageScale > 1
   const desktopPageWidth = '100%'
   const documentSurfaceClass = 'bg-[var(--app-surface)]'
   const documentPageClass = `mybook-document-page ${isFullWidth ? '' : 'mybook-document-page--continuous '}mx-auto min-h-[calc(100dvh-13rem)] w-full bg-[var(--app-surface)] px-20 pb-[55vh] pt-6 shadow-none sm:px-24 md:px-28 md:pb-[55vh] md:pt-7`
@@ -3005,7 +3072,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       <input ref={imageInputRef} type="file" accept="image/*" className="sr-only" aria-label="Insert image" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void insertImageFile(selectedFile); event.target.value = '' }} />
       {docxMessage ? <p role="status" className="mx-auto mt-3 max-w-3xl px-4 text-sm text-muted-foreground sm:px-6">{docxMessage}<span className="sr-only">{docxBlob ? ` Export size ${docxBlob.size} bytes.` : ''}</span></p> : null}
       <div
-        className="mybook-document-canvas w-full overflow-x-clip px-0 py-0"
+        className={`mybook-document-canvas w-full ${zoomedIn ? '' : 'overflow-x-clip'} px-0 py-0`}
         onMouseDownCapture={(event) => {
           const target = event.target
           if (!(target instanceof Element)) return
@@ -3061,12 +3128,18 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           }}
         >
           <div
+            className="mybook-document-zoom-frame"
+            data-zoomed={zoomedIn ? 'true' : undefined}
+            style={zoomedIn ? { width: `${pageScale * 100}%`, height: zoomContentHeight ? zoomContentHeight * pageScale : undefined } : undefined}
+          >
+          <div
+            ref={zoomContentRef}
             className="mybook-document-scale min-w-0 origin-top"
             style={{
               maxWidth: 'none',
               transform: `scale(${pageScale})`,
-              transformOrigin: 'top center',
-              width: '100%',
+              transformOrigin: zoomedIn ? 'top left' : 'top center',
+              width: zoomedIn ? `${100 / pageScale}%` : '100%',
             }}
           >
             <DocumentLinkProvider
@@ -3121,6 +3194,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
               <EditorContent editor={editor} />
             </DocumentLinkProvider>
           </div>
+          </div>
         </div>
       </div>
       {slashMenu ? (
@@ -3171,8 +3245,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         onMove={moveDocument}
         onCreateFolder={(name, parentId) => folderRepository.create(name, parentId)}
       />
-      {inlineLinkToolbar ? <InlineLinkToolbar toolbar={inlineLinkToolbar} onAction={runInlineLinkAction} onClose={closeInlineLinkToolbar} /> : null}
-      {!isPageLocked ? <SelectionFormattingToolbar editor={editor} onInsertBlock={(commandId) => insertBlock(commandId)} /> : null}
+      {inlineLinkToolbar ? <InlineLinkToolbar key={`${inlineLinkToolbar.range.from}-${inlineLinkToolbar.range.to}-${inlineLinkToolbar.startInEdit ? 'edit' : 'hover'}`} toolbar={inlineLinkToolbar} onAction={runInlineLinkAction} onClose={closeInlineLinkToolbar} /> : null}
+      {!isPageLocked ? <SelectionFormattingToolbar editor={editor} onInsertBlock={(commandId) => insertBlock(commandId)} onEditLink={openSelectionLinkEditor} linkEditorOpen={Boolean(inlineLinkToolbar?.startInEdit)} /> : null}
       {!isPageLocked ? <EditorBlockControls editor={editor} onInsertBlock={insertBlock} /> : null}
       {!isPageLocked ? <TableActionsMenu editor={editor} /> : null}
       {!isPageLocked ? <ChecklistActionsMenu editor={editor} /> : null}

@@ -9,6 +9,7 @@ import { authApiUrl, isBackendAuthEnabled, useAuthStore } from '../../stores/use
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { loadGoogleIdentity } from '../../utils/googleIdentity'
 import { useDriveBootstrap } from '../../hooks/useDriveBootstrap'
+import { useDriveLibrarySync } from '../../hooks/useDriveLibrarySync'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { activeFavoriteItems } from '../../utils/favorites'
 import { AppHeader } from '../common/AppHeader'
@@ -74,6 +75,7 @@ export function AppLayout() {
   const { mode: workspaceMode, workspaceRevision, isMirrorFolderMissing, isMirroring, mirrorProgress, selectGoogleWorkspace } = useWorkspaceStore()
   const { files, folders, isLoading } = useLibraryData()
   const { isFetchingFiles = false, fetchProgress = 0 } = useDriveBootstrap() ?? {}
+  useDriveLibrarySync()
   useLocalMirrorSync()
   const { pathname } = useLocation()
   const navigate = useNavigate()

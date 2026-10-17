@@ -102,6 +102,52 @@ describe('Editor Keyboard Accessibility & Shortcuts', () => {
     cleanup()
   })
 
+  it('extends selection only within the current table cell on Mod-Shift-Arrow', () => {
+    const { editor, cleanup } = createEditor('<table><tr><td><p>Hello world</p></td><td><p>Next</p></td></tr></table>')
+    editor.commands.setTextSelection(4)
+
+    const shortcuts = editor.extensionManager.extensions.find((e) => e.name === 'editorKeyboardShortcuts')
+    const handlers = (shortcuts as unknown as { config: { addKeyboardShortcuts: () => Record<string, () => boolean> } }).config.addKeyboardShortcuts.call({ editor })
+    expect(handlers['Mod-Shift-ArrowRight']!()).toBe(true)
+
+    const { selection } = editor.state
+    expect(selection.constructor.name).toBe('TextSelection')
+    expect(selection.$head.parent.textContent).toBe('Hello world')
+    expect(selection.head).toBe(selection.$head.end())
+    expect(selection.anchor).toBe(4)
+
+    expect(handlers['Mod-Shift-ArrowLeft']!()).toBe(true)
+    expect(editor.state.selection.head).toBe(editor.state.selection.$head.start())
+    cleanup()
+  })
+
+  it('does not handle Mod-Shift-Arrow outside tables', () => {
+    const { editor, cleanup } = createEditor('<p>Hello world</p>')
+    editor.commands.setTextSelection(3)
+    const shortcuts = editor.extensionManager.extensions.find((e) => e.name === 'editorKeyboardShortcuts')
+    const handlers = (shortcuts as unknown as { config: { addKeyboardShortcuts: () => Record<string, () => boolean> } }).config.addKeyboardShortcuts.call({ editor })
+    expect(handlers['Mod-Shift-ArrowRight']!()).toBe(false)
+    cleanup()
+  })
+
+  it('collapses a selection inside a table cell on Arrow instead of jumping to the next cell', () => {
+    const { editor, cleanup } = createEditor('<table><tr><td><p>Hello world</p></td><td><p>Next</p></td></tr></table>')
+    const shortcuts = editor.extensionManager.extensions.find((e) => e.name === 'editorKeyboardShortcuts')
+    const handlers = (shortcuts as unknown as { config: { addKeyboardShortcuts: () => Record<string, () => boolean> } }).config.addKeyboardShortcuts.call({ editor })
+
+    editor.commands.setTextSelection({ from: 4, to: 15 })
+    const end = editor.state.selection.to
+    expect(handlers.ArrowRight!()).toBe(true)
+    expect(editor.state.selection.empty).toBe(true)
+    expect(editor.state.selection.from).toBe(end)
+    expect(editor.state.selection.$from.parent.textContent).toBe('Hello world')
+
+    editor.commands.setTextSelection({ from: 4, to: 15 })
+    expect(handlers.ArrowLeft!()).toBe(true)
+    expect(editor.state.selection.from).toBe(4)
+    cleanup()
+  })
+
   it('toggles formatting marks via Mod shortcuts', () => {
     const { editor, cleanup } = createEditor('<p>Sample Text</p>')
     editor.commands.setTextSelection({ from: 1, to: 7 })

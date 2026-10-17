@@ -3,6 +3,7 @@ import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { MyBookFile } from '../types/files'
+import { fileRepository } from '../database/repositories'
 import { useAutosave } from './useAutosave'
 
 vi.mock('../database/repositories', () => ({ fileRepository: { update: vi.fn().mockResolvedValue({ success: true }) } }))
@@ -31,5 +32,23 @@ describe('useAutosave external updates', () => {
     rerender({ f: file('remote') })
 
     expect(result.current.content).toBe('typed locally')
+  })
+
+  it('reports which file the hydrated content belongs to', () => {
+    const { result, rerender } = renderHook(({ f }) => useAutosave(f), { initialProps: { f: file('a') } })
+    expect(result.current.hydratedFileId).toBe('file-1')
+    rerender({ f: { ...file(''), id: 'file-2' } })
+    expect(result.current.hydratedFileId).toBe('file-2')
+    expect(result.current.content).toBe('')
+  })
+
+  it('saves pending edits to the previous file when switching files', () => {
+    const { result, rerender } = renderHook(({ f }) => useAutosave(f), { initialProps: { f: file('a') } })
+    act(() => result.current.setContent('typed just before switching'))
+
+    rerender({ f: { ...file('other'), id: 'file-2' } })
+
+    expect(fileRepository.update).toHaveBeenCalledWith('file-1', expect.objectContaining({ content: 'typed just before switching' }))
+    expect(result.current.content).toBe('other')
   })
 })

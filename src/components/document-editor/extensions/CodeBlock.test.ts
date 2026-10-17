@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Editor } from '@tiptap/react'
 import Document from '@tiptap/extension-document'
 import Paragraph from '@tiptap/extension-paragraph'
@@ -77,3 +77,31 @@ describe('CodeBlock keyboard shortcuts', () => {
   })
 })
 
+
+describe('CodeBlock empty block caret', () => {
+  it('re-syncs the editor focus when an empty code block receives the caret', () => {
+    vi.useFakeTimers()
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({
+      element,
+      extensions: [Document, Paragraph, Text, CodeBlock],
+      content: '<p>Hello</p><p></p>',
+    })
+    editor.commands.focus('end')
+    vi.runAllTimers()
+    const hasFocus = vi.spyOn(editor.view, 'hasFocus').mockReturnValue(true)
+    const focus = vi.spyOn(editor.view, 'focus').mockImplementation(() => undefined)
+
+    const { state, view } = editor
+    view.dispatch(state.tr.setBlockType(state.selection.from, state.selection.to, state.schema.nodes.codeBlock!))
+    vi.runAllTimers()
+
+    expect(editor.state.selection.$from.parent.type.name).toBe('codeBlock')
+    expect(focus).toHaveBeenCalledTimes(1)
+
+    hasFocus.mockRestore()
+    editor.destroy()
+    element.remove()
+    vi.useRealTimers()
+  })
+})

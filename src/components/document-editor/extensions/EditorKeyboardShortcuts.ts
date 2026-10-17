@@ -1,11 +1,52 @@
-import { Extension } from '@tiptap/core'
+import { Extension, type Editor } from '@tiptap/core'
 import { TextSelection } from '@tiptap/pm/state'
+import type { ResolvedPos } from '@tiptap/pm/model'
+
+const isInsideTableCell = (pos: ResolvedPos) => {
+  for (let depth = pos.depth; depth > 0; depth -= 1) {
+    const name = pos.node(depth).type.name
+    if (name === 'tableCell' || name === 'tableHeader') return true
+  }
+  return false
+}
+
+// prosemirror-tables treats Arrow at the cell edge as "go to next cell" even with text selected,
+// so collapse a non-empty selection to its edge ourselves
+const collapseSelectionWithinCell = (editor: Editor, direction: 'start' | 'end') => {
+  const { state, view } = editor
+  const { selection } = state
+  if (!(selection instanceof TextSelection) || selection.empty) return false
+  if (!isInsideTableCell(selection.$from) || !isInsideTableCell(selection.$to)) return false
+
+  const target = direction === 'end' ? selection.to : selection.from
+  view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, target)).scrollIntoView())
+  return true
+}
+
+// Extend the selection to the cell paragraph edge so it never spills into a neighbouring cell
+const extendSelectionWithinCell = (editor: Editor, direction: 'start' | 'end') => {
+  const { state, view } = editor
+  const { selection } = state
+  if (!(selection instanceof TextSelection)) return false
+
+  const { $head, $anchor } = selection
+  if (!isInsideTableCell($head) || !isInsideTableCell($anchor) || !$head.parent.isTextblock) return false
+
+  const target = direction === 'end' ? $head.end() : $head.start()
+  if (target !== $head.pos) {
+    view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, $anchor.pos, target)).scrollIntoView())
+  }
+  return true
+}
 
 export const EditorKeyboardShortcuts = Extension.create({
   name: 'editorKeyboardShortcuts',
 
   addKeyboardShortcuts() {
     return {
+      'Mod-Shift-ArrowRight': () => extendSelectionWithinCell(this.editor, 'end'),
+      'Mod-Shift-ArrowLeft': () => extendSelectionWithinCell(this.editor, 'start'),
+
       // Formatting marks
       'Mod-b': () => this.editor.commands.toggleBold(),
       'Mod-B': () => this.editor.commands.toggleBold(),
@@ -54,7 +95,7 @@ export const EditorKeyboardShortcuts = Extension.create({
       ArrowRight: () => {
         const { state, view } = this.editor
         const { selection } = state
-        if (!selection.empty) return false
+        if (!selection.empty) return collapseSelectionWithinCell(this.editor, 'end')
 
         const $pos = selection.$from
         const codeType = state.schema.marks.code
@@ -89,7 +130,7 @@ export const EditorKeyboardShortcuts = Extension.create({
       ArrowLeft: () => {
         const { state, view } = this.editor
         const { selection } = state
-        if (!selection.empty) return false
+        if (!selection.empty) return collapseSelectionWithinCell(this.editor, 'start')
 
         const $pos = selection.$from
         const codeType = state.schema.marks.code

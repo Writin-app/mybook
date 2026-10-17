@@ -10,6 +10,7 @@ import { Button } from '../ui/button'
 import { BlockCommandMenu } from './SlashCommandMenu'
 import { commandMenuTop, type SlashCommand } from './slashCommands'
 import { safeSelectionForBlock } from './blockConversion'
+import { movableBlockAt } from './blockDrag'
 import { deleteColumnAt } from './extensions/Columns'
 import {
   gutterBoundsForTarget,
@@ -126,7 +127,7 @@ function findSelectionTarget(editor: Editor): BlockTarget | null {
   return blockTargetAtResolvedPos(editor, selection.from)
 }
 
-function findPointerTarget(editor: Editor, event: PointerEvent): BlockTarget | null {
+function findPointerTarget(editor: Editor, event: PointerEvent, clampToEditor = false): BlockTarget | null {
   const pointerElement = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-document-link-block="true"]') : null
   if (pointerElement) {
     let match: BlockTarget | null = null
@@ -147,7 +148,12 @@ function findPointerTarget(editor: Editor, event: PointerEvent): BlockTarget | n
       return targetAtBlockPos(editor, node, resolved.before(depth))
     }
   }
-  const result = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
+  // While dragging from the gutter the pointer is left of the text, where posAtCoords finds nothing
+  const editorRect = editor.view.dom.getBoundingClientRect()
+  const left = clampToEditor
+    ? Math.min(Math.max(event.clientX, editorRect.left + 8), editorRect.right - 8)
+    : event.clientX
+  const result = editor.view.posAtCoords({ left, top: event.clientY })
   if (!result) return null
   return blockTargetAtResolvedPos(editor, result.pos)
 }
@@ -187,6 +193,12 @@ function collectGutterTargets(editor: Editor): BlockTarget[] {
     if (target.rect.width > 0 && target.rect.height > 0) targets.push(target)
   })
   return targets
+}
+
+function toMovableBlock(editor: Editor, target: BlockTarget): BlockTarget {
+  const block = movableBlockAt(editor.state.doc, target.pos)
+  if (!block || block.pos === target.pos) return target
+  return targetAtBlockPos(editor, block.node, block.pos)
 }
 
 function selectTarget(editor: Editor, target: BlockTarget) {
@@ -434,12 +446,13 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
     if (!dragState) return
     const handlePointerMove = (event: PointerEvent) => {
       const distance = Math.hypot(event.clientX - dragState.startX, event.clientY - dragState.startY)
-      const nextTarget = findPointerTarget(editor, event)
-      const drop = nextTarget && nextTarget.pos !== dragState.source.pos
+      const nextTarget = findPointerTarget(editor, event, true)
+      const dropBlock = nextTarget ? toMovableBlock(editor, nextTarget) : null
+      const drop = dropBlock && dropBlock.pos !== dragState.source.pos
         ? {
-            pos: nextTarget.pos,
-            side: event.clientY < nextTarget.rect.top + nextTarget.rect.height / 2 ? 'before' as const : 'after' as const,
-            rect: nextTarget.rect,
+            pos: dropBlock.pos,
+            side: event.clientY < dropBlock.rect.top + dropBlock.rect.height / 2 ? 'before' as const : 'after' as const,
+            rect: dropBlock.rect,
           }
         : dragState.drop
       setDragState({ ...dragState, isDragging: dragState.isDragging || distance > 4, drop })
@@ -576,7 +589,7 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
           onPointerDown={(event) => {
             event.preventDefault()
             selectTarget(editor, target)
-            setDragState({ source: target, startX: event.clientX, startY: event.clientY, isDragging: false, drop: null })
+            setDragState({ source: toMovableBlock(editor, target), startX: event.clientX, startY: event.clientY, isDragging: false, drop: null })
           }}
           onClick={() => {
             if (suppressNextClickRef.current) return
