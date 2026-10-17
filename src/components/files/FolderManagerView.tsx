@@ -18,6 +18,8 @@ import { FileNameDialog } from './FileNameDialog'
 import { FolderActionsMenu } from './FolderActionsMenu'
 import { FolderCard } from './FolderCard'
 import { FolderNameDialog } from './FolderNameDialog'
+import { useWorkspaceTabsStore } from '../../stores/useWorkspaceTabsStore'
+import { useWorkspacePane } from '../../contexts/WorkspacePaneContext'
 
 interface FolderManagerViewProps {
   folderId: string | null
@@ -25,6 +27,8 @@ interface FolderManagerViewProps {
 
 export function FolderManagerView({ folderId }: FolderManagerViewProps) {
   const navigate = useNavigate()
+  const tabs = useWorkspaceTabsStore()
+  const { paneId } = useWorkspacePane()
   const { files, folders, isLoading } = useLibraryData()
   const workspaceMode = useWorkspaceStore((state) => state.mode)
   const [renameTarget, setRenameTarget] = useState<MyBookFolder | null>(null)
@@ -41,7 +45,7 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
       <EmptyState
         title="Folder not found"
         description="This folder may have been deleted."
-        action={<AppButton variant="primary" onPress={() => navigate('/folders')}>Back to folders</AppButton>}
+        action={<AppButton variant="primary" onPress={() => { tabs.navigate('/folders', { pane: paneId }); navigate('/folders') }}>Back to folders</AppButton>}
       />
     )
   }
@@ -83,7 +87,7 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
             type={file.type}
             syncStatus={file.syncStatus}
             folderName={currentFolder?.name ?? 'Writin'}
-            onOpen={() => navigate(`/${file.type}/${file.id}`)}
+            onOpen={() => { const path = `/${file.type}/${file.id}`; tabs.navigate(path, { pane: paneId }); navigate(path) }}
             action={
               <FileActionsMenu
                 fileName={file.name}
@@ -95,6 +99,8 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
                 onMove={(destination) => void fileRepository.update(file.id, { folderId: destination })}
                 onToggleFavorite={() => void fileRepository.setFavorite(file.id, !file.isFavorite)}
                 onDelete={() => setFileDeleteTarget(file)}
+                onOpenInNewTab={() => { const path = `/${file.type}/${file.id}`; tabs.navigate(path, { newTab: true, pane: paneId }); navigate(path) }}
+                onOpenInSplit={() => { const path = `/${file.type}/${file.id}`; tabs.splitWith(path); navigate(path) }}
               />
             }
           />
@@ -106,7 +112,7 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
             fileCount={fileCount(folder.id)}
             folderCount={folderCount(folder.id)}
             driveStatus={workspaceMode === 'local' ? 'Stored locally' : folder.driveFolderId ? 'Synced to Drive' : 'Drive folder pending'}
-            onOpen={() => navigate(`/folders/${folder.id}`)}
+            onOpen={() => { const path = `/folders/${folder.id}`; tabs.navigate(path, { pane: paneId }); navigate(path) }}
             action={
               <FolderActionsMenu
                 folderName={folder.name}

@@ -1,5 +1,6 @@
 import {
   ArrowLeft01Icon,
+  ArrowRight01Icon,
   CloudCheckIcon,
   Loading03Icon,
   MoreHorizontalIcon,
@@ -52,6 +53,10 @@ export interface AppHeaderProps {
   titleRef?: RefObject<HTMLElement | null>
   breadcrumbs?: AppHeaderBreadcrumb[]
   leadingAction?: 'sidebar' | 'back' | 'none'
+  /** Show per-tab forward navigation beside the back action. */
+  onForward?: () => void
+  canGoBack?: boolean
+  canGoForward?: boolean
   /** Hide leading controls below the mobile breakpoint. */
   hideLeadingOnMobile?: boolean
   /** Hide editor breadcrumbs below the mobile breakpoint. */
@@ -168,6 +173,9 @@ export function AppHeader({
   hideLeadingOnMobile = false,
   hideBreadcrumbsOnMobile = false,
   onBack,
+  onForward,
+  canGoBack = true,
+  canGoForward = false,
   onSidebarToggle,
   showCenterLeftActions = true,
   centerLeftActions = [],
@@ -273,11 +281,17 @@ export function AppHeader({
             size="icon-sm"
             aria-label={leadingLabel}
             title={leadingLabel}
-            disabled={!leadingHandler}
+            disabled={!leadingHandler || (leadingAction === 'back' && canGoBack === false)}
             onClick={leadingHandler}
             className={cn('shrink-0 rounded-lg', leadingAction === 'sidebar' && onBack && 'hidden md:inline-flex')}
           >
             <HugeiconsIcon icon={leadingIcon} strokeWidth={2} className="size-5" />
+          </Button>
+        ) : null}
+
+        {leadingAction === 'back' && onForward && !isMobile ? (
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Go forward" title="Go forward" disabled={canGoForward === false} onClick={onForward} className="-ml-2 shrink-0 rounded-lg">
+            <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-5" />
           </Button>
         ) : null}
 

@@ -8,6 +8,7 @@ import { AppLayout } from './AppLayout'
 import { useDriveBootstrap } from '../../hooks/useDriveBootstrap'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
+import { useWorkspaceTabsStore } from '../../stores/useWorkspaceTabsStore'
 import type { MyBookFile, MyBookFolder } from '../../types/files'
 
 const mockLibraryData = vi.hoisted((): { files: MyBookFile[]; folders: MyBookFolder[]; isLoading: boolean } => ({
@@ -53,6 +54,18 @@ describe('AppLayout sidebar favorites', () => {
   beforeEach(() => {
     mockLibraryData.files = []
     mockLibraryData.folders = []
+    useWorkspaceTabsStore.setState({
+      tabs: [{ id: 'home-tab', history: ['/home'], historyIndex: 0 }],
+      panes: [{ id: 'primary', tabId: 'home-tab' }],
+      activeTabId: 'home-tab',
+      activePaneId: 'primary',
+      tabTitles: {},
+      splitTabId: null,
+      activePane: 'primary',
+      primaryPath: '/home',
+      splitPath: null,
+      expectedRoute: null,
+    })
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation((query: string) => ({
@@ -198,9 +211,10 @@ describe('AppLayout sidebar favorites', () => {
     // Breadcrumbs should be navigation only, not editable buttons with "Rename Reports"
     expect(screen.queryByRole('button', { name: /Rename Reports/i })).not.toBeInTheDocument()
 
-    // Keep the sidebar control on desktop and use Back only on mobile.
-    expect(screen.getByRole('button', { name: 'Open navigation' })).toHaveClass('hidden', 'md:inline-flex')
-    expect(screen.getByRole('button', { name: 'Go back' })).toHaveClass('md:hidden')
+    // No sidebar control in breadcrumbs; Back and Forward navigation on desktop
+    expect(screen.queryByRole('button', { name: 'Open navigation' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Go back' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Go forward' })).toBeInTheDocument()
 
     // Favorite and More actions in header
     expect(screen.getByRole('button', { name: 'Add to favorites' })).toBeInTheDocument()
@@ -273,7 +287,7 @@ describe('AppLayout sidebar favorites', () => {
   })
 
   it('renders sync progress toast when fetching files', () => {
-    vi.mocked(useDriveBootstrap).mockReturnValueOnce({
+    vi.mocked(useDriveBootstrap).mockReturnValue({
       isPreparing: true,
       statusMessage: 'Connecting...',
       isFetchingFiles: true,
@@ -284,6 +298,13 @@ describe('AppLayout sidebar favorites', () => {
     expect(screen.getByRole('status')).toBeInTheDocument()
     expect(screen.getByText('Fetching your data…')).toBeInTheDocument()
     expect(screen.getByText('42%')).toBeInTheDocument()
+    vi.mocked(useDriveBootstrap).mockReturnValue({
+      isPreparing: false,
+      statusMessage: null,
+      isFetchingFiles: false,
+      fetchProgress: 0,
+      folderId: null,
+    })
   })
 
   it('renders workspace options in dropdown and opens workspace modal', async () => {
@@ -300,6 +321,41 @@ describe('AppLayout sidebar favorites', () => {
 
     fireEvent.click(screen.getByText('Add Workspace...'))
     expect(await screen.findByRole('dialog', { name: 'Add New Workspace' })).toBeInTheDocument()
+  })
+
+  it('navigates the active split pane when sidebar navigation is clicked in split mode', () => {
+    useWorkspaceTabsStore.setState({
+      tabs: [
+        { id: 'left-tab', history: ['/home'], historyIndex: 0 },
+        { id: 'right-tab', history: ['/folders'], historyIndex: 0 },
+      ],
+      panes: [
+        { id: 'primary', tabId: 'left-tab' },
+        { id: 'split-2', tabId: 'right-tab' },
+      ],
+      activeTabId: 'right-tab',
+      activePaneId: 'split-2',
+      primaryPath: '/home',
+      splitPath: '/folders',
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/folders']}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="/home" element={<p>Home page</p>} />
+            <Route path="/folders" element={<p>Library page</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getAllByRole('link', { name: 'Home' })[0]!)
+
+    const rightTab = useWorkspaceTabsStore.getState().tabs.find((t) => t.id === 'right-tab')
+    expect(rightTab?.history[rightTab.historyIndex]).toBe('/home')
+    const leftTab = useWorkspaceTabsStore.getState().tabs.find((t) => t.id === 'left-tab')
+    expect(leftTab?.history[leftTab.historyIndex]).toBe('/home')
   })
 })
 

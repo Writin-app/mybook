@@ -1,4 +1,4 @@
-import { DocumentDuplicateIcon, EllipsisHorizontalIcon, FolderArrowDownIcon, PencilSquareIcon, StarIcon as StarOutlineIcon } from '@heroicons/react/24/outline'
+import { DocumentDuplicateIcon, EllipsisHorizontalIcon, FolderArrowDownIcon, PencilSquareIcon, StarIcon as StarOutlineIcon, ArrowTopRightOnSquareIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/outline'
 import { Delete02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { StarIcon as StarSolidIcon } from '@heroicons/react/24/solid'
@@ -16,9 +16,11 @@ interface FileActionsMenuProps {
   onMove: (folderId: string | null) => void
   onToggleFavorite?: () => void
   onDelete: () => void
+  onOpenInNewTab?: () => void
+  onOpenInSplit?: () => void
 }
 
-export function FileActionsMenu({ fileName, folders, currentFolderId, isFavorite = false, onRename, onDuplicate, onMove, onToggleFavorite, onDelete }: FileActionsMenuProps) {
+export function FileActionsMenu({ fileName, folders, currentFolderId, isFavorite = false, onRename, onDuplicate, onMove, onToggleFavorite, onDelete, onOpenInNewTab, onOpenInSplit }: FileActionsMenuProps) {
   const FavoriteIcon = isFavorite ? StarSolidIcon : StarOutlineIcon
 
   return (
@@ -30,10 +32,14 @@ export function FileActionsMenu({ fileName, folders, currentFolderId, isFavorite
           if (action === 'rename') onRename()
           else if (action === 'duplicate') onDuplicate()
           else if (action === 'favorite') onToggleFavorite?.()
+          else if (action === 'new-tab') onOpenInNewTab?.()
+          else if (action === 'split') onOpenInSplit?.()
           else if (action === 'delete') onDelete()
           else if (action === 'root') onMove(null)
           else if (action.startsWith('move:')) onMove(action.slice(5))
         }}>
+          {onOpenInNewTab ? <Dropdown.Item id="new-tab"><ArrowTopRightOnSquareIcon aria-hidden="true" className="size-5" />Open in new tab</Dropdown.Item> : null}
+          {onOpenInSplit ? <Dropdown.Item id="split"><ArrowsPointingOutIcon aria-hidden="true" className="size-5" />Open in split view</Dropdown.Item> : null}
           <Dropdown.Item id="rename"><PencilSquareIcon aria-hidden="true" className="size-5" />Rename</Dropdown.Item>
           <Dropdown.Item id="duplicate"><DocumentDuplicateIcon aria-hidden="true" className="size-5" />Duplicate</Dropdown.Item>
           {onToggleFavorite ? <Dropdown.Item id="favorite" aria-label={`${isFavorite ? 'Remove from' : 'Add to'} favorites`}><FavoriteIcon aria-hidden="true" className="size-5" />{isFavorite ? 'Remove from favorites' : 'Add to favorites'}</Dropdown.Item> : null}

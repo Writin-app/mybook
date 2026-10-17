@@ -4,5 +4,5 @@ import { TiptapDocumentEditor } from '../components/document-editor/TiptapDocume
 
 export function DocumentEditorPage() {
   const { documentId } = useParams()
-  return documentId ? <TiptapDocumentEditor fileId={documentId} /> : null
+  return documentId ? <TiptapDocumentEditor key={documentId} fileId={documentId} /> : null
 }

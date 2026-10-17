@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useWorkspaceTabsStore } from '../stores/useWorkspaceTabsStore'
+import { useWorkspacePane } from '../contexts/WorkspacePaneContext'
 
 import { EmptyState } from '../components/common/EmptyState'
 import { DeleteFileDialog } from '../components/files/DeleteFileDialog'
@@ -26,6 +28,8 @@ interface HomePageProps {
 
 export function HomePage({ initialTab = 'recent' }: HomePageProps) {
   const navigate = useNavigate()
+  const tabs = useWorkspaceTabsStore()
+  const { paneId } = useWorkspacePane()
   const { files, folders, isLoading } = useLibraryData()
   const [activeTab, setActiveTab] = useState<HomeTab>(initialTab)
   const [renameTarget, setRenameTarget] = useState<MyBookFile | null>(null)
@@ -152,7 +156,7 @@ export function HomePage({ initialTab = 'recent' }: HomePageProps) {
         type={file.type}
         syncStatus={file.syncStatus}
         folderName={folders.find((folder) => folder.id === file.folderId)?.name ?? 'Writin'}
-        onOpen={() => navigate(`/${file.type}/${file.id}`)}
+        onOpen={() => { const path = `/${file.type}/${file.id}`; tabs.navigate(path, { pane: paneId }); navigate(path) }}
         action={
           <FileActionsMenu
             fileName={file.name}
@@ -164,6 +168,8 @@ export function HomePage({ initialTab = 'recent' }: HomePageProps) {
             onMove={(folderId) => void fileRepository.update(file.id, { folderId })}
             onToggleFavorite={() => void fileRepository.setFavorite(file.id, !file.isFavorite)}
             onDelete={() => setDeleteTarget(file)}
+            onOpenInNewTab={() => { const path = `/${file.type}/${file.id}`; tabs.navigate(path, { newTab: true, pane: paneId }); navigate(path) }}
+            onOpenInSplit={() => { const path = `/${file.type}/${file.id}`; tabs.splitWith(path); navigate(path) }}
           />
         }
       />
@@ -177,7 +183,7 @@ export function HomePage({ initialTab = 'recent' }: HomePageProps) {
         name={folder.name}
         fileCount={fileCount(folder.id)}
         folderCount={folderCount(folder.id)}
-        onOpen={() => navigate(`/folders/${folder.id}`)}
+        onOpen={() => { const path = `/folders/${folder.id}`; tabs.navigate(path, { pane: paneId }); navigate(path) }}
         action={
           <FolderActionsMenu
             folderName={folder.name}

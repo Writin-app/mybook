@@ -35,9 +35,11 @@ import { backupDocumentToDrive, copyDriveFileLink, openDriveFileInBrowser } from
 import { compressImageFile } from '../../utils/imageCompression'
 import { contentToMarkdown, documentToMyBookMarkdown, downloadMyBookMarkdown, isMarkdownText, myBookMarkdownToDocument } from '../../utils/mybookMarkdown'
 import { EmptyState } from '../common/EmptyState'
+import { LoadingOverlay } from '../common/LoadingOverlay'
 import { AppHeader } from '../common/AppHeader'
 import { DeleteFileDialog } from '../files/DeleteFileDialog'
 import { getFolderPath } from '../files/FolderBreadcrumb'
+import { useWorkspacePane } from '../../contexts/WorkspacePaneContext'
 import { ChecklistActionsMenu } from './ChecklistActionsMenu'
 import { DocumentToolbar } from './DocumentToolbar'
 import { SelectionFormattingToolbar } from './SelectionFormattingToolbar'
@@ -79,6 +81,7 @@ import { TableActionsMenu } from './TableActionsMenu'
 import { devLog } from '../../utils/safeLog'
 import { convertRtfToHtml, documentImportTitle, isSupportedDocumentImport, normalizeInlineFormatting, plainTextToHtml, takeDocumentImport } from '../../services/documentImport'
 import { deletedToast } from '../../utils/deleteToast'
+import { useWorkspaceTabsStore } from '../../stores/useWorkspaceTabsStore'
 import { toast } from '../ui/toast'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
@@ -980,6 +983,8 @@ function InlineLinkToolbar({
 
 export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const navigate = useNavigate()
+  const workspaceTabs = useWorkspaceTabsStore()
+  const { paneId } = useWorkspacePane()
   const isMobile = useIsMobile()
   const isMacPlatform = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/u.test(navigator.platform)
   const duplicateShortcut = isMacPlatform ? '⌃⌥D' : 'Ctrl+Alt+D'
@@ -1115,7 +1120,14 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const updateTitle = useCallback((nextTitle: string) => {
     titleRef.current = nextTitle
     setTitle(nextTitle)
-  }, [])
+    const activeTab = workspaceTabs.tabs.find((tab) => tab.id === workspaceTabs.activeTabId)
+    if (file?.id) {
+      workspaceTabs.setTabTitle(file.id, nextTitle)
+      if (activeTab) {
+        workspaceTabs.setTabTitle(activeTab.id, nextTitle)
+      }
+    }
+  }, [file?.id, workspaceTabs])
 
   useEffect(() => {
     if (!file?.id) return
@@ -1138,7 +1150,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }, [file?.id, hasUnsavedChanges, replaceContent, updateTitle])
 
   const duplicateTitleFile = useMemo(() => {
-    if (!file) return null
+    if (!file || loadedTitleFileIdRef.current !== file.id) return null
     const cleanedCurrent = cleanName(title)
     if (!cleanedCurrent) return null
     const normalizedCurrent = appFileName(cleanedCurrent, file.type).toLocaleLowerCase()
@@ -2232,7 +2244,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
   }, [content, file, save, saveTitle, status, title])
 
-  if (file === undefined || !editor) return <div role="status" className="p-4 text-muted-foreground">Loading editor…</div>
+  if (file === undefined || !editor) return <LoadingOverlay message="Loading editor…" />
   if (!file || file.isDeleted) return <EmptyState title="Document not found" description="This document may have been moved to Trash or deleted." />
 
   const saveAll = async () => {
@@ -2760,16 +2772,45 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
 
   const folderPath = file.folderId ? getFolderPath(file.folderId, folders) : []
   const editorBreadcrumbs = [
-    { label: 'Library', onPress: () => navigate('/folders') },
-    ...folderPath.map((f) => ({ label: f.name, onPress: () => navigate(`/folders/${f.id}`) })),
+    {
+      label: 'Library',
+      onPress: () => {
+        workspaceTabs.navigate('/folders', { pane: paneId })
+        navigate('/folders')
+      },
+    },
+    ...folderPath.map((f) => ({
+      label: f.name,
+      onPress: () => {
+        const path = `/folders/${f.id}`
+        workspaceTabs.navigate(path, { pane: paneId })
+        navigate(path)
+      },
+    })),
     { label: documentTitle },
   ]
+
+  const targetTabId = useWorkspaceTabsStore.getState().panes.find((p) => p.id === paneId)?.tabId ?? workspaceTabs.activeTabId
+  const currentTab = workspaceTabs.tabs.find((tab) => tab.id === targetTabId)
 
   return (
     <section className={`mybook-document-editor min-h-dvh w-full pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 ${documentSurfaceClass}`}>
       <AppHeader
-        leadingAction="sidebar"
-        onBack={navigateBack}
+        leadingAction="back"
+        onBack={isMobile ? navigateBack : () => {
+          workspaceTabs.go(-1, paneId)
+          const nextTabId = useWorkspaceTabsStore.getState().panes.find((p) => p.id === paneId)?.tabId ?? workspaceTabs.activeTabId
+          const tab = useWorkspaceTabsStore.getState().tabs.find((item) => item.id === nextTabId)
+          if (tab) navigate(tab.history[tab.historyIndex] ?? '/home')
+        }}
+        onForward={() => {
+          workspaceTabs.go(1, paneId)
+          const nextTabId = useWorkspaceTabsStore.getState().panes.find((p) => p.id === paneId)?.tabId ?? workspaceTabs.activeTabId
+          const tab = useWorkspaceTabsStore.getState().tabs.find((item) => item.id === nextTabId)
+          if (tab) navigate(tab.history[tab.historyIndex] ?? '/home')
+        }}
+        canGoBack={Boolean(currentTab && currentTab.historyIndex > 0)}
+        canGoForward={Boolean(currentTab && currentTab.historyIndex < currentTab.history.length - 1)}
         breadcrumbs={editorBreadcrumbs}
         hideBreadcrumbsOnMobile
         title={documentTitle}
@@ -2800,6 +2841,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
               </DropdownMenuSubContent>
             </DropdownMenuSub>
             <DropdownMenuItem disabled={isPageLocked} onClick={() => setIsFindReplaceOpen(true)}>Find and replace</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => { const path = `/document/${file.id}`; workspaceTabs.navigate(path, { newTab: true }); navigate(path) }}>Open in new tab</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => { const path = `/document/${file.id}`; workspaceTabs.splitWith(path); navigate(path) }}>Open in split view</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => void duplicateDocument()}><span>Duplicate</span><kbd className="ml-auto text-xs text-muted-foreground">{duplicateShortcut}</kbd></DropdownMenuItem>
             <DropdownMenuItem onClick={() => void copyDocumentContent()}>Copy content</DropdownMenuItem>

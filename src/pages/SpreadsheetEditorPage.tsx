@@ -4,5 +4,5 @@ import { UniverSpreadsheetEditor } from '../components/spreadsheet-editor/Univer
 
 export function SpreadsheetEditorPage() {
   const { spreadsheetId } = useParams()
-  return spreadsheetId ? <UniverSpreadsheetEditor fileId={spreadsheetId} /> : null
+  return spreadsheetId ? <UniverSpreadsheetEditor key={spreadsheetId} fileId={spreadsheetId} /> : null
 }

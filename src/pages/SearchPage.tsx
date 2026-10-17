@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useWorkspaceTabsStore } from '../stores/useWorkspaceTabsStore'
+import { useWorkspacePane } from '../contexts/WorkspacePaneContext'
 
 import { EmptyState } from '../components/common/EmptyState'
 import { SearchInput } from '../components/common/SearchInput'
@@ -25,6 +27,8 @@ type SearchResult =
 
 export function SearchPage() {
   const navigate = useNavigate()
+  const tabs = useWorkspaceTabsStore()
+  const { paneId } = useWorkspacePane()
   const [searchParams] = useSearchParams()
   const { files, folders } = useLibraryData()
   const workspaceMode = useWorkspaceStore((state) => state.mode)
@@ -124,7 +128,7 @@ export function SearchPage() {
                 type={file.type}
                 folderName={folders.find((folder) => folder.id === file.folderId)?.name ?? 'Writin'}
                 syncStatus={file.syncStatus}
-                onOpen={() => navigate(`/${file.type}/${file.id}`)}
+                onOpen={() => { const path = `/${file.type}/${file.id}`; tabs.navigate(path, { pane: paneId }); navigate(path) }}
                 action={
                   <FileActionsMenu
                     fileName={file.name}
@@ -136,6 +140,8 @@ export function SearchPage() {
                     onMove={(folderId) => void fileRepository.update(file.id, { folderId })}
                     onToggleFavorite={() => void fileRepository.setFavorite(file.id, !file.isFavorite)}
                     onDelete={() => setFileDeleteTarget(file)}
+                    onOpenInNewTab={() => { const path = `/${file.type}/${file.id}`; tabs.navigate(path, { newTab: true, pane: paneId }); navigate(path) }}
+                    onOpenInSplit={() => { const path = `/${file.type}/${file.id}`; tabs.splitWith(path); navigate(path) }}
                   />
                 }
               />

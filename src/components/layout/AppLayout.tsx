@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { CloudUploadIcon, Delete02Icon, Download01Icon, File01Icon, Folder01Icon, HelpCircleIcon, Home01Icon, Logout01Icon, MoreHorizontalIcon, Search01Icon, Settings01Icon, Sun01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useAppStore } from '../../stores/useAppStore'
@@ -69,6 +69,21 @@ import {
 } from '../ui/sidebar'
 import { MobileBottomNavigation } from './MobileBottomNavigation'
 import { isSupportedDocumentImport, queueDocumentImport } from '../../services/documentImport'
+import { WorkspaceTabBar } from './WorkspaceTabBar'
+import { HomePage } from '../../pages/HomePage'
+import { FoldersPage } from '../../pages/FoldersPage'
+import { FolderPage } from '../../pages/FolderPage'
+import { SearchPage } from '../../pages/SearchPage'
+import { TrashPage } from '../../pages/TrashPage'
+import { SettingsPage } from '../../pages/SettingsPage'
+import { DocumentEditorPage } from '../../pages/DocumentEditorPage'
+const SpreadsheetEditorPage = lazy(async () => {
+  const { SpreadsheetEditorPage: Component } = await import('../../pages/SpreadsheetEditorPage')
+  return { default: Component }
+})
+import { useWorkspaceTabsStore } from '../../stores/useWorkspaceTabsStore'
+import { useIsMobile } from '../../hooks/use-mobile'
+import { WorkspacePaneProvider } from '../../contexts/WorkspacePaneContext'
 
 export function AppLayout() {
   const { theme, toggleTheme } = useAppStore()
@@ -79,6 +94,13 @@ export function AppLayout() {
   useLocalMirrorSync()
   const { pathname } = useLocation()
   const navigate = useNavigate()
+  const isMobile = useIsMobile()
+  const tabState = useWorkspaceTabsStore()
+  const isNewTabSearch = tabState.globalSearchMode === 'new-tab'
+  const activeTab = tabState.tabs.find((tab) => tab.id === tabState.activeTabId)
+  const activeTabPath = activeTab?.history[activeTab.historyIndex]
+  const canGoBack = Boolean(activeTab && activeTab.historyIndex > 0)
+  const canGoForward = Boolean(activeTab && activeTab.historyIndex < activeTab.history.length - 1)
   const importInputRef = useRef<HTMLInputElement>(null)
   const isEditor = pathname.startsWith('/document/') || pathname.startsWith('/spreadsheet/')
   const favorites = activeFavoriteItems(files, folders)
@@ -186,18 +208,35 @@ export function AppLayout() {
   } else if (currentFolderId) {
     const path = getFolderPath(currentFolderId, folders)
     breadcrumbs = [
-      { label: 'Library', onPress: () => navigate('/folders') },
+      {
+        label: 'Library',
+        onPress: () => {
+          tabState.navigate('/folders', { pane: tabState.activePaneId })
+          navigate('/folders')
+        },
+      },
       ...path.map((folder, index) => {
         const isCurrent = index === path.length - 1
         return isCurrent
           ? { label: folder.name }
-          : { label: folder.name, onPress: () => navigate(`/folders/${folder.id}`) }
+          : {
+              label: folder.name,
+              onPress: () => {
+                const target = `/folders/${folder.id}`
+                tabState.navigate(target, { pane: tabState.activePaneId })
+                navigate(target)
+              },
+            }
       }),
     ]
     headerTitle = currentFolder?.name ?? 'Folder'
     showTitle = false
-    leadingAction = 'sidebar'
-    onBack = () => navigate(currentFolder?.parentId ? `/folders/${currentFolder.parentId}` : '/folders')
+    leadingAction = 'back'
+    onBack = () => {
+      const target = currentFolder?.parentId ? `/folders/${currentFolder.parentId}` : '/folders'
+      tabState.navigate(target, { pane: tabState.activePaneId })
+      navigate(target)
+    }
   } else if (pathname === '/search') {
     headerTitle = 'Search'
   } else if (pathname === '/trash') {
@@ -234,9 +273,22 @@ export function AppLayout() {
     .filter((f) => f.parentId === targetFolderId)
     .map((f) => f.name)
 
+  useEffect(() => {
+    const currentPath = pathname + window.location.search
+    if (tabState.expectedRoute) {
+      if (tabState.consumeExpectedRoute(currentPath)) return
+      navigate(tabState.expectedRoute, { replace: true })
+      return
+    }
+    if (activeTabPath !== currentPath) {
+      tabState.ensurePath(currentPath, tabState.activePaneId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, activeTabPath, tabState.activeTabId, tabState.splitTabId, tabState.activePaneId, tabState.expectedRoute, tabState.panes.length, navigate])
+
   const handleCreateDocument = () => {
     void fileRepository.create('document', targetFolderId).then((result) => {
-      if (result.data) navigate(`/document/${result.data.id}`)
+      if (result.data) { const path = `/document/${result.data.id}`; tabState.navigate(path); navigate(path) }
     })
   }
 
@@ -257,7 +309,10 @@ export function AppLayout() {
 
   const openSearchResult = (result: (typeof searchResults)[number]) => {
     setSearchOpen(false)
-    navigate(result.kind === 'folder' ? `/folders/${result.id}` : `/${result.type}/${result.id}`)
+    const path = result.kind === 'folder' ? `/folders/${result.id}` : `/${result.type}/${result.id}`
+    tabState.navigate(path, isNewTabSearch && result.kind === 'file' ? { newTab: true } : undefined)
+    navigate(path)
+    tabState.closeGlobalSearch()
   }
 
   useEffect(() => {
@@ -451,8 +506,8 @@ export function AppLayout() {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/home" />} isActive={pathname === '/home'} size="lg" tooltip="Home"><HugeiconsIcon icon={Home01Icon} strokeWidth={2} /><span>Home</span></SidebarMenuButton></SidebarMenuItem>
-                <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/folders" />} isActive={pathname === '/folders' || pathname.startsWith('/folders/')} size="lg" tooltip="Library"><HugeiconsIcon icon={Folder01Icon} strokeWidth={2} /><span>Library</span></SidebarMenuButton></SidebarMenuItem>
+                <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/home" />} isActive={pathname === '/home'} size="lg" tooltip="Home" onClick={() => { if (tabState.panes.length > 1) { tabState.navigate('/home', { pane: tabState.activePaneId }) } }}><HugeiconsIcon icon={Home01Icon} strokeWidth={2} /><span>Home</span></SidebarMenuButton></SidebarMenuItem>
+                <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/folders" />} isActive={pathname === '/folders' || pathname.startsWith('/folders/')} size="lg" tooltip="Library" onClick={() => { if (tabState.panes.length > 1) { tabState.navigate('/folders', { pane: tabState.activePaneId }) } }}><HugeiconsIcon icon={Folder01Icon} strokeWidth={2} /><span>Library</span></SidebarMenuButton></SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -460,8 +515,8 @@ export function AppLayout() {
             <SidebarGroupLabel>Recent</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {recentFiles.map((file) => <SidebarMenuItem key={`recent:${file.id}`}><SidebarMenuButton render={<NavLink to={`/${file.type}/${file.id}`} />} isActive={pathname === `/${file.type}/${file.id}`} tooltip={file.name}><HugeiconsIcon icon={File01Icon} strokeWidth={2} /><span>{file.name}</span></SidebarMenuButton></SidebarMenuItem>)}
-                {files.filter((file) => !file.isDeleted).length > 5 ? <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/home" />} tooltip="View more recent documents"><HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} /><span className="font-semibold">View more</span></SidebarMenuButton></SidebarMenuItem> : null}
+                {recentFiles.map((file) => <SidebarMenuItem key={`recent:${file.id}`}><SidebarMenuButton render={<NavLink to={`/${file.type}/${file.id}`} />} isActive={pathname === `/${file.type}/${file.id}`} tooltip={file.name} onClick={() => { if (tabState.panes.length > 1) { const path = `/${file.type}/${file.id}`; tabState.navigate(path, { pane: tabState.activePaneId }) } }}><HugeiconsIcon icon={File01Icon} strokeWidth={2} /><span>{file.name}</span></SidebarMenuButton></SidebarMenuItem>)}
+                {files.filter((file) => !file.isDeleted).length > 5 ? <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/home" />} tooltip="View more recent documents" onClick={() => { if (tabState.panes.length > 1) { tabState.navigate('/home', { pane: tabState.activePaneId }) } }}><HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} /><span className="font-semibold">View more</span></SidebarMenuButton></SidebarMenuItem> : null}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -473,6 +528,7 @@ export function AppLayout() {
                 aria-label="See all favorites"
                 title="See all favorites"
                 className="aspect-auto h-6 w-auto px-2 text-xs"
+                onClick={() => { if (tabState.panes.length > 1) { tabState.navigate('/favorites', { pane: tabState.activePaneId }) } }}
               >
                 More
               </SidebarGroupAction>
@@ -493,6 +549,7 @@ export function AppLayout() {
                         render={<NavLink to={path} aria-label={label} />}
                         isActive={pathname === path}
                         tooltip={favorite.item.name}
+                        onClick={() => { if (tabState.panes.length > 1) { tabState.navigate(path, { pane: tabState.activePaneId }) } }}
                       >
                         <HugeiconsIcon icon={favorite.kind === 'folder' ? Folder01Icon : File01Icon} strokeWidth={2} />
                         <span>{favorite.item.name}</span>
@@ -507,9 +564,9 @@ export function AppLayout() {
         <SidebarFooter>
           <SidebarMenu>
             <SidebarMenuItem><div className="flex items-center justify-between px-3 py-2 text-sm text-sidebar-foreground"><span className="flex items-center gap-2"><HugeiconsIcon icon={Sun01Icon} strokeWidth={2} className="size-4" />Theme</span><div className="flex rounded-lg bg-sidebar-accent p-0.5"><button type="button" aria-label="Use light theme" aria-pressed={theme === 'light'} onClick={() => theme !== 'light' && toggleTheme()} className={`rounded-md px-2 py-1 text-xs ${theme === 'light' ? 'bg-sidebar text-sidebar-foreground shadow-sm' : 'text-sidebar-foreground/60'}`}>Light</button><button type="button" aria-label="Use dark theme" aria-pressed={theme === 'dark'} onClick={() => theme !== 'dark' && toggleTheme()} className={`rounded-md px-2 py-1 text-xs ${theme === 'dark' ? 'bg-sidebar text-sidebar-foreground shadow-sm' : 'text-sidebar-foreground/60'}`}>Dark</button></div></div></SidebarMenuItem>
-            <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/settings" />} isActive={pathname === '/settings'} tooltip="Preferences"><HugeiconsIcon icon={Settings01Icon} strokeWidth={2} /><span>Preferences</span></SidebarMenuButton></SidebarMenuItem>
+            <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/settings" />} isActive={pathname === '/settings'} tooltip="Preferences" onClick={() => { if (tabState.panes.length > 1) { tabState.navigate('/settings', { pane: tabState.activePaneId }) } }}><HugeiconsIcon icon={Settings01Icon} strokeWidth={2} /><span>Preferences</span></SidebarMenuButton></SidebarMenuItem>
             <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/settings" />} tooltip="Help"><HugeiconsIcon icon={HelpCircleIcon} strokeWidth={2} /><span>Help</span></SidebarMenuButton></SidebarMenuItem>
-            <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/trash" />} isActive={pathname === '/trash'} size="lg" tooltip="Trash"><HugeiconsIcon icon={Delete02Icon} strokeWidth={2} /><span>Trash</span></SidebarMenuButton></SidebarMenuItem>
+            <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/trash" />} isActive={pathname === '/trash'} size="lg" tooltip="Trash" onClick={() => { if (tabState.panes.length > 1) { tabState.navigate('/trash', { pane: tabState.activePaneId }) } }}><HugeiconsIcon icon={Delete02Icon} strokeWidth={2} /><span>Trash</span></SidebarMenuButton></SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
       </Sidebar>
@@ -526,14 +583,26 @@ export function AppLayout() {
             event.target.value = ''
           }}
         />
-        {!isEditor ? (
+        {!isMobile && tabState.panes.length === 1 ? <WorkspaceTabBar /> : null}
+        {!isEditor && tabState.panes.length === 1 ? (
           <AppHeader
             title={headerTitle}
             showTitle={showTitle}
             breadcrumbs={breadcrumbs}
-            leadingAction={leadingAction}
+            leadingAction={breadcrumbs.length > 0 ? 'back' : leadingAction}
             hideLeadingOnMobile={['/home', '/folders', '/settings', '/search'].includes(pathname)}
-            onBack={onBack}
+            onBack={isMobile ? onBack : () => {
+              if (canGoBack) {
+                tabState.go(-1)
+                const next = useWorkspaceTabsStore.getState().tabs.find((tab) => tab.id === activeTab?.id)
+                if (next) navigate(next.history[next.historyIndex] ?? '/home')
+              } else if (onBack) {
+                onBack()
+              }
+            }}
+            onForward={() => { tabState.go(1); const next = useWorkspaceTabsStore.getState().tabs.find((tab) => tab.id === activeTab?.id); if (next) navigate(next.history[next.historyIndex] ?? '/home') }}
+            canGoBack={canGoBack || Boolean(onBack)}
+            canGoForward={canGoForward}
             onRename={false}
             favoriteAction={Boolean(currentFolder)}
             isFavorite={Boolean(currentFolder?.isFavorite)}
@@ -598,10 +667,40 @@ export function AppLayout() {
           />
         ) : null}
 
-        <main className={`min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain bg-background ${isEditor ? 'p-0' : 'px-0 pb-4 md:px-8 md:pb-8 md:pt-6'}`}>
-          <div className={isEditor ? 'h-full w-full' : 'mx-auto w-full max-w-6xl'}>
-            <Outlet />
-          </div>
+        <main className={`min-h-0 min-w-0 flex-1 overflow-hidden bg-background ${isEditor || tabState.panes.length > 1 ? 'p-0' : 'px-0 pb-4 md:px-8 md:pb-8 md:pt-6'}`}>
+          {tabState.panes.length > 1 ? (
+            <div className={`grid h-full min-h-0 min-w-0 grid-flow-col overflow-hidden divide-x divide-border ${tabState.panes.length === 2 ? 'grid-cols-2' : tabState.panes.length === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
+              {tabState.panes.map((pane) => {
+                const tab = tabState.tabs.find((item) => item.id === pane.tabId)
+                const path = tab?.history[tab.historyIndex] ?? '/home'
+                const isPaneEditor = path.startsWith('/document/') || path.startsWith('/spreadsheet/')
+                const isFocused = tabState.activePaneId === pane.id
+                return (
+                  <div
+                    key={pane.id}
+                    onFocusCapture={() => tabState.setActivePane(pane.id)}
+                    onPointerDownCapture={() => tabState.setActivePane(pane.id)}
+                    className={`flex min-h-0 min-w-0 flex-col overflow-hidden bg-background ${isFocused ? 'ring-1 ring-inset ring-primary/20' : ''}`}
+                  >
+                    <WorkspaceTabBar pane={pane.id} />
+                    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
+                      <div className={isPaneEditor ? 'h-full w-full' : 'mx-auto w-full max-w-6xl px-4 py-4 md:px-8 md:pb-8 md:pt-6'}>
+                        <WorkspacePaneProvider value={{ paneId: pane.id }}>
+                          {renderPaneRoute(path)}
+                        </WorkspacePaneProvider>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
+              <div className={isEditor ? 'h-full w-full' : 'mx-auto w-full max-w-6xl'}>
+                <Outlet />
+              </div>
+            </div>
+          )}
         </main>
         {isLoading ? <LoadingOverlay message="Loading your files…" /> : null}
         <SyncProgressToast
@@ -671,10 +770,10 @@ export function AppLayout() {
           })
         }}
       />
-      <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
+      <Dialog open={searchOpen || tabState.isGlobalSearchOpen} onOpenChange={(open) => { setSearchOpen(open); if (!open) tabState.closeGlobalSearch() }}>
         <DialogContent className="max-w-xl gap-4 p-4 sm:p-5">
           <DialogHeader>
-            <DialogTitle>Search</DialogTitle>
+            <DialogTitle>{isNewTabSearch ? 'Open a file in a new tab' : 'Search'}</DialogTitle>
             <DialogDescription>Search your documents and folders.</DialogDescription>
           </DialogHeader>
           <form onSubmit={(event) => { event.preventDefault(); navigateToSearch() }}>
@@ -765,4 +864,20 @@ export function AppLayout() {
       <MissingMirrorModal />
     </SidebarProvider>
   )
+}
+
+function renderPaneRoute(path: string) {
+  const [pathname, search = ''] = path.split('?')
+  const location = { pathname: pathname || '/home', search: search ? `?${search}` : '', hash: '', state: null, key: 'workspace-pane' }
+  return <Routes location={location}>
+    <Route path="/home" element={<HomePage />} />
+    <Route path="/favorites" element={<HomePage initialTab="favorites" />} />
+    <Route path="/folders" element={<FoldersPage />} />
+    <Route path="/folders/:folderId" element={<FolderPage />} />
+    <Route path="/search" element={<SearchPage />} />
+    <Route path="/trash" element={<TrashPage />} />
+    <Route path="/settings" element={<SettingsPage />} />
+    <Route path="/document/:documentId" element={<DocumentEditorPage />} />
+    <Route path="/spreadsheet/:spreadsheetId" element={<Suspense fallback={<LoadingOverlay message="Loading spreadsheet…" />}><SpreadsheetEditorPage /></Suspense>} />
+  </Routes>
 }
