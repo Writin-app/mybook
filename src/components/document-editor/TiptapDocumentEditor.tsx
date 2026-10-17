@@ -1012,6 +1012,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const moveShortcut = isMacPlatform ? '⌃⌘M' : 'Ctrl+Alt+M'
   const undoShortcut = isMacPlatform ? '⌘Z' : 'Ctrl+Z'
   const redoShortcut = isMacPlatform ? '⌘⇧Z' : 'Ctrl+Shift+Z'
+  const findShortcut = isMacPlatform ? '⌘F' : 'Ctrl+F'
   const { files, folders } = useLibraryData(true)
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
   const { content, hasUnsavedChanges, hydratedFileId, isHydrated, replaceContent, save, setContent, status } = useAutosave(file)
@@ -1091,6 +1092,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         event.preventDefault()
         event.stopPropagation()
         setIsMoveToOpen(true)
+      } else if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        event.stopPropagation()
+        setIsFindReplaceOpen(true)
       }
     }
     window.addEventListener('keydown', handleEditorMenuShortcuts, true)
@@ -1654,6 +1659,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         },
       },
       handleKeyDown: (_view, event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f' && editorRef.current) {
+          event.preventDefault()
+          setIsFindReplaceOpen(true)
+          return true
+        }
+
         if (editorRef.current && handleDateTimeBlockAdjacentDelete(editorRef.current.view, event.key)) {
           event.preventDefault()
           return true
@@ -2908,7 +2919,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   ]
 
   return (
-    <section className={`mybook-document-editor min-h-dvh w-full pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 ${documentSurfaceClass}`}>
+    <section className={`mybook-document-editor relative min-h-dvh w-full pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 ${documentSurfaceClass}`}>
       <AppHeader
         leadingAction="sidebar"
         onBack={navigateBack}
@@ -2941,7 +2952,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                 {[75, 100, 125, 150].map((level) => <DropdownMenuCheckboxItem key={level} checked={zoom === level} onCheckedChange={() => setZoom(level)}>{level}%</DropdownMenuCheckboxItem>)}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuItem disabled={isPageLocked} onClick={() => setIsFindReplaceOpen(true)}>Find and replace</DropdownMenuItem>
+            <DropdownMenuItem disabled={isPageLocked} onClick={() => setIsFindReplaceOpen(true)}>
+              <span>Find and replace</span>
+              <kbd className="ml-auto text-xs text-muted-foreground">{findShortcut}</kbd>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => void duplicateDocument()}><span>Duplicate</span><kbd className="ml-auto text-xs text-muted-foreground">{duplicateShortcut}</kbd></DropdownMenuItem>
             <DropdownMenuItem onClick={() => void copyDocumentContent()}>Copy content</DropdownMenuItem>
@@ -2971,6 +2985,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           </>
         }
       />
+      <div className="sticky top-[57px] md:top-[65px] z-40 h-0 overflow-visible">
+        <FindReplaceDialog editor={editor} open={isFindReplaceOpen} onOpenChange={setIsFindReplaceOpen} />
+      </div>
       <nav aria-label="Desktop document commands" className="hidden">
         <DesktopMenu label="Document">
           <Dropdown.Menu aria-label="Document menu" onAction={handleDocumentAction}>
@@ -3234,7 +3251,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         setMentionMenu(null)
       }} /> : null}
       {pasteAsMenu ? <PasteAsMenu menu={pasteAsMenu} onChoose={choosePasteAs} onClose={closePasteAsMenu} /> : null}
-      <FindReplaceDialog editor={editor} open={isFindReplaceOpen} onOpenChange={setIsFindReplaceOpen} anchorRef={moreTriggerRef} />
       <MoveItemDialog
         isOpen={isMoveToOpen}
         itemKind="file"
