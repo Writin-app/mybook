@@ -5,6 +5,7 @@ import type { MyBookFile, MyBookFolder } from '../types/files'
 import { documentToMyBookMarkdown, myBookMarkdownToDocument, parseMyBookMarkdown } from '../utils/mybookMarkdown'
 import { devLog } from '../utils/safeLog'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
+import { hasUnsavedLocalEdits } from './localEditState'
 
 const LEGACY_ROOT_DIR = 'Writin'
 const LEGACY_FILES_DIR = 'files'
@@ -869,6 +870,9 @@ export async function scanAndHydrateLocalWorkspace(
             }
           } else {
             encounteredFileIds.add(existingFile.id)
+            if (hasUnsavedLocalEdits(existingFile.id)) {
+              continue
+            }
             const hydratedString = JSON.stringify(hydratedDoc)
             const isContentIdentical = existingFile.content === hydratedString
             const isLocationIdentical = existingFile.name.toLowerCase() === docName.toLowerCase() && existingFile.folderId === parentFolderId
@@ -949,6 +953,9 @@ export async function scanAndHydrateLocalWorkspace(
             }
           } else {
             encounteredFileIds.add(existingFile.id)
+            if (hasUnsavedLocalEdits(existingFile.id)) {
+              continue
+            }
             if (text !== existingFile.content) {
               await db.files.update(existingFile.id, {
                 content: text,
