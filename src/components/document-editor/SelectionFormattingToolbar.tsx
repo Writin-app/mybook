@@ -56,7 +56,7 @@ function ToolButton({ label, active, children, onClick }: { label: string; activ
   )
 }
 
-export function SelectionFormattingToolbar({ editor, onInsertBlock }: { editor: Editor; onInsertBlock: (commandId: string) => void }) {
+export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, linkEditorOpen = false }: { editor: Editor; onInsertBlock: (commandId: string) => void; onEditLink: () => void; linkEditorOpen?: boolean }) {
   const [position, setPosition] = useState<ToolbarPosition | null>(null)
   const [colorMenu, setColorMenu] = useState<ColorMenu>(null)
   const [blockMenuOpen, setBlockMenuOpen] = useState(false)
@@ -64,13 +64,19 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock }: { editor: 
   const [moreSelectedIndex, setMoreSelectedIndex] = useState(0)
   const savedRange = useRef<{ from: number; to: number } | null>(null)
 
+  const linkEditorOpenRef = useRef(linkEditorOpen)
+  linkEditorOpenRef.current = linkEditorOpen
+
   useEffect(() => {
     const update = () => {
+      if (linkEditorOpenRef.current) return
       const selection = editor.state.selection
       if (!selection.empty && editor.isFocused) savedRange.current = { from: selection.from, to: selection.to }
       setPosition(selectionPosition(editor))
     }
-    const updateOnScroll = () => setPosition(selectionPosition(editor))
+    const updateOnScroll = () => {
+      if (!linkEditorOpenRef.current) setPosition(selectionPosition(editor))
+    }
     update()
     editor.on('selectionUpdate', update)
     editor.on('transaction', update)
@@ -114,13 +120,12 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock }: { editor: 
     else chain.setHeading({ level: level as 1 | 2 | 3 | 4 }).run()
     setBlockMenuOpen(false)
   }
-  const setLink = () => {
+  const openLinkEditor = () => {
     restoreSelection()
-    const current = editor.getAttributes('link').href as string | undefined
-    const url = window.prompt('Link URL', current ?? 'https://')
-    if (url === null) return
-    if (!url.trim()) editor.chain().focus().extendMarkRange('link').unsetLink().run()
-    else editor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run()
+    setColorMenu(null)
+    setBlockMenuOpen(false)
+    setMoreMenuOpen(false)
+    onEditLink()
   }
   const applyColor = (kind: Exclude<ColorMenu, null>, value: string | null) => {
     restoreSelection()
@@ -166,10 +171,32 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock }: { editor: 
     return () => document.removeEventListener('keydown', handleKeyDown, true)
   }, [moreMenuOpen, moreCommands, moreSelectedIndex, runMoreCommand])
 
+  useEffect(() => {
+    if (!linkEditorOpen) setPosition(selectionPosition(editor))
+  }, [editor, linkEditorOpen])
+
+  const toolbarRef = useRef<HTMLDivElement>(null)
+  const isOpen = position !== null
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (!target || toolbarRef.current?.contains(target) || editor.view.dom.contains(target)) return
+      if (target instanceof Element && target.closest('.mybook-inline-link-toolbar')) return
+      const { selection } = editor.state
+      if (selection.empty) return
+      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, selection.to)))
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [editor, isOpen])
+
   if (!position) return null
 
   return (
     <div
+      ref={toolbarRef}
       role="toolbar"
       aria-label="Selected text formatting"
       className="fixed z-30 flex h-14 items-center gap-1 rounded-[14px] border border-[var(--app-border)] bg-[var(--app-surface)] px-1.5 text-foreground shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
@@ -218,7 +245,7 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock }: { editor: 
         ) : null}
       </div>
       <span aria-hidden="true" className="mx-1 h-7 w-px bg-[var(--app-border)]" />
-      <ToolButton label="Link" active={editor.isActive('link')} onClick={setLink}><LinkIcon className="size-5" /></ToolButton>
+      <ToolButton label="Link" active={editor.isActive('link')} onClick={openLinkEditor}><LinkIcon className="size-5" /></ToolButton>
       <ToolButton label="Checklist" active={editor.isActive('taskList')} onClick={() => { restoreSelection(); editor.chain().focus().toggleTaskList().run() }}><span className="relative"><CheckIcon className="size-4" /><span aria-hidden="true" className="absolute -right-1 -top-0.5 size-3 border border-current" /></span></ToolButton>
       <span aria-hidden="true" className="mx-1 h-7 w-px bg-[var(--app-border)]" />
       <div className="relative">

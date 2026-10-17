@@ -550,6 +550,13 @@
   .mybook-inline-link-edit-popover { position: absolute; top: calc(100% + 0.5rem); left: 0; z-index: 61; display: grid; width: min(30rem, calc(100vw - 1rem)); gap: 0.75rem; border: 1px solid var(--app-border); border-radius: 1rem; background: var(--app-surface); padding: 1.25rem; color: var(--foreground); box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16); }
   .mybook-inline-link-edit-popover label { display: grid; gap: 0.35rem; color: var(--muted-foreground); font-size: 0.875rem; font-weight: 650; }
   .mybook-inline-link-edit-popover input { height: 2.5rem; border-color: var(--app-border); background: var(--app-surface); padding: 0 0.75rem; font-size: 1rem; }
+  .mybook-inline-link-toolbar-bare { border: 0; background: transparent; padding: 0; box-shadow: none; }
+  .mybook-inline-link-edit-popover[data-compact='true'] { width: min(18rem, calc(100vw - 1rem)); gap: 0.5rem; border-radius: 0.75rem; padding: 0.75rem; }
+  .mybook-inline-link-edit-popover[data-compact='true'] { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+  .mybook-inline-link-edit-popover[data-compact='true'] > p { grid-column: 1 / -1; order: 3; }
+  .mybook-inline-link-edit-popover[data-compact='true'] .mybook-inline-link-edit-actions { padding-top: 0; }
+  .mybook-inline-link-edit-popover[data-compact='true'] label { gap: 0.25rem; font-size: 0.75rem; }
+  .mybook-inline-link-edit-popover[data-compact='true'] input { height: 2rem; font-size: 0.875rem; }
   .mybook-inline-link-edit-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; padding-top: 0.25rem; }
   .mybook-inline-link-edit-actions [data-slot="button"] { width: auto; min-width: 4.75rem; height: 1.75rem; padding: 0 0.75rem; font-size: 0.8125rem; }
   .mybook-inline-link-edit-actions .mybook-inline-link-remove { margin-right: auto; }
@@ -809,6 +816,26 @@
 
   .mybook-document-canvas { background: var(--app-surface); }
 
+  /* Zoomed-in documents are wider than the viewport, so let the app scroller scroll sideways. */
+  main:has(.mybook-document-zoom-frame[data-zoomed='true']) {
+    overflow-x: auto !important;
+    scrollbar-width: auto;
+    scrollbar-gutter: stable;
+  }
+
+  main:has(.mybook-document-zoom-frame[data-zoomed='true'])::-webkit-scrollbar {
+    display: block;
+    width: 12px;
+    height: 12px;
+  }
+
+  main:has(.mybook-document-zoom-frame[data-zoomed='true'])::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--foreground) 30%, transparent);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+
   @media (max-width: 1023px) {
     .mybook-document-page { padding-left: 1rem !important; padding-right: 1rem !important; }
     .mybook-editor-block-gutter,
@@ -829,6 +856,11 @@
       width: 100% !important;
       max-width: 100% !important;
       transform: none !important;
+    }
+
+    .mybook-document-zoom-frame {
+      width: auto !important;
+      height: auto !important;
     }
   }
 

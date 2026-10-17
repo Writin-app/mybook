@@ -29,7 +29,7 @@ function reportFlightProgress(p: { loaded: number; total: number; percent: numbe
   }
 }
 
-async function importDriveBackupsToLocal(
+export async function importDriveBackupsToLocal(
   onProgress?: (progress: { loaded: number; total: number; percent: number }) => void,
 ) {
   if (onProgress) {
@@ -68,6 +68,7 @@ export function useDriveBootstrap() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const email = useAuthStore((state) => state.email)
   const workspaceMode = useWorkspaceStore((state) => state.mode)
+  const workspaceRevision = useWorkspaceStore((state) => state.workspaceRevision)
   const [isPreparing, setIsPreparing] = useState(false)
   const [isFetchingFiles, setIsFetchingFiles] = useState(false)
   const [fetchProgress, setFetchProgress] = useState(0)
@@ -180,7 +181,7 @@ export function useDriveBootstrap() {
       setIsPreparing(false)
       window.removeEventListener('online', onlineHandler)
     }
-  }, [email, isAuthenticated, workspaceMode])
+  }, [email, isAuthenticated, workspaceMode, workspaceRevision])
 
   return { isPreparing, isFetchingFiles, fetchProgress, statusMessage, folderId }
 }

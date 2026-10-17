@@ -6,6 +6,7 @@ import { useDriveBootstrap } from './useDriveBootstrap'
 
 const mocks = vi.hoisted(() => ({
   mode: 'drive',
+  revision: 0,
   ensure: vi.fn(),
   folders: vi.fn(),
   files: vi.fn(),
@@ -15,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: (select: (value: unknown) => unknown) => select({ isAuthenticated: true, email: 'writer@example.com' }) }))
-vi.mock('../stores/useWorkspaceStore', () => ({ useWorkspaceStore: (select: (value: unknown) => unknown) => select({ mode: mocks.mode }) }))
+vi.mock('../stores/useWorkspaceStore', () => ({ useWorkspaceStore: (select: (value: unknown) => unknown) => select({ mode: mocks.mode, workspaceRevision: mocks.revision }) }))
 vi.mock('../services/googleDrive', () => ({
   ensureMyBookDriveFolder: mocks.ensure,
   importDriveFoldersToLocal: mocks.folders,
@@ -34,6 +35,7 @@ vi.mock('../database/repositories', () => ({
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.mode = 'drive'
+  mocks.revision = 0
   mocks.ensure.mockResolvedValue({ success: true, folderId: 'same-root', folderName: 'Writin', created: false })
 })
 afterEach(cleanup)
@@ -153,7 +155,29 @@ describe('Drive bootstrap migration', () => {
     expect(result.current.isFetchingFiles).toBe(false)
     expect(clearAccountDriveCache).not.toHaveBeenCalled()
   })
+
+  it('shows the fetch card when switching vaults on the same account', async () => {
+    const { clearAccountDriveCache, settingsRepository } = await import('../database/repositories')
+    let targetVault = 'vault-a'
+    vi.mocked(settingsRepository.get).mockImplementation(async (key: string) => {
+      const values: Record<string, unknown> = {
+        'google-drive.active-account-email': 'writer@example.com',
+        'google-drive.last-bootstrapped-vault-id': 'vault-a',
+        'google-drive.mybook-folder-id': targetVault,
+      }
+      return { success: true, data: { key, value: key in values ? values[key] : false, updatedAt: '2026-09-01T00:00:00.000Z' } }
+    })
+    mocks.files.mockImplementation(() => new Promise<void>(() => undefined))
+    mocks.folders.mockResolvedValue(undefined)
+
+    const { result, rerender } = renderHook(useDriveBootstrap)
+    await waitFor(() => expect(mocks.ensure).toHaveBeenCalledTimes(1))
+
+    targetVault = 'vault-b'
+    mocks.revision = 1
+    rerender()
+
+    await waitFor(() => expect(clearAccountDriveCache).toHaveBeenCalled())
+    await waitFor(() => expect(result.current.isFetchingFiles).toBe(true))
+  })
 })
-
-
-

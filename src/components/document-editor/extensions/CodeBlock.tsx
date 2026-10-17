@@ -355,6 +355,21 @@ export const CodeBlock = TiptapCodeBlock.extend({
     return [
       ...parentPlugins,
       new Plugin({
+        // The React node view mounts after ProseMirror sets the caret, so the browser selection can land
+        // outside a newly created, empty code block. Re-sync it once the view has rendered.
+        view: () => ({
+          update: (view, prevState) => {
+            const { selection } = view.state
+            const { $from } = selection
+            if (!selection.empty || $from.parent.type.name !== this.name || $from.parent.content.size > 0) return
+            if (prevState.selection.$from.parent === $from.parent) return
+            window.setTimeout(() => {
+              if (view.isDestroyed || !view.hasFocus()) return
+              const current = view.state.selection.$from
+              if (current.parent.type.name === this.name && current.parent.content.size === 0) view.focus()
+            }, 0)
+          },
+        }),
         appendTransaction: (_transactions, _oldState, newState) => {
           let transaction = newState.tr
           let changed = false

@@ -9,6 +9,7 @@ const SAVE_DELAY = 250
 export function useAutosave(file: MyBookFile | undefined) {
   const [content, setContent] = useState('')
   const [isHydrated, setIsHydrated] = useState(false)
+  const [hydratedFileId, setHydratedFileId] = useState<string | null>(null)
   const [status, setStatus] = useState<EditorSaveStatus>(
     isLocalWorkspace() ? 'local' : (file?.syncStatus ?? (navigator.onLine ? 'backed-up' : 'offline'))
   )
@@ -25,9 +26,15 @@ export function useAutosave(file: MyBookFile | undefined) {
     const next = file.content
 
     if (isNewFile) {
+      const previousFileId = hydratedFileIdRef.current
+      if (previousFileId && contentRef.current !== lastSaved.current) {
+        // Persist edits that were still waiting for the autosave delay to the file they belong to.
+        void fileRepository.update(previousFileId, { content: contentRef.current, syncStatus: isLocalWorkspace() ? 'local' : 'pending' })
+      }
       setIsHydrated(false)
       hydratedFileIdRef.current = file.id
       setContent(next)
+      setHydratedFileId(file.id)
       contentRef.current = next
       lastSaved.current = next
       setStatus(isLocalWorkspace() ? 'local' : (file.syncStatus ?? (navigator.onLine ? 'backed-up' : 'offline')))
@@ -97,5 +104,5 @@ export function useAutosave(file: MyBookFile | undefined) {
 
   const hasUnsavedChanges = useCallback(() => contentRef.current !== lastSaved.current, [])
 
-  return { content, isHydrated, status, setContent: changeContent, replaceContent, save, hasUnsavedChanges }
+  return { content, hydratedFileId, isHydrated, status, setContent: changeContent, replaceContent, save, hasUnsavedChanges }
 }
