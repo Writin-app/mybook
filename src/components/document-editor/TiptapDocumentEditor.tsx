@@ -20,13 +20,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Key, type React
 import { useNavigate } from 'react-router-dom'
 
 import { appFileName, cleanName, fileRepository, folderRepository, nextFileName, uniqueFileName } from '../../database/repositories'
+import { db } from '../../database/db'
 import { ExclamationCircleIcon } from '@heroicons/react/20/solid'
 import { isLocalWorkspace } from '../../stores/useWorkspaceStore'
 import { Switch } from '../ui/switch'
 import { useAutosave } from '../../hooks/useAutosave'
+import { SyncConflictBanner } from './SyncConflictBanner'
+import { applyRemoteVersion, keepLocalVersion, mergeConflictVersions, recordRemoteConflict } from '../../services/syncConflicts'
 import { registerUnsavedEditsProbe } from '../../services/localEditState'
 import { broadcastDocUpdate, subscribeToTabDocUpdates } from '../../services/tabSyncChannel'
 import { mergeDocuments } from '../../utils/documentMerge'
+import { applyRemoteDocumentPatch } from './remoteEditorPatch'
 import { useDriveLiveSync } from '../../hooks/useDriveLiveSync'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { useIsMobile } from '../../hooks/use-mobile'
@@ -1015,7 +1019,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const findShortcut = isMacPlatform ? '⌘F' : 'Ctrl+F'
   const { files, folders } = useLibraryData(true)
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
-  const { content, hasUnsavedChanges, hydratedFileId, isHydrated, replaceContent, save, setContent, status } = useAutosave(file)
+  const { content, hasUnsavedChanges, hydratedFileId, isHydrated, replaceContent, save, setContent, status, waitForPendingSave } = useAutosave(file)
   const [title, setTitle] = useState('')
   const [titleFileId, setTitleFileId] = useState<string | null>(null)
   const [loadedId, setLoadedId] = useState<string | null>(null)
@@ -1031,6 +1035,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [zoomContentHeight, setZoomContentHeight] = useState(0)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false)
+  const [resolvedConflictVersionId, setResolvedConflictVersionId] = useState<string | null>(null)
   const [isMoveToOpen, setIsMoveToOpen] = useState(false)
   const moreTriggerRef = useRef<HTMLButtonElement>(null)
   const duplicateDocumentRef = useRef<() => Promise<void>>(async () => undefined)
@@ -1103,6 +1108,116 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }, [isMacPlatform])
   const lastActiveSelectionRef = useRef({ from: 1, to: 1 })
   const contentSyncTimerRef = useRef<number | null>(null)
+  const pendingRemotePatchRef = useRef<{
+    content: string
+    baseContent?: string
+    timestamp: number
+  } | null>(null)
+  const pendingRetryTimerRef = useRef<number | null>(null)
+  const lastProcessedRemoteContentRef = useRef<string | null>(null)
+
+  const retryPendingPatch = useCallback(async () => {
+    if (pendingRetryTimerRef.current !== null) {
+      window.clearTimeout(pendingRetryTimerRef.current)
+      pendingRetryTimerRef.current = null
+    }
+    const pending = pendingRemotePatchRef.current
+    if (!pending || !file?.id) return
+    const currentEditor = editorRef.current
+    if (!currentEditor || currentEditor.isDestroyed) return
+
+    const base = pending.baseContent ?? file.baseContent ?? lastBackedUpContentRef.current
+    const merged = mergeDocuments(base, editorContentRef.current, pending.content)
+    if (merged.success && !merged.hasConflict) {
+      const patchRes = applyRemoteDocumentPatch(currentEditor, merged.content)
+      if (patchRes.applied) {
+        lastProcessedRemoteContentRef.current = pending.content
+        pendingRemotePatchRef.current = null
+        editorContentRef.current = merged.content
+        replaceContent(merged.content, 'saved-locally')
+        broadcastDocUpdate(file.id, merged.content, titleRef.current)
+        return
+      }
+    }
+
+    try {
+      await recordRemoteConflict(file.id, pending.content, new Date(pending.timestamp).toISOString())
+      if (pendingRemotePatchRef.current?.timestamp === pending.timestamp) {
+        pendingRemotePatchRef.current = null
+      }
+    } catch (err) {
+      console.warn('[Sync] Failed to persist conflict record to database; retaining pending in-memory state.', err)
+    }
+  }, [file?.baseContent, file?.id, replaceContent])
+
+  const queuePendingRemotePatch = useCallback((incomingContent: string, baseContent?: string) => {
+    if (!file?.id) return
+    const now = Date.now()
+    const existing = pendingRemotePatchRef.current
+
+    if (existing) {
+      const remoteBase = existing.baseContent ?? baseContent ?? file.baseContent ?? lastBackedUpContentRef.current
+      const combined = mergeDocuments(remoteBase, existing.content, incomingContent)
+      if (combined.success && !combined.hasConflict) {
+        pendingRemotePatchRef.current = {
+          content: combined.content,
+          baseContent: remoteBase ?? undefined,
+          timestamp: now,
+        }
+      } else {
+        if (pendingRetryTimerRef.current !== null) {
+          window.clearTimeout(pendingRetryTimerRef.current)
+          pendingRetryTimerRef.current = null
+        }
+        void recordRemoteConflict(file.id, incomingContent, new Date(now).toISOString())
+          .then(() => {
+            if (pendingRemotePatchRef.current?.timestamp === now) {
+              pendingRemotePatchRef.current = null
+            }
+          })
+          .catch((err) => {
+            console.warn('[Sync] Failed to persist conflict record.', err)
+          })
+        return
+      }
+    } else {
+      pendingRemotePatchRef.current = {
+        content: incomingContent,
+        baseContent,
+        timestamp: now,
+      }
+    }
+
+    if (pendingRetryTimerRef.current !== null) {
+      window.clearTimeout(pendingRetryTimerRef.current)
+    }
+    pendingRetryTimerRef.current = window.setTimeout(() => {
+      pendingRetryTimerRef.current = null
+      void retryPendingPatch()
+    }, 1500)
+  }, [file?.baseContent, file?.id, retryPendingPatch])
+
+  useEffect(() => {
+    return () => {
+      if (pendingRetryTimerRef.current !== null) {
+        window.clearTimeout(pendingRetryTimerRef.current)
+        pendingRetryTimerRef.current = null
+      }
+      if (pendingRemotePatchRef.current && fileId) {
+        const pending = pendingRemotePatchRef.current
+        void recordRemoteConflict(fileId, pending.content, new Date(pending.timestamp).toISOString())
+          .then(() => {
+            if (pendingRemotePatchRef.current?.timestamp === pending.timestamp) {
+              pendingRemotePatchRef.current = null
+            }
+          })
+          .catch((err) => {
+            console.warn('[Sync] Failed to persist conflict record during unmount.', err)
+          })
+      }
+    }
+  }, [fileId])
+
   const flushContentSync = useCallback((currentEditor?: NonNullable<ReturnType<typeof useEditor>> | null) => {
     if (contentSyncTimerRef.current !== null) {
       window.clearTimeout(contentSyncTimerRef.current)
@@ -1117,8 +1232,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       if (file?.id) {
         broadcastDocUpdate(file.id, next, titleRef.current)
       }
+      retryPendingPatch()
+    } else if (pendingRemotePatchRef.current) {
+      retryPendingPatch()
     }
-  }, [file?.id, setContent])
+  }, [file?.id, retryPendingPatch, setContent])
 
   const hasUnsavedTitleEdits = useCallback(() => {
     if (!file) return false
@@ -1132,12 +1250,17 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   useEffect(() => {
     const handleFlush = () => {
       flushContentSync()
+      if (pendingRemotePatchRef.current) {
+        retryPendingPatch()
+      }
       if (hasUnsavedTitleEdits()) {
         void saveTitleRef.current()
       }
     }
     window.addEventListener('pagehide', handleFlush)
     document.addEventListener('visibilitychange', handleFlush)
+    window.addEventListener('offline', handleFlush)
+    window.addEventListener('online', handleFlush)
     return () => {
       // Hand pending edits to autosave before they are dropped (file switch or unmount).
       if (contentSyncTimerRef.current !== null) flushContentSync()
@@ -1147,8 +1270,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       }
       window.removeEventListener('pagehide', handleFlush)
       document.removeEventListener('visibilitychange', handleFlush)
+      window.removeEventListener('offline', handleFlush)
+      window.removeEventListener('online', handleFlush)
     }
-  }, [flushContentSync, hasUnsavedTitleEdits])
+  }, [flushContentSync, hasUnsavedTitleEdits, retryPendingPatch])
 
   useEffect(() => {
     if (!file?.id) return
@@ -1179,22 +1304,69 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (!file?.id) return
     return subscribeToTabDocUpdates((msg) => {
       if (msg.fileId !== file.id) return
-      const hasLocalChanges = hasUnsavedChanges() || contentSyncTimerRef.current !== null
+      if (msg.content === editorContentRef.current || msg.content === lastProcessedRemoteContentRef.current) return
+
+      if (pendingRemotePatchRef.current) {
+        queuePendingRemotePatch(msg.content, file.baseContent ?? lastBackedUpContentRef.current ?? undefined)
+        return
+      }
+
+      const hasLocalChanges =
+        hasUnsavedChanges() ||
+        contentSyncTimerRef.current !== null ||
+        status === 'editing' ||
+        status === 'saving-locally'
+
       if (hasLocalChanges) {
-        const merged = mergeDocuments(lastBackedUpContentRef.current, editorContentRef.current, msg.content)
-        if (merged.success) {
-          editorContentRef.current = merged.content
-          replaceContent(merged.content, 'saved-locally')
+        const base = file.baseContent ?? lastBackedUpContentRef.current
+        const merged = mergeDocuments(base, editorContentRef.current, msg.content)
+        if (merged.success && !merged.hasConflict && merged.content !== editorContentRef.current) {
+          const currentEditor = editorRef.current
+          if (currentEditor && !currentEditor.isDestroyed) {
+            const patchRes = applyRemoteDocumentPatch(currentEditor, merged.content)
+            if (patchRes.applied) {
+              lastProcessedRemoteContentRef.current = msg.content
+              pendingRemotePatchRef.current = null
+              editorContentRef.current = merged.content
+              replaceContent(merged.content, 'saved-locally')
+            } else if (patchRes.error?.includes('conflicts with active selection/typing')) {
+              queuePendingRemotePatch(msg.content, base ?? undefined)
+            } else {
+              console.warn('[TabSync] Clean 3-way merge could not be safely patched into active editor; recording recoverable conflict.', patchRes.error)
+              lastProcessedRemoteContentRef.current = msg.content
+              void recordRemoteConflict(file.id, msg.content, new Date().toISOString())
+            }
+          }
+        } else if (merged.hasConflict) {
+          console.warn('[TabSync] Three-way merge identified concurrent conflict; recording recoverable conflict.')
+          lastProcessedRemoteContentRef.current = msg.content
+          void recordRemoteConflict(file.id, msg.content, new Date().toISOString())
         }
       } else {
-        editorContentRef.current = msg.content
-        replaceContent(msg.content, 'saved-locally')
+        if (msg.content !== editorContentRef.current) {
+          const currentEditor = editorRef.current
+          if (currentEditor && !currentEditor.isDestroyed) {
+            const patchRes = applyRemoteDocumentPatch(currentEditor, msg.content)
+            if (patchRes.applied) {
+              lastProcessedRemoteContentRef.current = msg.content
+              pendingRemotePatchRef.current = null
+              editorContentRef.current = msg.content
+              replaceContent(msg.content, 'saved-locally')
+            } else if (patchRes.error?.includes('conflicts with active selection/typing')) {
+              queuePendingRemotePatch(msg.content, undefined)
+            } else {
+              console.warn('[TabSync] Remote patch could not be safely applied; recording recoverable conflict.', patchRes.error)
+              lastProcessedRemoteContentRef.current = msg.content
+              void recordRemoteConflict(file.id, msg.content, new Date().toISOString())
+            }
+          }
+        }
       }
       if (msg.title && msg.title !== titleRef.current && !hasUnsavedTitleEdits() && titleAutosaveTimerRef.current === null) {
         updateTitle(msg.title)
       }
     })
-  }, [file?.id, hasUnsavedChanges, hasUnsavedTitleEdits, replaceContent, updateTitle])
+  }, [file?.id, file?.baseContent, hasUnsavedChanges, hasUnsavedTitleEdits, queuePendingRemotePatch, replaceContent, status, updateTitle])
 
   const duplicateTitleFile = useMemo(() => {
     if (!file || titleFileId !== file.id) return null
@@ -2191,22 +2363,42 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (loadedId === file.id && (content === editorContentRef.current || hasActiveEdits)) return
     if (loadedId === file.id && (!content || content === emptyDocumentJson) && editorContentRef.current && editorContentRef.current !== emptyDocumentJson) return
     if (loadedId === file.id && lastImportedContentRef.current && editorContentRef.current === lastImportedContentRef.current && content !== editorContentRef.current) return
-    const isFocused = editor.isFocused
-    const { from, to } = editor.state.selection
-    editor.commands.setContent(parseContent(content), { emitUpdate: false })
+    if (loadedId === file.id) {
+      if (pendingRemotePatchRef.current) {
+        queuePendingRemotePatch(content, file.baseContent ?? lastBackedUpContentRef.current ?? undefined)
+        return
+      }
+      const patchRes = applyRemoteDocumentPatch(editor, content)
+      if (patchRes.applied) {
+        lastProcessedRemoteContentRef.current = content
+        pendingRemotePatchRef.current = null
+        editorContentRef.current = content
+        lastImportedContentRef.current = null
+      } else if (patchRes.error?.includes('conflicts with active selection/typing')) {
+        queuePendingRemotePatch(content, file.baseContent ?? lastBackedUpContentRef.current ?? undefined)
+      } else {
+        console.warn('[LiveSync] Background repository update could not be safely patched into active editor; recording recoverable conflict.', patchRes.error)
+        lastProcessedRemoteContentRef.current = content
+        void recordRemoteConflict(file.id, content, new Date().toISOString())
+      }
+    } else {
+      const isFocused = editor.isFocused
+      const { from, to } = editor.state.selection
+      editor.commands.setContent(parseContent(content), { emitUpdate: false })
+      if (isFocused) {
+        const maxPos = editor.state.doc.content.size
+        if (maxPos > 0) {
+          editor.commands.setTextSelection({
+            from: Math.min(from, maxPos),
+            to: Math.min(to, maxPos),
+          })
+        }
+      }
+    }
     editorContentRef.current = content
     lastImportedContentRef.current = null
     setLoadedId(file.id)
-    if (isFocused) {
-      const maxPos = editor.state.doc.content.size
-      if (maxPos > 0) {
-        editor.commands.setTextSelection({
-          from: Math.min(from, maxPos),
-          to: Math.min(to, maxPos),
-        })
-      }
-    }
-  }, [content, editor, file, hasUnsavedChanges, hydratedFileId, isHydrated, loadedId, status])
+  }, [content, editor, file, hasUnsavedChanges, hydratedFileId, isHydrated, loadedId, queuePendingRemotePatch, status])
 
   useEffect(() => {
     if (!editor || !file || !isHydrated || loadedId !== file.id || handledPendingImportRef.current === file.id) return
@@ -3167,6 +3359,97 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                 navigate(target?.type === 'spreadsheet' ? `/spreadsheet/${targetId}` : `/document/${targetId}`)
               }}
             >
+              {file.syncConflict && file.syncConflict.versionId !== resolvedConflictVersionId ? (
+                <SyncConflictBanner
+                  file={file}
+                  conflictVersionId={file.syncConflict.versionId}
+                  localContent={editorContentRef.current ?? file.content}
+                  remoteModifiedTime={file.syncConflict.remoteModifiedTime}
+                  isUnsaved={contentSyncTimerRef.current !== null}
+                  onKeepMine={async () => {
+                    const conflictVersionId = file.syncConflict?.versionId
+                    const remoteVersion = conflictVersionId ? await db.fileVersions.get(conflictVersionId) : null
+                    const remoteContent = remoteVersion?.content
+                    if (pendingRetryTimerRef.current !== null) {
+                      window.clearTimeout(pendingRetryTimerRef.current)
+                      pendingRetryTimerRef.current = null
+                    }
+                    flushContentSync()
+                    await waitForPendingSave()
+                    const kept = await keepLocalVersion(file.id, conflictVersionId, editorContentRef.current)
+                    if (kept) {
+                      pendingRemotePatchRef.current = null
+                      if (remoteContent) {
+                        lastProcessedRemoteContentRef.current = remoteContent
+                      }
+                      if (conflictVersionId) {
+                        setResolvedConflictVersionId(conflictVersionId)
+                        broadcastDocUpdate(file.id, editorContentRef.current, titleRef.current)
+                      }
+                    }
+                    return kept
+                  }}
+                  onUseRemote={async () => {
+                    const conflictVersionId = file.syncConflict?.versionId
+                    if (pendingRetryTimerRef.current !== null) {
+                      window.clearTimeout(pendingRetryTimerRef.current)
+                      pendingRetryTimerRef.current = null
+                    }
+                    flushContentSync()
+                    await waitForPendingSave()
+                    const applied = await applyRemoteVersion(file.id, conflictVersionId)
+                    if (applied) {
+                      pendingRemotePatchRef.current = null
+                      if (conflictVersionId) {
+                        setResolvedConflictVersionId(conflictVersionId)
+                      }
+                      const updated = await fileRepository.get(file.id)
+                      if (updated.data) {
+                        lastProcessedRemoteContentRef.current = updated.data.content
+                        replaceContent(updated.data.content, 'backed-up')
+                        const currentEditor = editorRef.current
+                        if (currentEditor && !currentEditor.isDestroyed) {
+                          const patchRes = applyRemoteDocumentPatch(currentEditor, updated.data.content)
+                          if (!patchRes.applied) {
+                            currentEditor.commands.setContent(parseContent(updated.data.content), { emitUpdate: false })
+                          }
+                        }
+                        editorContentRef.current = updated.data.content
+                        broadcastDocUpdate(file.id, updated.data.content, titleRef.current)
+                      }
+                    }
+                    return applied
+                  }}
+                  onMerge={async (mergedContent: string) => {
+                    const conflictVersionId = file.syncConflict?.versionId
+                    if (pendingRetryTimerRef.current !== null) {
+                      window.clearTimeout(pendingRetryTimerRef.current)
+                      pendingRetryTimerRef.current = null
+                    }
+                    flushContentSync()
+                    await waitForPendingSave()
+                    const merged = await mergeConflictVersions(file.id, mergedContent, conflictVersionId)
+                    if (merged) {
+                      pendingRemotePatchRef.current = null
+                      lastProcessedRemoteContentRef.current = mergedContent
+                      if (conflictVersionId) {
+                        setResolvedConflictVersionId(conflictVersionId)
+                      }
+                      replaceContent(mergedContent, 'saved-locally')
+                      const currentEditor = editorRef.current
+                      if (currentEditor && !currentEditor.isDestroyed) {
+                        const patchRes = applyRemoteDocumentPatch(currentEditor, mergedContent)
+                        if (!patchRes.applied) {
+                          currentEditor.commands.setContent(parseContent(mergedContent), { emitUpdate: false })
+                        }
+                      }
+                      editorContentRef.current = mergedContent
+                      broadcastDocUpdate(file.id, mergedContent, titleRef.current)
+                    }
+                    return merged
+                  }}
+                />
+              ) : null}
               <div className="relative mb-5">
                 {duplicateTitleWarning ? (
                   <p

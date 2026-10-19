@@ -29,37 +29,41 @@ export function appFileName(name: string, type: FileType) {
 }
 
 async function queueFolderSync(folderId: string, operation: SyncOperation, errorMessage: string | null = null) {
-  const existing = await db.syncQueue.filter((item) => item.entityType === 'folder' && item.entityId === folderId && item.status !== 'completed').first()
-  const now = new Date().toISOString()
-  if (existing) {
-    const nextOperation = operation === 'permanent-delete'
-      ? 'permanent-delete'
-      : existing.operation === 'permanent-delete'
+  await db.transaction('rw', db.syncQueue, async () => {
+    const existing = await db.syncQueue.filter((item) => item.entityType === 'folder' && item.entityId === folderId && item.status !== 'completed').first()
+    const now = new Date().toISOString()
+    if (existing) {
+      const nextOperation = operation === 'permanent-delete'
         ? 'permanent-delete'
-        : existing.operation === 'create' && operation === 'update'
-          ? 'create'
-          : operation
-    await db.syncQueue.update(existing.id, { operation: nextOperation, status: 'pending', retryCount: existing.retryCount, errorMessage, updatedAt: now })
-    return
-  }
-  await db.syncQueue.add({ id: crypto.randomUUID(), entityId: folderId, entityType: 'folder', operation, status: 'pending', retryCount: 0, createdAt: now, updatedAt: now, errorMessage })
+        : existing.operation === 'permanent-delete'
+          ? 'permanent-delete'
+          : existing.operation === 'create' && operation === 'update'
+            ? 'create'
+            : operation
+      await db.syncQueue.update(existing.id, { operation: nextOperation, status: 'pending', retryCount: existing.retryCount, errorMessage, updatedAt: now })
+      return
+    }
+    await db.syncQueue.add({ id: crypto.randomUUID(), entityId: folderId, entityType: 'folder', operation, status: 'pending', retryCount: 0, createdAt: now, updatedAt: now, errorMessage })
+  })
 }
 
 async function queueFileSync(fileId: string, operation: SyncOperation, errorMessage: string | null = null) {
-  const existing = await db.syncQueue.filter((item) => item.entityType === 'file' && item.entityId === fileId && item.status !== 'completed').first()
-  const now = new Date().toISOString()
-  if (existing) {
-    const nextOperation = operation === 'permanent-delete'
-      ? 'permanent-delete'
-      : existing.operation === 'permanent-delete'
+  await db.transaction('rw', db.syncQueue, async () => {
+    const existing = await db.syncQueue.filter((item) => item.entityType === 'file' && item.entityId === fileId && item.status !== 'completed').first()
+    const now = new Date().toISOString()
+    if (existing) {
+      const nextOperation = operation === 'permanent-delete'
         ? 'permanent-delete'
-        : existing.operation === 'create' && operation === 'update'
-          ? 'create'
-          : operation
-    await db.syncQueue.update(existing.id, { operation: nextOperation, status: 'pending', errorMessage, updatedAt: now })
-    return
-  }
-  await db.syncQueue.add({ id: crypto.randomUUID(), entityId: fileId, entityType: 'file', operation, status: 'pending', retryCount: 0, createdAt: now, updatedAt: now, errorMessage })
+        : existing.operation === 'permanent-delete'
+          ? 'permanent-delete'
+          : existing.operation === 'create' && operation === 'update'
+            ? 'create'
+            : operation
+      await db.syncQueue.update(existing.id, { operation: nextOperation, status: 'pending', errorMessage, updatedAt: now })
+      return
+    }
+    await db.syncQueue.add({ id: crypto.randomUUID(), entityId: fileId, entityType: 'file', operation, status: 'pending', retryCount: 0, createdAt: now, updatedAt: now, errorMessage })
+  })
 }
 
 async function maybeQueueFolderSync(folderId: string, operation: SyncOperation, errorMessage: string | null = null) {
@@ -220,9 +224,11 @@ export async function saveFileVersion(file: MyBookFile, source: FileVersionSourc
   })
 }
 
-async function syncFileItem(item: SyncQueueItem) {
+type SyncFileOutcome = 'completed' | 'paused-conflict' | 'skipped'
+
+async function syncFileItem(item: SyncQueueItem): Promise<SyncFileOutcome> {
   const file = await db.files.get(item.entityId)
-  if (!file) { await db.syncQueue.delete(item.id); return }
+  if (!file) { await db.syncQueue.delete(item.id); return 'skipped' }
   if (item.operation === 'permanent-delete') {
     if (file.driveFileId) {
       await permanentlyDeleteDriveFile(file.driveFileId)
@@ -234,7 +240,7 @@ async function syncFileItem(item: SyncQueueItem) {
       }
     }
     await finalizeLocalFilePermanentDelete(file)
-    return
+    return 'completed'
   }
   if (item.operation === 'delete') {
     if (file.driveFileId) {
@@ -246,20 +252,51 @@ async function syncFileItem(item: SyncQueueItem) {
         await trashDriveFileAttachments(file.name, driveParentId)
       }
     }
-    return
+    return 'completed'
   }
   if (item.operation === 'restore' && file.driveFileId) {
     await restoreDriveFile(file.driveFileId)
-    return
+    return 'completed'
   }
 
-  await ensureLocalFolderOnDrive(file.folderId)
-  if (file.isDeleted) return
-  const result = file.type === 'spreadsheet'
-    ? await backupSpreadsheetToDrive({ fileId: file.id, title: file.name, content: file.content, folderId: file.folderId })
-    : await backupDocumentToDrive({ fileId: file.id, title: file.name, content: file.content, folderId: file.folderId })
+  let targetFolderId = file.folderId
+  if (targetFolderId) {
+    const parentFolder = await db.folders.get(targetFolderId)
+    if (!parentFolder || parentFolder.isDeleted) {
+      targetFolderId = null
+      await db.files.update(file.id, { folderId: null, updatedAt: new Date().toISOString() })
+    }
+  }
+  await ensureLocalFolderOnDrive(targetFolderId)
+  const fileToBackup = await db.files.get(item.entityId)
+  if (!fileToBackup || fileToBackup.isDeleted) return 'skipped'
+  if (fileToBackup.syncConflict) {
+    // Unresolved conflict present: do not push local draft to Drive until user resolves conflict.
+    return 'paused-conflict'
+  }
+  const result = fileToBackup.type === 'spreadsheet'
+    ? await backupSpreadsheetToDrive({ fileId: fileToBackup.id, title: fileToBackup.name, content: fileToBackup.content, folderId: fileToBackup.folderId })
+    : await backupDocumentToDrive({ fileId: fileToBackup.id, title: fileToBackup.name, content: fileToBackup.content, folderId: fileToBackup.folderId })
   if (!result.success) throw new Error(result.error)
-  await db.files.update(file.id, { syncError: null, syncStatus: 'backed-up' })
+
+  const current = await db.files.get(fileToBackup.id)
+  if (!current || current.isDeleted) return 'skipped'
+  if (current.syncConflict) {
+    // Conflict appeared while backup was in flight: do not mark backed-up.
+    return 'paused-conflict'
+  }
+  const isStillLatest =
+    current.content === fileToBackup.content &&
+    current.name === fileToBackup.name &&
+    current.folderId === fileToBackup.folderId &&
+    current.isFavorite === fileToBackup.isFavorite
+
+  if (isStillLatest) {
+    await db.files.update(fileToBackup.id, { syncError: null, syncStatus: 'backed-up' })
+  } else {
+    await db.files.update(fileToBackup.id, { syncError: null, syncStatus: 'pending' })
+  }
+  return 'completed'
 }
 
 let pendingDriveSyncFlight: Promise<void> | null = null
@@ -270,15 +307,53 @@ async function processPendingDriveSyncOnce() {
   if (!navigator.onLine) return
   const queue = await db.syncQueue.filter((item) => item.status !== 'completed').sortBy('createdAt')
   for (const item of queue) {
+    const freshItem = await db.syncQueue.get(item.id)
+    if (!freshItem || freshItem.status === 'completed') continue
+
     if (item.entityType === 'file') {
       try {
         await db.syncQueue.update(item.id, { status: 'processing', updatedAt: new Date().toISOString() })
-        await syncFileItem(item)
-        await db.syncQueue.update(item.id, { status: 'completed', errorMessage: null, updatedAt: new Date().toISOString() })
+        const outcome = await syncFileItem(item)
+        await db.transaction('rw', db.syncQueue, async () => {
+          const currentQueueItem = await db.syncQueue.get(item.id)
+          if (!currentQueueItem) return
+          if (outcome === 'paused-conflict') {
+            // Revert status to 'pending' so it remains in the queue, waiting for user resolution.
+            // Do NOT mark completed and do NOT trigger immediate rerun loop.
+            await db.syncQueue.update(item.id, {
+              status: 'pending',
+              errorMessage: null,
+              updatedAt: new Date().toISOString(),
+            })
+          } else if (outcome === 'completed') {
+            if (currentQueueItem.status === 'processing') {
+              await db.syncQueue.update(item.id, { status: 'completed', errorMessage: null, updatedAt: new Date().toISOString() })
+            } else if (currentQueueItem.status === 'pending') {
+              pendingDriveSyncRerunRequested = true
+            }
+          }
+        })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Google Drive file sync failed.'
         await db.files.update(item.entityId, { syncStatus: 'failed', syncError: message })
-        await db.syncQueue.update(item.id, { status: 'failed', retryCount: item.retryCount + 1, errorMessage: message, updatedAt: new Date().toISOString() })
+        await db.transaction('rw', db.syncQueue, async () => {
+          const currentQueueItem = await db.syncQueue.get(item.id)
+          if (currentQueueItem && currentQueueItem.status === 'pending') {
+            await db.syncQueue.update(item.id, {
+              retryCount: (currentQueueItem.retryCount ?? item.retryCount) + 1,
+              errorMessage: message,
+              updatedAt: new Date().toISOString(),
+            })
+            pendingDriveSyncRerunRequested = true
+          } else if (currentQueueItem) {
+            await db.syncQueue.update(item.id, {
+              status: 'failed',
+              retryCount: item.retryCount + 1,
+              errorMessage: message,
+              updatedAt: new Date().toISOString(),
+            })
+          }
+        })
       }
       continue
     }
@@ -304,9 +379,35 @@ async function processPendingDriveSyncOnce() {
         }
       } else if (folder.driveFolderId && item.operation === 'delete') await trashDriveFolder(folder.driveFolderId)
       else if (folder.driveFolderId && item.operation === 'restore') await restoreDriveFolder(folder.driveFolderId)
-      await db.syncQueue.update(item.id, { status: 'completed', errorMessage: null, updatedAt: new Date().toISOString() })
+
+      await db.transaction('rw', db.syncQueue, async () => {
+        const currentQueueItem = await db.syncQueue.get(item.id)
+        if (currentQueueItem && currentQueueItem.status === 'processing') {
+          await db.syncQueue.update(item.id, { status: 'completed', errorMessage: null, updatedAt: new Date().toISOString() })
+        } else if (currentQueueItem && currentQueueItem.status === 'pending') {
+          pendingDriveSyncRerunRequested = true
+        }
+      })
     } catch (error) {
-      await db.syncQueue.update(item.id, { status: 'failed', retryCount: item.retryCount + 1, errorMessage: error instanceof Error ? error.message : 'Google Drive folder sync failed.', updatedAt: new Date().toISOString() })
+      const message = error instanceof Error ? error.message : 'Google Drive folder sync failed.'
+      await db.transaction('rw', db.syncQueue, async () => {
+        const currentQueueItem = await db.syncQueue.get(item.id)
+        if (currentQueueItem && currentQueueItem.status === 'pending') {
+          await db.syncQueue.update(item.id, {
+            retryCount: (currentQueueItem.retryCount ?? item.retryCount) + 1,
+            errorMessage: message,
+            updatedAt: new Date().toISOString(),
+          })
+          pendingDriveSyncRerunRequested = true
+        } else if (currentQueueItem) {
+          await db.syncQueue.update(item.id, {
+            status: 'failed',
+            retryCount: item.retryCount + 1,
+            errorMessage: message,
+            updatedAt: new Date().toISOString(),
+          })
+        }
+      })
     }
   }
 }
@@ -382,6 +483,35 @@ function uniqueLogicalFiles(files: MyBookFile[]) {
     if (keys.some((key) => seen.has(key))) continue
     keys.forEach((key) => seen.add(key))
     visible.push(file)
+  }
+  return visible
+}
+
+function folderPreference(folder: MyBookFolder) {
+  const syncScore = folder.driveFolderId ? 100 : 0
+  const updatedAt = new Date(folder.updatedAt).getTime()
+  return syncScore + updatedAt / 1_000_000_000_000
+}
+
+function uniqueLogicalFolders(folders: MyBookFolder[]) {
+  const sorted = [...folders].sort((a, b) => folderPreference(b) - folderPreference(a))
+  const seenDriveIds = new Set<string>()
+  const claimedStubKeys = new Set<string>()
+  const seenStubKeys = new Set<string>()
+  const visible: MyBookFolder[] = []
+
+  for (const folder of sorted) {
+    if (folder.driveFolderId) {
+      if (seenDriveIds.has(folder.driveFolderId)) continue
+      seenDriveIds.add(folder.driveFolderId)
+      claimedStubKeys.add(`${folder.parentId ?? 'root'}:${folder.name.toLocaleLowerCase()}`)
+      visible.push(folder)
+    } else {
+      const nameKey = `${folder.parentId ?? 'root'}:${folder.name.toLocaleLowerCase()}`
+      if (claimedStubKeys.has(nameKey) || seenStubKeys.has(nameKey)) continue
+      seenStubKeys.add(nameKey)
+      visible.push(folder)
+    }
   }
   return visible
 }
@@ -478,7 +608,14 @@ export const fileRepository = {
       const file = await db.files.get(id)
       if (!file) return { success: false, error: 'File could not be found.' }
       if (!fileBelongsToActiveWorkspace(file)) return { success: false, error: 'File could not be found in this workspace.' }
-      await db.files.update(id, { isDeleted: false, updatedAt: new Date().toISOString() })
+      let safeFolderId = file.folderId
+      if (safeFolderId) {
+        const folder = await db.folders.get(safeFolderId)
+        if (!folder || folder.isDeleted) {
+          safeFolderId = null
+        }
+      }
+      await db.files.update(id, { folderId: safeFolderId, isDeleted: false, updatedAt: new Date().toISOString() })
       await persistLocalFile(await db.files.get(id))
       await maybeQueueFileSync(id, file.driveFileId ? 'restore' : 'create', navigator.onLine ? null : 'Offline. File restore will sync when you reconnect.')
       processPendingDriveSyncInBackground()
@@ -567,7 +704,10 @@ export const folderRepository = {
       if (siblings.some((folder) => folder.name.toLocaleLowerCase() === normalized.toLocaleLowerCase())) return { success: false, error: `"${normalized}" already exists. Use a different name.` }
       let depth = 1
       let ancestorId = parentId
+      const visited = new Set<string>()
       while (ancestorId) {
+        if (visited.has(ancestorId)) break
+        visited.add(ancestorId)
         depth += 1
         ancestorId = (await db.folders.get(ancestorId))?.parentId ?? null
       }
@@ -605,12 +745,24 @@ export const folderRepository = {
 
         let targetDepth = 0
         let ancestorId = targetParentId
-        while (ancestorId) { targetDepth += 1; ancestorId = (await db.folders.get(ancestorId))?.parentId ?? null }
+        const visitedAncestors = new Set<string>()
+        while (ancestorId) {
+          if (visitedAncestors.has(ancestorId)) break
+          visitedAncestors.add(ancestorId)
+          targetDepth += 1
+          ancestorId = (await db.folders.get(ancestorId))?.parentId ?? null
+        }
         let subtreeDepth = 1
         for (const descendant of descendants) {
           let depth = 1
           let current = (await db.folders.get(descendant))?.parentId ?? null
-          while (current && current !== id) { depth += 1; current = (await db.folders.get(current))?.parentId ?? null }
+          const visitedCurrent = new Set<string>()
+          while (current && current !== id) {
+            if (visitedCurrent.has(current)) break
+            visitedCurrent.add(current)
+            depth += 1
+            current = (await db.folders.get(current))?.parentId ?? null
+          }
           subtreeDepth = Math.max(subtreeDepth, depth + 1)
         }
         if (targetDepth + subtreeDepth > 3) return { success: false, error: 'Folders can be nested up to three levels.' }
@@ -734,8 +886,25 @@ export const folderRepository = {
       return failure(error, 'Could not permanently delete folder.')
     }
   },
-  async list(includeDeleted = false): Promise<MyBookFolder[]> { try { return await db.folders.filter((folder) => folderBelongsToActiveWorkspace(folder) && (includeDeleted || !folder.isDeleted)).toArray() } catch (error) { devLog('error', 'Could not list folders.', error); return [] } },
-  async search(query: string): Promise<MyBookFolder[]> { try { const value = query.trim().toLocaleLowerCase(); return await db.folders.filter((folder) => folderBelongsToActiveWorkspace(folder) && !folder.isDeleted && folder.name.toLocaleLowerCase().includes(value)).toArray() } catch (error) { devLog('error', 'Could not search folders.', error); return [] } },
+  async list(includeDeleted = false): Promise<MyBookFolder[]> {
+    try {
+      const folders = await db.folders.filter((folder) => folderBelongsToActiveWorkspace(folder) && (includeDeleted || !folder.isDeleted)).toArray()
+      return includeDeleted ? folders : uniqueLogicalFolders(folders)
+    } catch (error) {
+      devLog('error', 'Could not list folders.', error)
+      return []
+    }
+  },
+  async search(query: string): Promise<MyBookFolder[]> {
+    try {
+      const value = query.trim().toLocaleLowerCase()
+      const folders = await db.folders.filter((folder) => folderBelongsToActiveWorkspace(folder) && !folder.isDeleted && folder.name.toLocaleLowerCase().includes(value)).toArray()
+      return uniqueLogicalFolders(folders)
+    } catch (error) {
+      devLog('error', 'Could not search folders.', error)
+      return []
+    }
+  },
 }
 
 export const settingsRepository = {

@@ -1,7 +1,7 @@
 import { useAuthStore } from '../stores/useAuthStore'
 import { db } from '../database/db'
 import type { JSONContent } from '@tiptap/core'
-import type { SyncEntityType, SyncQueueItem } from '../types/files'
+import type { MyBookFolder, SyncEntityType, SyncQueueItem } from '../types/files'
 import { devLog } from '../utils/safeLog'
 import { hasUnsavedLocalEdits } from './localEditState'
 import { recordRemoteConflict } from './syncConflicts'
@@ -1066,75 +1066,98 @@ export async function importDriveFoldersToLocal(
 
   const localFolders = await db.folders.toArray()
   const unresolvedSync = await unresolvedSyncIndex()
-  const byDriveId = new Map(localFolders.filter((folder) => folder.driveFolderId).map((folder) => [folder.driveFolderId as string, folder]))
-  const byNameAndParent = new Map(localFolders.map((folder) => [`${folder.parentId ?? 'root'}:${folder.name.toLowerCase()}`, folder]))
+  const byDriveId = new Map<string, MyBookFolder>()
+  const byNameAndParent = new Map<string, MyBookFolder>()
+  for (const folder of localFolders) {
+    if (folder.driveFolderId) {
+      byDriveId.set(folder.driveFolderId, preferLocalFolderMatch(byDriveId.get(folder.driveFolderId), folder))
+    }
+    if (!folder.isDeleted) {
+      const key = `${folder.parentId ?? 'root'}:${folder.name.toLowerCase()}`
+      byNameAndParent.set(key, preferLocalFolderMatch(byNameAndParent.get(key), folder))
+    }
+  }
   const seenDriveIds = new Set<string>()
+  const visiting = new Set<string>()
   let processedFolders = 0
   let totalDiscoveredFolders = 0
   let maxPercent = 0
 
   const syncChildren = async (parentDriveId: string, parentLocalId: string | null) => {
-    const { isAttachmentDirectoryName } = await import('./localWorkspace')
-    const children = await listChildFolders(parentDriveId)
-    totalDiscoveredFolders += children.length
-    for (const driveFolder of children) {
-      if (isAttachmentDirectoryName(driveFolder.name)) {
-        continue
-      }
-      seenDriveIds.add(driveFolder.id)
-      const isFavorite = driveFolder.appProperties?.isFavorite === 'true'
-      const localMatch = byDriveId.get(driveFolder.id) ?? byNameAndParent.get(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`)
-      let matchedLocalId: string
-      if (localMatch) {
-        matchedLocalId = localMatch.id
-        const hasLocalIntent = unresolvedSync.has('folder', localMatch.id)
-        if (hasLocalIntent) {
-          if (localMatch.driveFolderId !== driveFolder.id || localMatch.workspaceType !== 'drive') {
-            await db.folders.update(localMatch.id, { driveFolderId: driveFolder.id, workspaceType: 'drive' })
+    if (visiting.has(parentDriveId)) return
+    visiting.add(parentDriveId)
+    try {
+      const { isAttachmentDirectoryName } = await import('./localWorkspace')
+      const children = await listChildFolders(parentDriveId)
+      totalDiscoveredFolders += children.length
+      for (const driveFolder of children) {
+        if (isAttachmentDirectoryName(driveFolder.name)) {
+          continue
+        }
+        if (seenDriveIds.has(driveFolder.id)) {
+          continue
+        }
+        seenDriveIds.add(driveFolder.id)
+        const isFavorite = driveFolder.appProperties?.isFavorite === 'true'
+        const localMatch = byDriveId.get(driveFolder.id) ?? byNameAndParent.get(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`)
+        let matchedLocalId: string
+        if (localMatch) {
+          matchedLocalId = localMatch.id
+          const hasLocalIntent = unresolvedSync.has('folder', localMatch.id)
+          if (hasLocalIntent) {
+            if (localMatch.driveFolderId !== driveFolder.id || localMatch.workspaceType !== 'drive') {
+              await db.folders.update(localMatch.id, { driveFolderId: driveFolder.id, workspaceType: 'drive' })
+              localMatch.driveFolderId = driveFolder.id
+              localMatch.workspaceType = 'drive'
+            }
+          } else if (localMatch.name !== driveFolder.name || localMatch.parentId !== parentLocalId || localMatch.driveFolderId !== driveFolder.id || localMatch.isDeleted || Boolean(localMatch.isFavorite) !== isFavorite) {
+            const updatedAt = new Date().toISOString()
+            await db.folders.update(localMatch.id, {
+              name: driveFolder.name,
+              parentId: parentLocalId,
+              driveFolderId: driveFolder.id,
+              workspaceType: 'drive',
+              updatedAt,
+              isDeleted: false,
+              isFavorite,
+            })
+            localMatch.name = driveFolder.name
+            localMatch.parentId = parentLocalId
+            localMatch.driveFolderId = driveFolder.id
+            localMatch.workspaceType = 'drive'
+            localMatch.updatedAt = updatedAt
+            localMatch.isDeleted = false
+            localMatch.isFavorite = isFavorite
           }
-        } else if (localMatch.name !== driveFolder.name || localMatch.parentId !== parentLocalId || localMatch.driveFolderId !== driveFolder.id || localMatch.isDeleted || Boolean(localMatch.isFavorite) !== isFavorite) {
-          await db.folders.update(localMatch.id, {
+          byDriveId.set(driveFolder.id, localMatch)
+          byNameAndParent.set(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`, localMatch)
+        } else {
+          const now = new Date().toISOString()
+          const id = crypto.randomUUID()
+          matchedLocalId = id
+          const newFolder: MyBookFolder = {
+            id,
             name: driveFolder.name,
             parentId: parentLocalId,
             driveFolderId: driveFolder.id,
             workspaceType: 'drive',
-            updatedAt: new Date().toISOString(),
+            createdAt: now,
+            updatedAt: now,
             isDeleted: false,
             isFavorite,
-          })
+          }
+          await db.folders.add(newFolder)
+          byDriveId.set(driveFolder.id, newFolder)
+          byNameAndParent.set(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`, newFolder)
         }
-      } else {
-        const now = new Date().toISOString()
-        const id = crypto.randomUUID()
-        matchedLocalId = id
-        await db.folders.add({
-          id,
-          name: driveFolder.name,
-          parentId: parentLocalId,
-          driveFolderId: driveFolder.id,
-          workspaceType: 'drive',
-          createdAt: now,
-          updatedAt: now,
-          isDeleted: false,
-          isFavorite,
-        })
-        byNameAndParent.set(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`, {
-          id,
-          name: driveFolder.name,
-          parentId: parentLocalId,
-          driveFolderId: driveFolder.id,
-          workspaceType: 'drive',
-          createdAt: now,
-          updatedAt: now,
-          isDeleted: false,
-          isFavorite,
-        })
+        processedFolders += 1
+        const rawPercent = totalDiscoveredFolders > 0 ? Math.min(100, Math.round((processedFolders / totalDiscoveredFolders) * 100)) : 100
+        maxPercent = Math.max(maxPercent, rawPercent)
+        onProgress?.({ loaded: processedFolders, total: totalDiscoveredFolders, percent: maxPercent })
+        await syncChildren(driveFolder.id, matchedLocalId)
       }
-      processedFolders += 1
-      const rawPercent = totalDiscoveredFolders > 0 ? Math.min(100, Math.round((processedFolders / totalDiscoveredFolders) * 100)) : 100
-      maxPercent = Math.max(maxPercent, rawPercent)
-      onProgress?.({ loaded: processedFolders, total: totalDiscoveredFolders, percent: maxPercent })
-      await syncChildren(driveFolder.id, matchedLocalId)
+    } finally {
+      visiting.delete(parentDriveId)
     }
   }
 
@@ -1146,7 +1169,6 @@ export async function importDriveFoldersToLocal(
   if (missing.length) {
     const allFolders = await db.folders.toArray()
     const allFiles = await db.files.toArray()
-    const fileById = new Map(allFiles.map((file) => [file.id, file]))
     const deletedFolderIds = new Set(missing.map((folder) => folder.id))
     let changed = true
     while (changed) {
@@ -1160,16 +1182,36 @@ export async function importDriveFoldersToLocal(
     }
     const now = new Date().toISOString()
     await db.transaction('rw', db.folders, db.files, db.syncQueue, async () => {
-      await Promise.all([...deletedFolderIds].map((folderId) => db.folders.update(folderId, { isDeleted: true, updatedAt: now })))
-      await db.files.filter((file) => Boolean(file.folderId && deletedFolderIds.has(file.folderId)) && !unresolvedSync.has('file', file.id)).modify({ isDeleted: true, updatedAt: now })
+      const foldersToDelete: string[] = []
+      const foldersToDetach: string[] = []
+      for (const folderId of deletedFolderIds) {
+        if (unresolvedSync.has('folder', folderId)) {
+          foldersToDetach.push(folderId)
+        } else {
+          foldersToDelete.push(folderId)
+        }
+      }
+
+      await Promise.all(foldersToDelete.map((folderId) => db.folders.update(folderId, { isDeleted: true, updatedAt: now })))
+      await Promise.all(foldersToDetach.map((folderId) => db.folders.update(folderId, { parentId: null, updatedAt: now })))
+
+      const filesInDeletedFolders = allFiles.filter((file) => Boolean(file.folderId && deletedFolderIds.has(file.folderId)))
+      const filesToDelete = filesInDeletedFolders.filter((file) => !unresolvedSync.has('file', file.id))
+      const filesToDetach = filesInDeletedFolders.filter((file) => unresolvedSync.has('file', file.id))
+
+      await Promise.all(filesToDelete.map((file) => db.files.update(file.id, { isDeleted: true, updatedAt: now })))
+      await Promise.all(filesToDetach.map((file) => db.files.update(file.id, { folderId: null, updatedAt: now })))
+
+      const trulyDeletedFolderIds = new Set(foldersToDelete)
       await db.syncQueue
-        .filter((item) => item.status !== 'completed' && item.entityType === 'folder' && deletedFolderIds.has(item.entityId))
+        .filter((item) => item.status !== 'completed' && item.entityType === 'folder' && trulyDeletedFolderIds.has(item.entityId))
         .modify({ status: 'completed', errorMessage: 'Deleted in Google Drive.', updatedAt: now })
+
+      const trulyDeletedFileIds = new Set(filesToDelete.map((f) => f.id))
       await db.syncQueue
         .filter((item) => item.status !== 'completed' && item.entityType === 'file')
         .modify((item) => {
-          const file = fileById.get(item.entityId)
-          if (file?.folderId && deletedFolderIds.has(file.folderId)) {
+          if (trulyDeletedFileIds.has(item.entityId)) {
             item.status = 'completed'
             item.errorMessage = 'Deleted in Google Drive.'
             item.updatedAt = now
@@ -1217,6 +1259,23 @@ function preferLocalFileMatch<T extends { driveFileId: string | null; syncStatus
   const currentTime = new Date(current.lastSyncedAt ?? current.updatedAt).getTime()
   const candidateTime = new Date(candidate.lastSyncedAt ?? candidate.updatedAt).getTime()
   return candidateTime > currentTime ? candidate : current
+}
+
+function preferLocalFolderMatch(current: MyBookFolder | undefined, candidate: MyBookFolder): MyBookFolder {
+  if (!current) return candidate
+  const currentActiveScore = current.isDeleted ? 0 : 100
+  const candidateActiveScore = candidate.isDeleted ? 0 : 100
+  if (candidateActiveScore !== currentActiveScore) {
+    return candidateActiveScore > currentActiveScore ? candidate : current
+  }
+  const currentDriveScore = current.driveFolderId ? 50 : 0
+  const candidateDriveScore = candidate.driveFolderId ? 50 : 0
+  if (candidateDriveScore !== currentDriveScore) {
+    return candidateDriveScore > currentDriveScore ? candidate : current
+  }
+  const currentTime = new Date(current.updatedAt).getTime()
+  const candidateTime = new Date(candidate.updatedAt).getTime()
+  return candidateTime >= currentTime ? candidate : current
 }
 
 function normalizedTitle(value: string) {
@@ -1551,22 +1610,41 @@ export async function importDriveFilesToLocal(
     byNameAndParent.set(exactKey, preferLocalFileMatch(byNameAndParent.get(exactKey), file))
     byNameAndParent.set(localNameKey, preferLocalFileMatch(byNameAndParent.get(localNameKey), file))
   }
-  const folderByDriveId = new Map(localFolders.filter((folder) => folder.driveFolderId).map((folder) => [folder.driveFolderId as string, folder]))
+  const folderByDriveId = new Map<string, MyBookFolder>()
+  const folderByNameAndParent = new Map<string, MyBookFolder>()
+  for (const folder of localFolders) {
+    if (folder.driveFolderId) {
+      folderByDriveId.set(folder.driveFolderId, preferLocalFolderMatch(folderByDriveId.get(folder.driveFolderId), folder))
+    }
+    if (!folder.isDeleted) {
+      const key = `${folder.parentId ?? 'root'}:${folder.name.toLowerCase()}`
+      folderByNameAndParent.set(key, preferLocalFolderMatch(folderByNameAndParent.get(key), folder))
+    }
+  }
   const seenDriveFileIds = new Set<string>()
+  const visitedDriveFolderIds = new Set<string>()
   let processedFiles = 0
   let totalDiscoveredFiles = 0
   let maxPercent = 0
 
   const syncFiles = async (parentDriveId: string, parentLocalId: string | null) => {
+    let resolvedFolderId = parentLocalId
+    if (!resolvedFolderId && parentDriveId !== bootstrap.folderId) {
+      const parentFolder = folderByDriveId.get(parentDriveId)
+      if (parentFolder) {
+        resolvedFolderId = parentFolder.id
+      }
+    }
     const children = await listChildFiles(parentDriveId)
     const importableChildren = children.filter((file) => isImportableDriveFile(file.name, file.mimeType, isAttachmentDirectoryName))
     totalDiscoveredFiles += importableChildren.length
     for (const driveFile of importableChildren) {
       seenDriveFileIds.add(driveFile.id)
       const fileType = inferFileType(driveFile.name, driveFile.mimeType)
+      const effectiveFolderId = resolvedFolderId
       const existing = byDriveId.get(driveFile.id)
-        ?? byNameAndParent.get(`${parentLocalId ?? 'root'}:${driveFile.name.toLowerCase()}`)
-        ?? byNameAndParent.get(`${parentLocalId ?? 'root'}:${localFileName(driveFile.name, fileType).toLowerCase()}`)
+        ?? byNameAndParent.get(`${effectiveFolderId ?? 'root'}:${driveFile.name.toLowerCase()}`)
+        ?? byNameAndParent.get(`${effectiveFolderId ?? 'root'}:${localFileName(driveFile.name, fileType).toLowerCase()}`)
       const now = new Date().toISOString()
       let localId = existing?.id ?? crypto.randomUUID()
       const driveModifiedTime = driveFile.modifiedTime ?? now
@@ -1595,9 +1673,10 @@ export async function importDriveFilesToLocal(
         const driveIsNewer = shouldReadContent
         const nextContent = !hasLocalIntent && driveIsNewer && content && content !== existing.content ? content : existing.content
         if (nextContent !== existing.content) await saveVersionBeforeDriveUpdate(existing.id, driveModifiedTime)
+        const finalFolderId = effectiveFolderId ?? (parentDriveId === bootstrap.folderId ? null : existing.folderId)
         const userVisibleChanged =
           name !== existing.name ||
-          parentLocalId !== existing.folderId ||
+          finalFolderId !== existing.folderId ||
           type !== existing.type ||
           nextContent !== existing.content ||
           existing.isDeleted ||
@@ -1609,7 +1688,7 @@ export async function importDriveFilesToLocal(
           mimeType,
         } : {
           name,
-          folderId: parentLocalId,
+          folderId: finalFolderId,
           driveFileId: driveFile.id,
           workspaceType: 'drive' as const,
           type,
@@ -1626,24 +1705,30 @@ export async function importDriveFilesToLocal(
         if (hasLocalIntent || userVisibleChanged || existing.driveFileId !== driveFile.id || existing.workspaceType !== 'drive' || !existing.lastSyncedAt || new Date(driveModifiedTime).getTime() > new Date(existing.lastSyncedAt).getTime() || existing.syncStatus !== 'backed-up' || existing.syncError) {
           await db.files.update(existing.id, nextFileChanges)
         }
+        const updatedFile = { ...existing, ...nextFileChanges }
+        byDriveId.set(driveFile.id, updatedFile)
+        byNameAndParent.set(`${finalFolderId ?? 'root'}:${updatedFile.name.toLowerCase()}`, updatedFile)
       } else {
-        await db.files.add({
+        const newFile = {
           id: localId,
           driveFileId: driveFile.id,
-          workspaceType: 'drive',
+          workspaceType: 'drive' as const,
           name: localFileName(driveFile.name, fileType),
           type: fileType,
-          folderId: parentLocalId,
+          folderId: effectiveFolderId,
           content,
           baseContent: content,
           mimeType: driveFile.mimeType,
           createdAt: now,
           updatedAt: driveModifiedTime,
           lastSyncedAt: driveModifiedTime,
-          syncStatus: 'backed-up',
+          syncStatus: 'backed-up' as const,
           isDeleted: false,
           isFavorite,
-        })
+        }
+        await db.files.add(newFile)
+        byDriveId.set(driveFile.id, newFile)
+        byNameAndParent.set(`${effectiveFolderId ?? 'root'}:${newFile.name.toLowerCase()}`, newFile)
       }
       processedFiles += 1
       const rawPercent = totalDiscoveredFiles > 0 ? Math.min(100, Math.round((processedFiles / totalDiscoveredFiles) * 100)) : 100
@@ -1653,14 +1738,40 @@ export async function importDriveFilesToLocal(
   }
 
   const walk = async (parentDriveId: string, parentLocalId: string | null) => {
+    if (visitedDriveFolderIds.has(parentDriveId)) return
+    visitedDriveFolderIds.add(parentDriveId)
+
     await syncFiles(parentDriveId, parentLocalId)
     const children = await listChildFolders(parentDriveId)
     for (const driveFolder of children) {
       if (isAttachmentDirectoryName(driveFolder.name)) {
         continue
       }
-      const localMatch = folderByDriveId.get(driveFolder.id) ?? localFolders.find((folder) => folder.parentId === parentLocalId && folder.name.toLowerCase() === driveFolder.name.toLowerCase())
-      const nextLocalId = localMatch?.id ?? null
+      const localMatch = folderByDriveId.get(driveFolder.id) ?? folderByNameAndParent.get(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`)
+      let nextLocalId: string
+      if (localMatch) {
+        nextLocalId = localMatch.id
+        folderByDriveId.set(driveFolder.id, localMatch)
+        folderByNameAndParent.set(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`, localMatch)
+      } else {
+        const now = new Date().toISOString()
+        const id = crypto.randomUUID()
+        nextLocalId = id
+        const newFolder: MyBookFolder = {
+          id,
+          name: driveFolder.name,
+          parentId: parentLocalId,
+          driveFolderId: driveFolder.id,
+          workspaceType: 'drive',
+          createdAt: now,
+          updatedAt: now,
+          isDeleted: false,
+          isFavorite: driveFolder.appProperties?.isFavorite === 'true',
+        }
+        await db.folders.add(newFolder)
+        folderByDriveId.set(driveFolder.id, newFolder)
+        folderByNameAndParent.set(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`, newFolder)
+      }
       await walk(driveFolder.id, nextLocalId)
     }
   }
@@ -1734,16 +1845,83 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
 
       if (decision.action === 'merge') {
         await saveVersionBeforeDriveUpdate(latest.id, driveModifiedTime)
-        await db.files.update(latest.id, {
-          content: decision.mergedContent,
-          baseContent: content,
-          workspaceType: 'drive',
-          lastSyncedAt: driveModifiedTime,
-          syncStatus: 'pending',
-          syncError: null,
-          updatedAt: new Date().toISOString(),
+        const now = new Date().toISOString()
+        await db.transaction('rw', db.files, db.syncQueue, async () => {
+          await db.files.update(latest.id, {
+            content: decision.mergedContent,
+            baseContent: content,
+            workspaceType: 'drive',
+            lastSyncedAt: driveModifiedTime,
+            syncStatus: 'pending',
+            syncError: null,
+            updatedAt: now,
+          })
+          const existing = await db.syncQueue
+            .filter((item) => item.entityType === 'file' && item.entityId === latest.id && item.status !== 'completed')
+            .first()
+          const operation = latest.driveFileId ? 'update' : 'create'
+          if (existing) {
+            await db.syncQueue.update(existing.id, {
+              operation: existing.operation === 'permanent-delete' ? 'permanent-delete' : operation,
+              status: 'pending',
+              errorMessage: null,
+              updatedAt: now,
+            })
+          } else {
+            await db.syncQueue.add({
+              id: crypto.randomUUID(),
+              entityId: latest.id,
+              entityType: 'file',
+              operation,
+              status: 'pending',
+              retryCount: 0,
+              createdAt: now,
+              updatedAt: now,
+              errorMessage: null,
+            })
+          }
         })
+        void import('../database/repositories').then((m) => m.processPendingDriveSync()).catch(() => {})
         return { updated: true, modifiedTime: driveModifiedTime }
+      }
+
+      if (decision.action === 'keep-local') {
+        const now = new Date().toISOString()
+        await db.transaction('rw', db.files, db.syncQueue, async () => {
+          await db.files.update(latest.id, {
+            workspaceType: 'drive',
+            lastSyncedAt: driveModifiedTime,
+            syncStatus: 'pending',
+            syncError: null,
+            updatedAt: now,
+          })
+          const existing = await db.syncQueue
+            .filter((item) => item.entityType === 'file' && item.entityId === latest.id && item.status !== 'completed')
+            .first()
+          const operation = latest.driveFileId ? 'update' : 'create'
+          if (existing) {
+            await db.syncQueue.update(existing.id, {
+              operation: existing.operation === 'permanent-delete' ? 'permanent-delete' : operation,
+              status: 'pending',
+              errorMessage: null,
+              updatedAt: now,
+            })
+          } else {
+            await db.syncQueue.add({
+              id: crypto.randomUUID(),
+              entityId: latest.id,
+              entityType: 'file',
+              operation,
+              status: 'pending',
+              retryCount: 0,
+              createdAt: now,
+              updatedAt: now,
+              errorMessage: null,
+            })
+          }
+        })
+        void import('../database/repositories').then((m) => m.processPendingDriveSync()).catch(() => {})
+        return { updated: false, modifiedTime: driveModifiedTime }
       }
 
       if (decision.action === 'conflict') {

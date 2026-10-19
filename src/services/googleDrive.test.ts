@@ -56,6 +56,8 @@ vi.mock('../database/db', () => ({
     },
     syncQueue: {
       filter: vi.fn(),
+      add: vi.fn(),
+      update: vi.fn(),
     },
     settings: {
       get: vi.fn(),
@@ -83,6 +85,7 @@ const mockedGetState = vi.mocked(useAuthStore.getState)
 function mockUnresolvedSyncQueue(items: unknown[] = []) {
   mockedSyncQueue.filter.mockImplementation(((predicate: (item: unknown) => boolean) => ({
     toArray: vi.fn().mockResolvedValue(items.filter(predicate)),
+    first: vi.fn().mockResolvedValue(items.find(predicate)),
     modify: vi.fn().mockResolvedValue(undefined),
   })) as never)
 }
@@ -797,6 +800,325 @@ describe('googleDrive helpers', () => {
       name: 'FavFolder',
       driveFolderId: 'drive-folder-fav',
       isFavorite: true,
+    }))
+  })
+
+  it('imports nested folder hierarchy (Parent -> Child -> Grandchild) with accurate parentId and ID mapping', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'mybook-root', updatedAt: '2026-07-24T00:00:00.000Z' })
+    mockedFolders.toArray.mockResolvedValue([])
+
+    // Root children: 'Parent' (drive-p)
+    // 'Parent' children: 'Child' (drive-c)
+    // 'Child' children: 'Grandchild' (drive-gc)
+    // 'Grandchild' children: none
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-p', name: 'Parent', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-c', name: 'Child', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-gc', name: 'Grandchild', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
+
+    await importDriveFoldersToLocal()
+
+    expect(mockedFolders.add).toHaveBeenCalledTimes(3)
+    const addedFolders = mockedFolders.add.mock.calls.map((call) => call[0] as { id: string; name: string; parentId: string | null; driveFolderId: string })
+    const parentFolder = addedFolders.find((f) => f.name === 'Parent')!
+    const childFolder = addedFolders.find((f) => f.name === 'Child')!
+    const grandchildFolder = addedFolders.find((f) => f.name === 'Grandchild')!
+
+    expect(parentFolder.parentId).toBeNull()
+    expect(parentFolder.driveFolderId).toBe('drive-p')
+
+    expect(childFolder.parentId).toBe(parentFolder.id)
+    expect(childFolder.driveFolderId).toBe('drive-c')
+
+    expect(grandchildFolder.parentId).toBe(childFolder.id)
+    expect(grandchildFolder.driveFolderId).toBe('drive-gc')
+  })
+
+  it('is idempotent on repeated folder imports and does not duplicate records', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'mybook-root', updatedAt: '2026-07-24T00:00:00.000Z' })
+    mockedFolders.toArray.mockResolvedValue([{
+      id: 'existing-parent-id',
+      name: 'Existing Parent',
+      parentId: null,
+      driveFolderId: 'drive-p',
+      workspaceType: 'drive',
+      createdAt: '2026-08-22T00:00:00.000Z',
+      updatedAt: '2026-08-22T00:00:00.000Z',
+      isDeleted: false,
+    }])
+
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-p', name: 'Existing Parent', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
+
+    await importDriveFoldersToLocal()
+
+    expect(mockedFolders.add).not.toHaveBeenCalled()
+  })
+
+  it('prefers active folder over trashed folder when resolving by name and parent', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'mybook-root', updatedAt: '2026-07-24T00:00:00.000Z' })
+    mockedFolders.toArray.mockResolvedValue([
+      {
+        id: 'trashed-folder',
+        name: 'Projects',
+        parentId: null,
+        driveFolderId: null,
+        workspaceType: 'drive',
+        createdAt: '2026-08-20T00:00:00.000Z',
+        updatedAt: '2026-08-20T00:00:00.000Z',
+        isDeleted: true,
+      },
+      {
+        id: 'active-folder',
+        name: 'Projects',
+        parentId: null,
+        driveFolderId: null,
+        workspaceType: 'drive',
+        createdAt: '2026-08-22T00:00:00.000Z',
+        updatedAt: '2026-08-22T00:00:00.000Z',
+        isDeleted: false,
+      },
+    ])
+
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-projects', name: 'Projects', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
+
+    await importDriveFoldersToLocal()
+
+    expect(mockedFolders.update).toHaveBeenCalledWith('active-folder', expect.objectContaining({
+      driveFolderId: 'drive-projects',
+      isDeleted: false,
+    }))
+    expect(mockedFolders.update).not.toHaveBeenCalledWith('trashed-folder', expect.anything())
+  })
+
+  it('prefers active folder regardless of record ordering in database', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'mybook-root', updatedAt: '2026-07-24T00:00:00.000Z' })
+    // Inverted ordering: active comes first, trashed comes second with later timestamp
+    mockedFolders.toArray.mockResolvedValue([
+      {
+        id: 'active-folder',
+        name: 'Projects',
+        parentId: null,
+        driveFolderId: null,
+        workspaceType: 'drive',
+        createdAt: '2026-08-22T00:00:00.000Z',
+        updatedAt: '2026-08-22T00:00:00.000Z',
+        isDeleted: false,
+      },
+      {
+        id: 'trashed-folder',
+        name: 'Projects',
+        parentId: null,
+        driveFolderId: null,
+        workspaceType: 'drive',
+        createdAt: '2026-08-23T00:00:00.000Z',
+        updatedAt: '2026-08-23T00:00:00.000Z',
+        isDeleted: true,
+      },
+    ])
+
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-projects', name: 'Projects', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
+
+    await importDriveFoldersToLocal()
+
+    expect(mockedFolders.update).toHaveBeenCalledWith('active-folder', expect.objectContaining({
+      driveFolderId: 'drive-projects',
+      isDeleted: false,
+    }))
+    expect(mockedFolders.update).not.toHaveBeenCalledWith('trashed-folder', expect.anything())
+  })
+
+  it('resolves matching Drive ID correctly even if another folder has the same name', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'mybook-root', updatedAt: '2026-07-24T00:00:00.000Z' })
+    mockedFolders.toArray.mockResolvedValue([
+      {
+        id: 'folder-a',
+        name: 'Work',
+        parentId: null,
+        driveFolderId: 'drive-work-a',
+        workspaceType: 'drive',
+        createdAt: '2026-08-22T00:00:00.000Z',
+        updatedAt: '2026-08-22T00:00:00.000Z',
+        isDeleted: false,
+      },
+      {
+        id: 'folder-b',
+        name: 'Work',
+        parentId: null,
+        driveFolderId: 'drive-work-b',
+        workspaceType: 'drive',
+        createdAt: '2026-08-22T00:00:00.000Z',
+        updatedAt: '2026-08-22T00:00:00.000Z',
+        isDeleted: false,
+      },
+    ])
+
+    // Drive returns folder with ID drive-work-b
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-work-b', name: 'Work', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
+
+    await importDriveFoldersToLocal()
+
+    // Should NOT create new folder
+    expect(mockedFolders.add).not.toHaveBeenCalled()
+  })
+
+  it('does not resurrect a trashed folder when an unlinked same-name Drive folder is imported', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'mybook-root', updatedAt: '2026-07-24T00:00:00.000Z' })
+    // Only a trashed folder exists locally
+    mockedFolders.toArray.mockResolvedValue([
+      {
+        id: 'trashed-only',
+        name: 'Archive',
+        parentId: null,
+        driveFolderId: null,
+        workspaceType: 'drive',
+        createdAt: '2026-08-20T00:00:00.000Z',
+        updatedAt: '2026-08-20T00:00:00.000Z',
+        isDeleted: true,
+      },
+    ])
+
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-archive-new', name: 'Archive', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
+
+    await importDriveFoldersToLocal()
+
+    // Must NOT resurrect trashed-only
+    expect(mockedFolders.update).not.toHaveBeenCalledWith('trashed-only', expect.objectContaining({ isDeleted: false }))
+
+    // Must create a new folder record instead
+    expect(mockedFolders.add).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Archive',
+      driveFolderId: 'drive-archive-new',
+      isDeleted: false,
+    }))
+  })
+
+  it('preserves files and folders with unresolved sync when remote parent folder is deleted in Drive', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'mybook-root', updatedAt: '2026-07-24T00:00:00.000Z' })
+    mockedFolders.toArray.mockResolvedValue([
+      {
+        id: 'folder-p',
+        name: 'Parent',
+        parentId: null,
+        driveFolderId: 'drive-p',
+        workspaceType: 'drive',
+        createdAt: '2026-08-22T00:00:00.000Z',
+        updatedAt: '2026-08-22T00:00:00.000Z',
+        isDeleted: false,
+      },
+    ])
+    mockedFiles.toArray.mockResolvedValue([
+      {
+        id: 'file-with-pending-sync',
+        name: 'Unsynced Note',
+        folderId: 'folder-p',
+        type: 'document',
+        content: 'Unsynced local text',
+        baseContent: '',
+        mimeType: 'application/x-mybook-document',
+        createdAt: '2026-08-22T00:00:00.000Z',
+        updatedAt: '2026-08-22T00:00:00.000Z',
+        lastSyncedAt: null,
+        syncStatus: 'pending',
+        isDeleted: false,
+      },
+      {
+        id: 'file-already-synced',
+        name: 'Synced Note',
+        folderId: 'folder-p',
+        type: 'document',
+        content: 'Synced text',
+        baseContent: 'Synced text',
+        mimeType: 'application/x-mybook-document',
+        createdAt: '2026-08-22T00:00:00.000Z',
+        updatedAt: '2026-08-22T00:00:00.000Z',
+        lastSyncedAt: '2026-08-22T00:00:00.000Z',
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      },
+    ])
+    mockUnresolvedSyncQueue([
+      {
+        id: 'queue-file-1',
+        entityId: 'file-with-pending-sync',
+        entityType: 'file',
+        operation: 'update',
+        status: 'pending',
+        retryCount: 0,
+        createdAt: '',
+        updatedAt: '',
+        errorMessage: null,
+      },
+    ])
+
+    // Remote Drive returns empty root folder (Parent was deleted on Drive)
+    stubDriveFetch(vi.fn().mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
+
+    await importDriveFoldersToLocal()
+
+    // Folder is marked deleted
+    expect(mockedFolders.update).toHaveBeenCalledWith('folder-p', expect.objectContaining({ isDeleted: true }))
+
+    // Synced file without pending work is deleted
+    expect(mockedFiles.update).toHaveBeenCalledWith('file-already-synced', expect.objectContaining({ isDeleted: true }))
+
+    // File with pending work is NOT deleted; instead, it is detached to root so it can still sync!
+    expect(mockedFiles.update).toHaveBeenCalledWith('file-with-pending-sync', expect.objectContaining({ folderId: null }))
+    expect(mockedFiles.update).not.toHaveBeenCalledWith('file-with-pending-sync', expect.objectContaining({ isDeleted: true }))
+  })
+
+  it('terminates safely without stack overflow when Drive folders contain circular references', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'mybook-root', updatedAt: '2026-07-24T00:00:00.000Z' })
+    mockedFolders.toArray.mockResolvedValue([])
+
+    // Circular: root -> A -> B -> A
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-a', name: 'Folder A', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-b', name: 'Folder B', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-a', name: 'Folder A', mimeType: 'application/vnd.google-apps.folder' }] }) }))
+
+    await expect(importDriveFoldersToLocal()).resolves.toBeUndefined()
+  })
+
+  it('dynamically resolves or creates missing folders in importDriveFilesToLocal so files are not orphaned to root', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'mybook-root', updatedAt: '2026-07-24T00:00:00.000Z' })
+    mockedFolders.toArray.mockResolvedValue([])
+    mockedFiles.toArray.mockResolvedValue([])
+
+    // Root has child folder 'Nested' (drive-nested) which has child file 'doc-nested'
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }) // listChildFiles('mybook-root')
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-nested', name: 'Nested', mimeType: 'application/vnd.google-apps.folder' }] }) }) // listChildFolders('mybook-root')
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-file-1', name: 'Nested Doc', mimeType: 'application/x-mybook-document' }] }) }) // listChildFiles('drive-nested')
+      .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue('{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Nested content"}]}]}') }) // file content
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) })) // listChildFolders('drive-nested')
+
+    await importDriveFilesToLocal()
+
+    // Folder 'Nested' should have been created dynamically in walk
+    expect(mockedFolders.add).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Nested',
+      driveFolderId: 'drive-nested',
+      parentId: null,
+    }))
+
+    const createdFolder = mockedFolders.add.mock.calls[0]?.[0] as { id: string }
+
+    // File should have folderId set to the created folder id, NOT null!
+    expect(mockedFiles.add).toHaveBeenCalledWith(expect.objectContaining({
+      driveFileId: 'drive-file-1',
+      name: 'Nested Doc',
+      folderId: createdFolder.id,
     }))
   })
 
@@ -1641,6 +1963,121 @@ describe('googleDrive helpers', () => {
       await refreshDriveFileToLocal('local-1')
 
       expect(mockedFiles.update).not.toHaveBeenCalled()
+    })
+
+    it('queues an upload and saves pending syncStatus when 3-way merge succeeds', async () => {
+      const baseJson = JSON.stringify({
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Paragraph 1' }] },
+          { type: 'paragraph', content: [{ type: 'text', text: 'Paragraph 2' }] },
+        ],
+      })
+      const localJson = JSON.stringify({
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Local edited 1' }] },
+          { type: 'paragraph', content: [{ type: 'text', text: 'Paragraph 2' }] },
+        ],
+      })
+
+      mockedFiles.get.mockResolvedValue({
+        id: 'local-1',
+        driveFileId: 'drive-1',
+        name: 'Doc',
+        type: 'document',
+        mimeType: 'application/x-mybook-document',
+        content: localJson,
+        baseContent: baseJson,
+        syncStatus: 'backed-up',
+        lastSyncedAt: '2026-10-03T11:00:00.000Z',
+      })
+
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'drive-1',
+            name: 'Doc.md',
+            mimeType: 'text/markdown',
+            modifiedTime: '2026-10-03T12:00:00.000Z',
+            trashed: false,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          text: vi.fn().mockResolvedValue('Paragraph 1\n\nRemote edited 2'),
+        })
+
+      stubDriveFetch(fetchMock)
+
+      const result = await refreshDriveFileToLocal('local-1')
+      expect(result.updated).toBe(true)
+      expect(mockedFiles.update).toHaveBeenCalledWith('local-1', expect.objectContaining({
+        syncStatus: 'pending',
+      }))
+      expect(mockedSyncQueue.add).toHaveBeenCalledWith(expect.objectContaining({
+        entityId: 'local-1',
+        entityType: 'file',
+        operation: 'update',
+        status: 'pending',
+      }))
+    })
+
+    it('keeps local edits and queues an upload without marking backed-up when remote content is unchanged from base', async () => {
+      const baseJson = JSON.stringify({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'base content' }] }],
+      })
+      const localJson = JSON.stringify({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'local changed' }] }],
+      })
+
+      mockedFiles.get.mockResolvedValue({
+        id: 'local-1',
+        driveFileId: 'drive-1',
+        name: 'Doc',
+        type: 'document',
+        mimeType: 'application/x-mybook-document',
+        content: localJson,
+        baseContent: baseJson,
+        syncStatus: 'backed-up',
+        lastSyncedAt: '2026-10-03T11:00:00.000Z',
+      })
+
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'drive-1',
+            name: 'Doc.md',
+            mimeType: 'text/markdown',
+            modifiedTime: '2026-10-03T12:00:00.000Z',
+            trashed: false,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          text: vi.fn().mockResolvedValue('base content'),
+        })
+
+      stubDriveFetch(fetchMock)
+
+      const result = await refreshDriveFileToLocal('local-1')
+      expect(result.updated).toBe(false)
+      expect(mockedFiles.update).toHaveBeenCalledWith('local-1', expect.objectContaining({
+        syncStatus: 'pending',
+      }))
+      expect(mockedFiles.update).not.toHaveBeenCalledWith('local-1', expect.objectContaining({
+        syncStatus: 'backed-up',
+      }))
+      expect(mockedSyncQueue.add).toHaveBeenCalledWith(expect.objectContaining({
+        entityId: 'local-1',
+        entityType: 'file',
+        operation: 'update',
+        status: 'pending',
+      }))
     })
   })
 })

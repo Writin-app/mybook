@@ -18,6 +18,9 @@ export function useAutosave(file: MyBookFile | undefined) {
   const fileRef = useRef(file)
   const hydratedFileIdRef = useRef<string | null>(null)
   const inFlightContentRef = useRef<string | null>(null)
+  const inFlightPromiseRef = useRef<Promise<boolean> | null>(null)
+  const replaceEpochRef = useRef(0)
+  const saveTimeoutRef = useRef<number | null>(null)
 
   useEffect(() => { fileRef.current = file }, [file])
   useEffect(() => {
@@ -62,21 +65,72 @@ export function useAutosave(file: MyBookFile | undefined) {
   const save = useCallback(async () => {
     const currentFile = fileRef.current
     if (!currentFile || contentRef.current === lastSaved.current) return true
+    if (inFlightPromiseRef.current !== null) {
+      // An update is already in flight. A trailing save will be scheduled when it finishes.
+      return inFlightPromiseRef.current
+    }
+
+    const savingContent = contentRef.current
+    const epoch = replaceEpochRef.current
+    inFlightContentRef.current = savingContent
     setStatus('saving-locally')
-    inFlightContentRef.current = contentRef.current
-    const result = await fileRepository.update(currentFile.id, { content: contentRef.current, syncStatus: isLocalWorkspace() ? 'local' : 'pending' })
-    if (!result.success) { inFlightContentRef.current = null; setStatus('failed'); return false }
-    lastSaved.current = contentRef.current
-    inFlightContentRef.current = null
-    setStatus('saved-locally')
-    window.setTimeout(() => setStatus(isLocalWorkspace() ? 'local' : (fileRef.current?.syncStatus ?? (navigator.onLine ? 'pending' : 'offline'))), 700)
-    return true
+
+    const flight = (async () => {
+      const result = await fileRepository.update(currentFile.id, {
+        content: savingContent,
+        syncStatus: isLocalWorkspace() ? 'local' : 'pending',
+      })
+
+      if (replaceEpochRef.current !== epoch) {
+        inFlightContentRef.current = null
+        return true
+      }
+
+      if (!result.success) {
+        inFlightContentRef.current = null
+        setStatus('failed')
+        return false
+      }
+
+      lastSaved.current = savingContent
+      inFlightContentRef.current = null
+      setStatus('saved-locally')
+      window.setTimeout(() => {
+        if (replaceEpochRef.current === epoch) {
+          setStatus(isLocalWorkspace() ? 'local' : (fileRef.current?.syncStatus ?? (navigator.onLine ? 'pending' : 'offline')))
+        }
+      }, 700)
+
+      if (contentRef.current !== savingContent) {
+        // Newer edits were made while the save was in flight. Schedule a follow-up save.
+        if (saveTimeoutRef.current !== null) {
+          window.clearTimeout(saveTimeoutRef.current)
+        }
+        saveTimeoutRef.current = window.setTimeout(() => {
+          saveTimeoutRef.current = null
+          void save()
+        }, SAVE_DELAY)
+      }
+
+      return true
+    })().finally(() => {
+      inFlightPromiseRef.current = null
+    })
+
+    inFlightPromiseRef.current = flight
+    return flight
   }, [])
 
   useEffect(() => {
     if (!file || content === lastSaved.current) return
     const timer = window.setTimeout(() => void save(), SAVE_DELAY)
-    return () => window.clearTimeout(timer)
+    return () => {
+      window.clearTimeout(timer)
+      if (saveTimeoutRef.current !== null) {
+        window.clearTimeout(saveTimeoutRef.current)
+        saveTimeoutRef.current = null
+      }
+    }
   }, [content, file, save])
 
   useEffect(() => {
@@ -95,14 +149,30 @@ export function useAutosave(file: MyBookFile | undefined) {
     setContent(value); contentRef.current = value; setStatus('editing')
   }
 
-  const replaceContent = (value: string, nextStatus: EditorSaveStatus = 'saved-locally') => {
+  const replaceContent = useCallback((value: string, nextStatus: EditorSaveStatus = 'saved-locally') => {
+    replaceEpochRef.current += 1
+    if (saveTimeoutRef.current !== null) {
+      window.clearTimeout(saveTimeoutRef.current)
+      saveTimeoutRef.current = null
+    }
+    inFlightContentRef.current = null
     setContent(value)
     contentRef.current = value
     lastSaved.current = value
     setStatus(nextStatus)
-  }
+  }, [])
+
+  const waitForPendingSave = useCallback(async () => {
+    if (inFlightPromiseRef.current) {
+      try {
+        await inFlightPromiseRef.current
+      } catch {
+        // Ignore
+      }
+    }
+  }, [])
 
   const hasUnsavedChanges = useCallback(() => contentRef.current !== lastSaved.current, [])
 
-  return { content, hydratedFileId, isHydrated, status, setContent: changeContent, replaceContent, save, hasUnsavedChanges }
+  return { content, hydratedFileId, isHydrated, status, setContent: changeContent, replaceContent, save, hasUnsavedChanges, waitForPendingSave }
 }
