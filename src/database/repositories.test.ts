@@ -2,8 +2,9 @@ import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { db } from './db'
-import { clearAccountDriveCache, fileRepository, folderRepository, nextFileName, onClearAccountDriveCache, processPendingDriveFolderSync, queueLocalItemsForDriveBackup, uniqueFileName } from './repositories'
-import { ensureMyBookDriveFolder, ensureVisibleFolderInParent, permanentlyDeleteDriveFile, restoreDriveFolder, trashDriveFolder } from '../services/googleDrive'
+import { clearAccountDriveCache, fileRepository, folderRepository, nextFileName, onClearAccountDriveCache, processPendingDriveFolderSync, processPendingDriveSync, queueLocalItemsForDriveBackup, uniqueFileName } from './repositories'
+import { backupDocumentToDrive, backupSpreadsheetToDrive, ensureMyBookDriveFolder, ensureVisibleFolderInParent, permanentlyDeleteDriveFile, restoreDriveFolder, trashDriveFolder } from '../services/googleDrive'
+import { keepLocalVersion, recordRemoteConflict } from '../services/syncConflicts'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 
 vi.mock('../services/googleDrive', () => ({
@@ -19,6 +20,8 @@ vi.mock('../services/googleDrive', () => ({
 describe('IndexedDB repositories', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    vi.mocked(backupDocumentToDrive).mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: true })
+    vi.mocked(backupSpreadsheetToDrive).mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: true })
     vi.mocked(ensureMyBookDriveFolder).mockResolvedValue({ success: false, error: 'offline' })
     vi.mocked(ensureVisibleFolderInParent).mockReset()
     await db.delete()
@@ -929,6 +932,461 @@ describe('IndexedDB repositories', () => {
     const folders = await folderRepository.list()
     expect(folders.map((f) => f.name)).toContain('Work')
     expect(folders.map((f) => f.name)).not.toContain('Meeting Notes_attachments')
+  })
+
+  it('keeps sync queue and file status pending when edit arrives during active upload, then uploads latest content', async () => {
+    vi.stubGlobal('navigator', { onLine: false })
+    useWorkspaceStore.setState({ mode: 'drive' })
+    vi.mocked(ensureMyBookDriveFolder).mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: false })
+
+    function createDeferred<T>() {
+      let resolve!: (value: T | PromiseLike<T>) => void
+      let reject!: (reason?: unknown) => void
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res
+        reject = rej
+      })
+      return { promise, resolve, reject }
+    }
+
+    const upload1Deferred = createDeferred<Awaited<ReturnType<typeof backupDocumentToDrive>>>()
+    const upload2Deferred = createDeferred<Awaited<ReturnType<typeof backupDocumentToDrive>>>()
+
+    const calls: Array<{ content: string; title: string }> = []
+    vi.mocked(backupDocumentToDrive).mockImplementation(async (input) => {
+      calls.push({ content: input.content, title: input.title })
+      if (calls.length === 1) {
+        return upload1Deferred.promise
+      }
+      return upload2Deferred.promise
+    })
+
+    const file = (await fileRepository.create('document')).data!
+    await fileRepository.update(file.id, { content: 'version 1' })
+
+    // Now go online and kick off Drive sync
+    vi.stubGlobal('navigator', { onLine: true })
+    const syncFlight = processPendingDriveSync()
+
+    // Wait until upload 1 is called
+    while (calls.length === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.content).toBe('version 1')
+
+    // While upload 1 is in-flight, a new local edit arrives
+    await fileRepository.update(file.id, { content: 'version 2' })
+
+    // Queue item should have been reverted to 'pending' by queueFileSync
+    const queueItemDuringUpload = (await db.syncQueue.toArray())[0]
+    expect(queueItemDuringUpload?.status).toBe('pending')
+
+    // First upload completes
+    upload1Deferred.resolve({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: true })
+
+    // Wait until upload 2 is initiated with the new version
+    while (calls.length < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    expect(calls).toHaveLength(2)
+    expect(calls[1]?.content).toBe('version 2')
+
+    // Before upload 2 resolves, file must still be pending with content version 2
+    const fileDuringSecondUpload = await db.files.get(file.id)
+    expect(fileDuringSecondUpload?.syncStatus).toBe('pending')
+    expect(fileDuringSecondUpload?.content).toBe('version 2')
+
+    // Now resolve the second upload
+    upload2Deferred.resolve({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: false })
+    await syncFlight
+
+    // After second upload finishes, file is backed-up and queue is completed
+    const finalFile = await db.files.get(file.id)
+    expect(finalFile?.syncStatus).toBe('backed-up')
+    expect(finalFile?.syncError).toBeNull()
+
+    const finalQueue = await db.syncQueue.toArray()
+    expect(finalQueue[0]?.status).toBe('completed')
+  })
+
+  it('marks sync failed and records retry on upload error, and retries on subsequent sync', async () => {
+    vi.stubGlobal('navigator', { onLine: false })
+    useWorkspaceStore.setState({ mode: 'drive' })
+    vi.mocked(ensureMyBookDriveFolder).mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: false })
+
+    const file = (await fileRepository.create('document')).data!
+    await fileRepository.update(file.id, { content: 'retry test content' })
+
+    // Now go online with upload failing
+    vi.stubGlobal('navigator', { onLine: true })
+    vi.mocked(backupDocumentToDrive).mockResolvedValueOnce({ success: false, error: 'Network timeout' })
+
+    await processPendingDriveSync()
+
+    // Should be failed with error recorded and retryCount incremented
+    const failedFile = await db.files.get(file.id)
+    expect(failedFile?.syncStatus).toBe('failed')
+    expect(failedFile?.syncError).toBe('Network timeout')
+
+    const failedQueueItem = (await db.syncQueue.toArray())[0]
+    expect(failedQueueItem?.status).toBe('failed')
+    expect(failedQueueItem?.retryCount).toBe(1)
+    expect(failedQueueItem?.errorMessage).toBe('Network timeout')
+
+    // Next sync attempt succeeds
+    vi.mocked(backupDocumentToDrive).mockResolvedValueOnce({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: true })
+    await processPendingDriveSync()
+
+    const recoveredFile = await db.files.get(file.id)
+    expect(recoveredFile?.syncStatus).toBe('backed-up')
+    expect(recoveredFile?.syncError).toBeNull()
+
+    const completedQueueItem = (await db.syncQueue.toArray())[0]
+    expect(completedQueueItem?.status).toBe('completed')
+  })
+
+  it('keeps queue item pending when edit arrives during failed upload attempt', async () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    useWorkspaceStore.setState({ mode: 'drive' })
+    vi.mocked(ensureMyBookDriveFolder).mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: false })
+
+    function createDeferred<T>() {
+      let resolve!: (value: T | PromiseLike<T>) => void
+      let reject!: (reason?: unknown) => void
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res
+        reject = rej
+      })
+      return { promise, resolve, reject }
+    }
+
+    const upload1Deferred = createDeferred<Awaited<ReturnType<typeof backupDocumentToDrive>>>()
+    const calls: string[] = []
+
+    vi.mocked(backupDocumentToDrive).mockImplementation(async (input) => {
+      calls.push(input.content)
+      if (calls.length === 1) {
+        return upload1Deferred.promise
+      }
+      return { success: true, folderId: 'mybook-root', folderName: 'MyBook', created: false }
+    })
+
+    const file = (await fileRepository.create('document')).data!
+    await fileRepository.update(file.id, { content: 'v1' })
+
+    const syncFlight = processPendingDriveSync()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    // New edit while upload 1 is failing
+    await fileRepository.update(file.id, { content: 'v2' })
+
+    // Upload 1 fails
+    upload1Deferred.resolve({ success: false, error: 'Temporary service error' })
+
+    // Entire sync flight finishes (it re-runs because rerun was requested)
+    await syncFlight
+
+    // Both calls occurred
+    expect(calls).toEqual(['v1', 'v2'])
+
+    // Final state is backed-up with v2
+    const finalFile = await db.files.get(file.id)
+    expect(finalFile?.syncStatus).toBe('backed-up')
+    expect(finalFile?.content).toBe('v2')
+    expect((await db.syncQueue.toArray())[0]?.status).toBe('completed')
+  })
+
+  it('coalesces rapid repeated file updates into a single queue item without duplicates', async () => {
+    vi.stubGlobal('navigator', { onLine: false }) // Offline so they accumulate in queue
+    useWorkspaceStore.setState({ mode: 'drive' })
+
+    const file = (await fileRepository.create('document')).data!
+    await fileRepository.update(file.id, { content: 'edit 1' })
+    await fileRepository.update(file.id, { content: 'edit 2' })
+    await fileRepository.update(file.id, { content: 'edit 3' })
+
+    const queueItems = await db.syncQueue.filter((item) => item.entityType === 'file' && item.entityId === file.id).toArray()
+    expect(queueItems).toHaveLength(1)
+    expect(queueItems[0]?.status).toBe('pending')
+
+    // Now go online and sync
+    vi.stubGlobal('navigator', { onLine: true })
+    vi.mocked(ensureMyBookDriveFolder).mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: false })
+    vi.mocked(backupDocumentToDrive).mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: true })
+
+    await processPendingDriveSync()
+
+    const finalQueueItems = await db.syncQueue.filter((item) => item.entityType === 'file' && item.entityId === file.id).toArray()
+    expect(finalQueueItems).toHaveLength(1)
+    expect(finalQueueItems[0]?.status).toBe('completed')
+    expect((await db.files.get(file.id))?.syncStatus).toBe('backed-up')
+  })
+
+  it('guards against circular parent references in folderRepository.create and folderRepository.update', async () => {
+    useWorkspaceStore.setState({ mode: 'drive' })
+    const now = new Date().toISOString()
+    const folderAId = crypto.randomUUID()
+    const folderBId = crypto.randomUUID()
+
+    // Manually create circular reference: A -> B -> A
+    await db.folders.add({
+      id: folderAId,
+      name: 'Folder A',
+      parentId: folderBId,
+      driveFolderId: null,
+      workspaceType: 'drive',
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+    })
+    await db.folders.add({
+      id: folderBId,
+      name: 'Folder B',
+      parentId: folderAId,
+      driveFolderId: null,
+      workspaceType: 'drive',
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+    })
+
+    // create on folderA should terminate safely without hanging
+    const createResult = await folderRepository.create('Child Folder', folderAId)
+    expect(createResult).toBeDefined()
+
+    // update should terminate safely without hanging
+    const updateResult = await folderRepository.update(folderAId, { parentId: folderBId })
+    expect(updateResult).toBeDefined()
+  })
+
+  it('deduplicates logical folders in folderRepository.list and search', async () => {
+    useWorkspaceStore.setState({ mode: 'drive' })
+    const now = new Date().toISOString()
+    const id1 = crypto.randomUUID()
+    const id2 = crypto.randomUUID()
+
+    // Two folders with the same name and parent, one with driveFolderId and one without
+    await db.folders.add({
+      id: id1,
+      name: 'Duplicate Folder',
+      parentId: null,
+      driveFolderId: 'drive-folder-123',
+      workspaceType: 'drive',
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+    })
+    await db.folders.add({
+      id: id2,
+      name: 'Duplicate Folder',
+      parentId: null,
+      driveFolderId: null,
+      workspaceType: 'drive',
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+    })
+
+    const list = await folderRepository.list()
+    const matching = list.filter((f) => f.name === 'Duplicate Folder')
+    expect(matching).toHaveLength(1)
+    expect(matching[0]?.driveFolderId).toBe('drive-folder-123')
+
+    const search = await folderRepository.search('Duplicate')
+    const matchingSearch = search.filter((f) => f.name === 'Duplicate Folder')
+    expect(matchingSearch).toHaveLength(1)
+    expect(matchingSearch[0]?.driveFolderId).toBe('drive-folder-123')
+  })
+
+  it('preserves distinct folders when two same-name folders have different Drive IDs under the same parent', async () => {
+    useWorkspaceStore.setState({ mode: 'drive' })
+    const now = new Date().toISOString()
+    const id1 = crypto.randomUUID()
+    const id2 = crypto.randomUUID()
+
+    // Two distinct Google Drive folders with the same name under the same parent
+    await db.folders.add({
+      id: id1,
+      name: 'Work',
+      parentId: null,
+      driveFolderId: 'drive-folder-alpha',
+      workspaceType: 'drive',
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+    })
+    await db.folders.add({
+      id: id2,
+      name: 'Work',
+      parentId: null,
+      driveFolderId: 'drive-folder-beta',
+      workspaceType: 'drive',
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+    })
+
+    const list = await folderRepository.list()
+    const matching = list.filter((f) => f.name === 'Work' && f.parentId === null)
+    expect(matching).toHaveLength(2)
+    const driveIds = matching.map((f) => f.driveFolderId).sort()
+    expect(driveIds).toEqual(['drive-folder-alpha', 'drive-folder-beta'])
+
+    const search = await folderRepository.search('Work')
+    const matchingSearch = search.filter((f) => f.name === 'Work' && f.parentId === null)
+    expect(matchingSearch).toHaveLength(2)
+  })
+
+  it('preserves same-name folders under different parents', async () => {
+    useWorkspaceStore.setState({ mode: 'drive' })
+    const now = new Date().toISOString()
+    const parentFolderId = crypto.randomUUID()
+
+    await db.folders.add({
+      id: parentFolderId,
+      name: 'Parent Container',
+      parentId: null,
+      driveFolderId: 'drive-parent',
+      workspaceType: 'drive',
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+    })
+    await db.folders.add({
+      id: crypto.randomUUID(),
+      name: 'Reports',
+      parentId: null,
+      driveFolderId: 'drive-root-reports',
+      workspaceType: 'drive',
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+    })
+    await db.folders.add({
+      id: crypto.randomUUID(),
+      name: 'Reports',
+      parentId: parentFolderId,
+      driveFolderId: 'drive-nested-reports',
+      workspaceType: 'drive',
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+    })
+
+    const list = await folderRepository.list()
+    const matching = list.filter((f) => f.name === 'Reports')
+    expect(matching).toHaveLength(2)
+    expect(matching.some((f) => f.parentId === null)).toBe(true)
+    expect(matching.some((f) => f.parentId === parentFolderId)).toBe(true)
+  })
+
+  it('detaches file to root when syncing if its parent folder was deleted', async () => {
+    vi.stubGlobal('navigator', { onLine: false })
+    useWorkspaceStore.setState({ mode: 'drive' })
+
+    const folderRes = await folderRepository.create('Parent To Delete')
+    const folder = folderRes.data!
+
+    const fileRes = await fileRepository.create('document', folder.id)
+    const file = fileRes.data!
+
+    // Mark parent folder as deleted (e.g. deleted remotely on Drive)
+    await db.folders.update(folder.id, { isDeleted: true })
+
+    // Verify folder is deleted
+    const deletedFolder = await db.folders.get(folder.id)
+    expect(deletedFolder?.isDeleted).toBe(true)
+
+    // Now update file content to queue a sync
+    await fileRepository.update(file.id, { content: 'hello from detached file' })
+
+    // Go online
+    vi.stubGlobal('navigator', { onLine: true })
+    vi.mocked(ensureMyBookDriveFolder).mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: false })
+    vi.mocked(backupDocumentToDrive).mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: true })
+
+    await processPendingDriveSync()
+
+    // File should have had its folderId detached to null in db and backed up successfully
+    const updatedFile = await db.files.get(file.id)
+    expect(updatedFile?.folderId).toBeNull()
+    expect(updatedFile?.syncStatus).toBe('backed-up')
+    expect(vi.mocked(backupDocumentToDrive)).toHaveBeenCalledWith(expect.objectContaining({
+      fileId: file.id,
+      folderId: null,
+    }))
+  })
+
+  it('restores file to root if its parent folder was deleted while in trash', async () => {
+    useWorkspaceStore.setState({ mode: 'drive' })
+    const folderRes = await folderRepository.create('Parent Folder')
+    const folder = folderRes.data!
+
+    const fileRes = await fileRepository.create('document', folder.id)
+    const file = fileRes.data!
+
+    // Soft delete the file
+    await fileRepository.delete(file.id)
+    // Soft delete the parent folder
+    await folderRepository.delete(folder.id)
+
+    // Restore the file
+    const restoreRes = await fileRepository.restore(file.id)
+    expect(restoreRes.success).toBe(true)
+
+    // File should be restored and detached to root (null)
+    const restoredFile = await db.files.get(file.id)
+    expect(restoredFile?.isDeleted).toBe(false)
+    expect(restoredFile?.folderId).toBeNull()
+  })
+
+  it('does not upload to Drive while syncConflict is active and does not mark queue item completed', async () => {
+    useWorkspaceStore.setState({ mode: 'drive' })
+    vi.stubGlobal('navigator', { onLine: true })
+    vi.mocked(ensureMyBookDriveFolder).mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: false })
+    vi.mocked(backupDocumentToDrive).mockReset()
+    vi.mocked(backupDocumentToDrive).mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: true })
+
+    const file = (await fileRepository.create('document')).data!
+    await fileRepository.update(file.id, { content: 'local draft with conflict' })
+
+    // A conflict is recorded
+    const now = new Date().toISOString()
+    const conflict = await recordRemoteConflict(file.id, 'remote colliding draft', now)
+    expect(conflict).toBeDefined()
+
+    // Clear mock calls
+    vi.mocked(backupDocumentToDrive).mockClear()
+
+    // Trigger Drive sync
+    await processPendingDriveSync()
+
+    // Verify backupDocumentToDrive was NOT called
+    expect(vi.mocked(backupDocumentToDrive)).not.toHaveBeenCalled()
+
+    // Verify queue item was NOT marked completed or deleted; it must remain pending!
+    const queueItems = await db.syncQueue.filter((item) => item.entityType === 'file' && item.entityId === file.id).toArray()
+    expect(queueItems.length).toBeGreaterThan(0)
+    const activeQueueItem = queueItems.find((item) => item.status !== 'completed')
+    expect(activeQueueItem).toBeDefined()
+    expect(activeQueueItem?.status).toBe('pending')
+
+    // Now resolve the conflict by keeping local version
+    await keepLocalVersion(file.id, conflict!.versionId)
+
+    // Trigger Drive sync again
+    await processPendingDriveSync()
+
+    // Now backupDocumentToDrive WAS called and queue item is completed!
+    expect(vi.mocked(backupDocumentToDrive)).toHaveBeenCalledWith(expect.objectContaining({
+      fileId: file.id,
+      content: 'local draft with conflict',
+    }))
+
+    const finalQueueItem = await db.syncQueue.get(activeQueueItem!.id)
+    expect(finalQueueItem?.status).toBe('completed')
   })
 })
 

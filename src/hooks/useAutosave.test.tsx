@@ -15,8 +15,14 @@ const file = (content: string): MyBookFile => ({
 })
 
 describe('useAutosave external updates', () => {
-  beforeEach(() => vi.clearAllMocks())
-  afterEach(() => cleanup())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    cleanup()
+  })
 
   it('adopts incoming content when there are no unsaved edits', () => {
     const { result, rerender } = renderHook(({ f }) => useAutosave(f), { initialProps: { f: file('a') } })
@@ -50,5 +56,93 @@ describe('useAutosave external updates', () => {
 
     expect(fileRepository.update).toHaveBeenCalledWith('file-1', expect.objectContaining({ content: 'typed just before switching' }))
     expect(result.current.content).toBe('other')
+  })
+
+  it('does not overwrite newer typing when an in-flight save resolves and handles trailing save', async () => {
+    let resolveFirstUpdate!: (value: { success: boolean }) => void
+    const firstUpdatePromise = new Promise<{ success: boolean }>((resolve) => {
+      resolveFirstUpdate = resolve
+    })
+
+    const updateMock = vi.mocked(fileRepository.update)
+    updateMock.mockImplementationOnce(() => firstUpdatePromise)
+
+    const { result, rerender } = renderHook(({ f }) => useAutosave(f), { initialProps: { f: file('initial') } })
+
+    // Step 1: User types first edit
+    act(() => result.current.setContent('first edit'))
+    expect(result.current.hasUnsavedChanges()).toBe(true)
+
+    // Trigger save for first edit (now in flight)
+    let savePromise: Promise<boolean>
+    act(() => {
+      savePromise = result.current.save()
+    })
+
+    expect(updateMock).toHaveBeenCalledTimes(1)
+    expect(updateMock).toHaveBeenCalledWith('file-1', expect.objectContaining({ content: 'first edit' }))
+
+    // Step 2: User types second edit while first save is still in flight
+    act(() => result.current.setContent('second edit'))
+    expect(result.current.content).toBe('second edit')
+
+    // Step 3: First save resolves
+    await act(async () => {
+      resolveFirstUpdate({ success: true })
+      await savePromise
+    })
+
+    // Step 4: Dexie emits the record that was just saved ('first edit')
+    rerender({ f: file('first edit') })
+
+    // CRITICAL ASSERTION: The active editor content MUST NOT be overwritten by 'first edit'
+    expect(result.current.content).toBe('second edit')
+    expect(result.current.hasUnsavedChanges()).toBe(true)
+
+    // Step 5: Advance timers for trailing save
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+
+    // Verify second save runs for 'second edit'
+    expect(updateMock).toHaveBeenCalledTimes(2)
+    expect(updateMock).toHaveBeenCalledWith('file-1', expect.objectContaining({ content: 'second edit' }))
+    expect(result.current.hasUnsavedChanges()).toBe(false)
+  })
+
+  it('does not overwrite content or schedule trailing save when replaceContent runs during an in-flight save', async () => {
+    let resolveSave!: (value: { success: boolean }) => void
+    const savePromise = new Promise<{ success: boolean }>((res) => { resolveSave = res })
+    const updateMock = vi.mocked(fileRepository.update).mockImplementationOnce(() => savePromise)
+
+    const initial = file('initial')
+    const { result } = renderHook(() => useAutosave(initial))
+
+    // Step 1: User types local edit and triggers save
+    act(() => result.current.setContent('local edit'))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    expect(updateMock).toHaveBeenCalledTimes(1)
+
+    // Step 2: While save is in flight, remote version is applied via replaceContent
+    act(() => result.current.replaceContent('remote version', 'backed-up'))
+    expect(result.current.content).toBe('remote version')
+
+    // Step 3: In-flight save finishes
+    await act(async () => {
+      resolveSave({ success: true })
+      await result.current.waitForPendingSave()
+    })
+
+    // Advance any debounced timers
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+
+    // Step 4: Ensure content is still 'remote version' and no second save was scheduled
+    expect(result.current.content).toBe('remote version')
+    expect(result.current.hasUnsavedChanges()).toBe(false)
+    expect(updateMock).toHaveBeenCalledTimes(1)
   })
 })
