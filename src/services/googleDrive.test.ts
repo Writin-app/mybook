@@ -2079,5 +2079,99 @@ describe('googleDrive helpers', () => {
         status: 'pending',
       }))
     })
+
+    it('preserves pending local typing when initial remote upload is empty document without raising conflict on new document', async () => {
+      const localJson = JSON.stringify({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello new document' }] }],
+      })
+
+      mockedFiles.get.mockResolvedValue({
+        id: 'local-new',
+        driveFileId: 'drive-new',
+        name: 'Untitled',
+        type: 'document',
+        mimeType: 'application/x-mybook-document',
+        content: localJson,
+        baseContent: undefined,
+        syncStatus: 'pending',
+        lastSyncedAt: '2026-10-03T11:00:00.000Z',
+      })
+
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'drive-new',
+            name: 'Untitled.md',
+            mimeType: 'text/markdown',
+            modifiedTime: '2026-10-03T12:00:00.000Z',
+            trashed: false,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          text: vi.fn().mockResolvedValue(''), // Initial empty markdown upload on Drive
+        })
+
+      stubDriveFetch(fetchMock)
+
+      const result = await refreshDriveFileToLocal('local-new')
+
+      expect(result.updated).toBe(false)
+      // Must NOT record a conflict
+      expect(db.fileVersions.add).not.toHaveBeenCalled()
+      expect(mockedFiles.update).not.toHaveBeenCalledWith('local-new', expect.objectContaining({
+        syncConflict: expect.anything(),
+      }))
+      // Must advance lastSyncedAt to remote's timestamp and preserve pending sync status
+      expect(mockedFiles.update).toHaveBeenCalledWith('local-new', expect.objectContaining({
+        lastSyncedAt: '2026-10-03T12:00:00.000Z',
+        syncStatus: 'pending',
+      }))
+      // Must enqueue upload for the local edits
+      expect(mockedSyncQueue.add).toHaveBeenCalledWith(expect.objectContaining({
+        entityId: 'local-new',
+        entityType: 'file',
+        operation: 'update',
+        status: 'pending',
+      }))
+    })
+
+    it('does not create conflict records across repeated reconciliation cycles on newly created documents', async () => {
+      mockedFiles.get.mockResolvedValue({
+        id: 'local-new-2',
+        driveFileId: 'drive-new-2',
+        name: 'Untitled',
+        type: 'document',
+        mimeType: 'application/x-mybook-document',
+        content: JSON.stringify({
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Typing more...' }] }],
+        }),
+        baseContent: undefined,
+        syncStatus: 'pending',
+        lastSyncedAt: '2026-10-03T12:00:00.000Z',
+      })
+
+      const fetchMock = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          id: 'drive-new-2',
+          name: 'Untitled.md',
+          mimeType: 'text/markdown',
+          modifiedTime: '2026-10-03T12:00:00.000Z',
+          trashed: false,
+        }),
+      })
+
+      stubDriveFetch(fetchMock)
+
+      const result = await refreshDriveFileToLocal('local-new-2')
+
+      expect(result.updated).toBe(false)
+      expect(db.fileVersions.add).not.toHaveBeenCalled()
+      expect(mockedFiles.update).not.toHaveBeenCalled()
+    })
   })
 })
