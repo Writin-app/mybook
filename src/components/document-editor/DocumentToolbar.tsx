@@ -24,6 +24,7 @@ import {
 import type { Editor } from '@tiptap/react'
 import { useEffect, useState } from 'react'
 
+import { useKeyboardOffset } from '../../hooks/useVisualViewport'
 import { MobileBottomSheet } from '../common/MobileBottomSheet'
 import { calloutNode } from './extensions/Callout'
 import { toggleBlockNode } from './extensions/ToggleBlock'
@@ -76,33 +77,6 @@ function ToolButton({ label, icon: Icon, active, disabled, onPress }: ToolButton
   )
 }
 
-function useKeyboardOffset(enabled: boolean) {
-  const [offset, setOffset] = useState(0)
-
-  useEffect(() => {
-    if (!enabled) return
-    const viewport = window.visualViewport
-    const update = () => {
-      const nextOffset = viewport
-        ? Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop))
-        : 0
-      setOffset(nextOffset)
-      document.documentElement.style.setProperty('--mybook-keyboard-offset', `${nextOffset}px`)
-    }
-    update()
-    viewport?.addEventListener('resize', update)
-    viewport?.addEventListener('scroll', update)
-    window.addEventListener('orientationchange', update)
-    return () => {
-      viewport?.removeEventListener('resize', update)
-      viewport?.removeEventListener('scroll', update)
-      window.removeEventListener('orientationchange', update)
-      document.documentElement.style.removeProperty('--mybook-keyboard-offset')
-    }
-  }, [enabled])
-
-  return offset
-}
 
 function ToolbarControls({
   editor,
@@ -111,6 +85,7 @@ function ToolbarControls({
   onInsertFile,
   onInsertImage,
   onInsertBlock,
+  onEditLink,
 }: {
   editor: Editor
   idPrefix: string
@@ -118,8 +93,13 @@ function ToolbarControls({
   onInsertFile?: () => void
   onInsertImage?: () => void
   onInsertBlock?: (commandId: string) => void
+  onEditLink?: () => void
 }) {
   const setLink = () => {
+    if (onEditLink && !editor.state.selection.empty) {
+      onEditLink()
+      return
+    }
     const current = editor.getAttributes('link').href as string | undefined
     const url = window.prompt('Link URL', current ?? 'https://')
     if (url === null) return
@@ -347,7 +327,21 @@ function ToolbarControls({
   )
 }
 
-export function DocumentToolbar({ editor, onInsertFile, onInsertImage, onInsertBlock, variant = 'mobile' }: { editor: Editor; onInsertFile?: () => void; onInsertImage?: () => void; onInsertBlock?: (commandId: string) => void; variant?: 'desktop' | 'mobile' }) {
+export function DocumentToolbar({
+  editor,
+  onInsertFile,
+  onInsertImage,
+  onInsertBlock,
+  onEditLink,
+  variant = 'mobile',
+}: {
+  editor: Editor
+  onInsertFile?: () => void
+  onInsertImage?: () => void
+  onInsertBlock?: (commandId: string) => void
+  onEditLink?: () => void
+  variant?: 'desktop' | 'mobile'
+}) {
   const [, setVersion] = useState(0)
   const keyboardOffset = useKeyboardOffset(variant === 'mobile')
 
@@ -365,7 +359,7 @@ export function DocumentToolbar({ editor, onInsertFile, onInsertImage, onInsertB
     return (
       <div role="toolbar" aria-label="Document formatting" className="hidden border-t border-[var(--app-border)] md:block">
         <div className="scrollbar flex h-14 w-full items-center gap-1 overflow-x-auto overscroll-x-contain px-8 [scrollbar-width:thin]">
-          <ToolbarControls editor={editor} idPrefix="desktop" onInsertFile={onInsertFile} onInsertImage={onInsertImage} onInsertBlock={onInsertBlock} variant="desktop" />
+          <ToolbarControls editor={editor} idPrefix="desktop" onInsertFile={onInsertFile} onInsertImage={onInsertImage} onInsertBlock={onInsertBlock} onEditLink={onEditLink} variant="desktop" />
         </div>
       </div>
     )
@@ -374,7 +368,7 @@ export function DocumentToolbar({ editor, onInsertFile, onInsertImage, onInsertB
   return (
     <div role="toolbar" aria-label="Document formatting" className="mybook-mobile-document-toolbar fixed inset-x-0 z-20 border-t border-[var(--app-border)] bg-[var(--app-surface)] pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_20px_rgba(0,0,0,0.06)] transition-[bottom] duration-150 md:hidden" style={{ bottom: keyboardOffset }}>
       <div className="scrollbar mx-auto flex h-16 max-w-4xl items-center gap-1 overflow-x-auto overscroll-x-contain px-2 [scrollbar-width:thin]">
-        <ToolbarControls editor={editor} idPrefix="mobile" onInsertFile={onInsertFile} onInsertImage={onInsertImage} onInsertBlock={onInsertBlock} variant="mobile" />
+        <ToolbarControls editor={editor} idPrefix="mobile" onInsertFile={onInsertFile} onInsertImage={onInsertImage} onInsertBlock={onInsertBlock} onEditLink={onEditLink} variant="mobile" />
       </div>
     </div>
   )

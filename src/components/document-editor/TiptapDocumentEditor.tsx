@@ -34,6 +34,7 @@ import { applyRemoteDocumentPatch } from './remoteEditorPatch'
 import { useDriveLiveSync } from '../../hooks/useDriveLiveSync'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { useIsMobile } from '../../hooks/use-mobile'
+import { getVisualViewportBounds } from '../../hooks/useVisualViewport'
 import { backupDocumentToDrive, copyDriveFileLink, openDriveFileInBrowser } from '../../services/googleDrive'
 import { compressImageFile } from '../../utils/imageCompression'
 import { contentToMarkdown, documentToMyBookMarkdown, downloadMyBookMarkdown, isMarkdownText, myBookMarkdownToDocument } from '../../utils/mybookMarkdown'
@@ -46,6 +47,7 @@ import { ChecklistActionsMenu } from './ChecklistActionsMenu'
 import { DocumentToolbar } from './DocumentToolbar'
 import { SelectionFormattingToolbar } from './SelectionFormattingToolbar'
 import { EditorBlockControls, type BlockTarget } from './EditorBlockControls'
+import { useHoverBlockControlsAvailable } from '../../hooks/useHoverBlockControls'
 import { EditorStatus } from './EditorStatus'
 import { BookmarkBlock, bookmarkBlockNode } from './extensions/BookmarkBlock'
 import { Callout, calloutNode } from './extensions/Callout'
@@ -526,10 +528,13 @@ function computePickerPosition(
   gap = 8,
 ) {
   if (typeof window === 'undefined') return { left: coords.left, top: coords.bottom + gap }
-  const hasRoomBelow = coords.bottom + gap + popoverHeight <= window.innerHeight - 8
+  const bounds = getVisualViewportBounds()
+  const visibleBottom = bounds.visibleBottom
+  const minTop = bounds.offsetTop + 8
+  const hasRoomBelow = coords.bottom + gap + popoverHeight <= visibleBottom - 8
   const top = hasRoomBelow
     ? coords.bottom + gap
-    : (coords.top - gap - popoverHeight >= 8 ? coords.top - gap - popoverHeight : Math.max(8, window.innerHeight - popoverHeight - 8))
+    : (coords.top - gap - popoverHeight >= minTop ? coords.top - gap - popoverHeight : Math.max(minTop, visibleBottom - popoverHeight - 8))
   const left = Math.max(8, Math.min(coords.left, window.innerWidth - popoverWidth - 16))
   return { left, top }
 }
@@ -724,7 +729,10 @@ function DocumentLinkPicker({
       data-command-menu-scroller="true"
       style={{
         left: Math.max(8, Math.min(position.left, window.innerWidth - 320)),
-        top: Math.max(8, Math.min(position.top, window.innerHeight - 360)),
+        top: Math.max(
+          typeof window !== 'undefined' ? getVisualViewportBounds().offsetTop + 8 : 8,
+          Math.min(position.top, (typeof window !== 'undefined' ? getVisualViewportBounds().visibleBottom : 768) - 360),
+        ),
       }}
     >
       {groupedTargets.length ? groupedTargets.map((group) => (
@@ -784,7 +792,7 @@ function MentionSuggestionMenu({ menu, isMobile, selectedIndex, onSelectedIndexC
   if (isMobile) {
     return (
       <Sheet open modal={false} onOpenChange={(open) => { if (!open) onClose() }}>
-        <SheetContent side="bottom" className="max-h-[40dvh] rounded-t-2xl px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3">
+        <SheetContent side="bottom" className="mybook-bottom-sheet max-h-[40dvh] rounded-t-2xl px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3">
           <SheetHeader className="sr-only"><SheetTitle>Mention</SheetTitle></SheetHeader>
           <div role="listbox" aria-label="Mention" data-mention-menu="true" className="mx-auto w-full max-w-md">
             <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">Mention</div>
@@ -847,8 +855,11 @@ function PasteAsMenu({
       }}
       className="fixed z-20 min-w-48 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 text-sm shadow-[0_16px_48px_rgba(15,23,42,0.18)]"
       style={{
-        left: Math.min(menu.position.left, window.innerWidth - 216),
-        top: Math.min(menu.position.top, window.innerHeight - 196),
+        left: Math.max(8, Math.min(menu.position.left, window.innerWidth - 216)),
+        top: Math.max(
+          typeof window !== 'undefined' ? getVisualViewportBounds().offsetTop + 8 : 8,
+          Math.min(menu.position.top, (typeof window !== 'undefined' ? getVisualViewportBounds().visibleBottom : 768) - 196),
+        ),
       }}
     >
       <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Paste as</div>
@@ -954,6 +965,13 @@ function InlineLinkToolbar({
     return () => document.removeEventListener('pointerdown', closeOnOutsidePointerDown)
   }, [onClose, toolbar.startInEdit])
 
+  const popoverWidth = toolbar.startInEdit
+    ? Math.min(288, (typeof window !== 'undefined' ? window.innerWidth : 320) - 16)
+    : isEditOpen
+      ? Math.min(480, (typeof window !== 'undefined' ? window.innerWidth : 320) - 16)
+      : 220
+  const maxLeft = typeof window !== 'undefined' ? Math.max(8, window.innerWidth - popoverWidth - 8) : 8
+
   return (
     <div
       ref={toolbarRef}
@@ -961,7 +979,7 @@ function InlineLinkToolbar({
       role="toolbar"
       aria-label="Link actions"
       style={{
-        left: Math.min(Math.max(8, toolbar.position.left), window.innerWidth - 220),
+        left: Math.min(Math.max(8, toolbar.position.left), maxLeft),
         top: Math.max(8, toolbar.position.top),
       }}
       onPointerLeave={closeIfOutside}
@@ -1011,6 +1029,7 @@ function InlineLinkToolbar({
 export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const navigate = useNavigate()
   const isMobile = useIsMobile()
+  const isHoverBlockControlsAvailable = useHoverBlockControlsAvailable()
   const isMacPlatform = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/u.test(navigator.platform)
   const duplicateShortcut = isMacPlatform ? '⌃⌘D' : 'Ctrl+Alt+D'
   const moveShortcut = isMacPlatform ? '⌃⌘M' : 'Ctrl+Alt+M'
@@ -1534,7 +1553,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       text: range.text,
       anchor,
       range: { from: range.from, to: range.to },
-      position: { left: rect.left, top: rect.top - 42 },
+      position: { left: rect.left, top: rect.top - 42 >= 8 ? rect.top - 42 : rect.bottom + 8 },
       canEmbed: Boolean(info?.embedUrl),
       documentTarget: documentTarget ? { id: documentTarget.id, name: documentTarget.name } : undefined,
     }
@@ -2775,6 +2794,25 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const start = editor.view.coordsAtPos(range.from)
     const end = editor.view.coordsAtPos(range.to)
     const selectionToolbarRect = document.querySelector('[aria-label="Selected text formatting"]')?.getBoundingClientRect()
+    let position: { left: number; top: number }
+    if (selectionToolbarRect) {
+      position = { left: selectionToolbarRect.left, top: selectionToolbarRect.bottom + 4 }
+    } else {
+      const bounds = getVisualViewportBounds()
+      const availableBottom = Math.max(80, bounds.visibleBottom - 64)
+      const selectionBottom = Math.max(start.bottom, end.bottom)
+      const selectionTop = Math.min(start.top, end.top)
+      const popoverHeight = 56
+      const gap = 8
+
+      if (selectionBottom + gap + popoverHeight <= availableBottom) {
+        position = { left: start.left, top: selectionBottom + gap }
+      } else if (selectionTop - gap - popoverHeight >= bounds.offsetTop + 8) {
+        position = { left: start.left, top: selectionTop - gap - popoverHeight }
+      } else {
+        position = { left: start.left, top: Math.max(bounds.offsetTop + 8, availableBottom - popoverHeight) }
+      }
+    }
     const nextToolbar: InlineLinkToolbarState = {
       href: existingHref ?? '',
       text: existing?.text ?? editor.state.doc.textBetween(range.from, range.to, ' '),
@@ -2782,9 +2820,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       anchorBottom: Math.max(start.bottom, end.bottom),
       startInEdit: true,
       range: { from: range.from, to: range.to },
-      position: selectionToolbarRect
-        ? { left: selectionToolbarRect.left, top: selectionToolbarRect.bottom + 4 }
-        : { left: start.left, top: Math.max(start.bottom, end.bottom) + 8 },
+      position,
       canEmbed: false,
     }
     inlineLinkToolbarRef.current = nextToolbar
@@ -3087,7 +3123,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const zoomedIn = pageScale > 1
   const desktopPageWidth = '100%'
   const documentSurfaceClass = 'bg-[var(--app-surface)]'
-  const documentPageClass = `mybook-document-page ${isFullWidth ? '' : 'mybook-document-page--continuous '}mx-auto min-h-[calc(100dvh-13rem)] w-full bg-[var(--app-surface)] px-20 pb-[55vh] pt-6 shadow-none sm:px-24 md:px-28 md:pb-[55vh] md:pt-7`
+  const documentPageClass = `mybook-document-page ${isFullWidth ? '' : 'mybook-document-page--continuous '}mx-auto min-h-[calc(100dvh-13rem)] w-full bg-[var(--app-surface)] px-4 pb-[55vh] pt-6 shadow-none sm:px-8 md:px-20 lg:px-28 md:pb-[55vh] md:pt-7`
   const placeholderTitle = 'Untitled'
   const validSavedTitle = file.name ? (titleInputValue(file.name) || placeholderTitle) : placeholderTitle
   const documentTitle = duplicateTitleFile ? validSavedTitle : (title.trim() || placeholderTitle)
@@ -3545,8 +3581,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         onCreateFolder={(name, parentId) => folderRepository.create(name, parentId)}
       />
       {inlineLinkToolbar ? <InlineLinkToolbar key={`${inlineLinkToolbar.range.from}-${inlineLinkToolbar.range.to}-${inlineLinkToolbar.startInEdit ? 'edit' : 'hover'}`} toolbar={inlineLinkToolbar} onAction={runInlineLinkAction} onClose={closeInlineLinkToolbar} /> : null}
-      {!isPageLocked ? <SelectionFormattingToolbar editor={editor} onInsertBlock={(commandId) => insertBlock(commandId)} onEditLink={openSelectionLinkEditor} linkEditorOpen={Boolean(inlineLinkToolbar?.startInEdit)} /> : null}
-      {!isPageLocked ? <EditorBlockControls editor={editor} onInsertBlock={insertBlock} /> : null}
+      {!isPageLocked && !isMobile ? <SelectionFormattingToolbar editor={editor} onInsertBlock={(commandId) => insertBlock(commandId)} onEditLink={openSelectionLinkEditor} linkEditorOpen={Boolean(inlineLinkToolbar?.startInEdit)} /> : null}
+      {!isPageLocked && isHoverBlockControlsAvailable ? <EditorBlockControls editor={editor} onInsertBlock={insertBlock} /> : null}
       {!isPageLocked ? <TableActionsMenu editor={editor} /> : null}
       {!isPageLocked ? <ChecklistActionsMenu editor={editor} /> : null}
       {documentLinkPicker ? (
@@ -3593,7 +3629,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           onInsert={handleInsertFile}
         />
       ) : null}
-      {!isPageLocked ? <DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} variant="mobile" /> : null}
+      {!isPageLocked ? <DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} onEditLink={openSelectionLinkEditor} variant="mobile" /> : null}
       <DeleteFileDialog
         isOpen={isDeleteDialogOpen}
         fileName={documentTitle}

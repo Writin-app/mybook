@@ -52,13 +52,14 @@ export function filterMentionCommands(query: string) {
   return !normalized || 'date & time date time datetime'.includes(normalized) ? [dateTime] : []
 }
 
-export function commandMenuTop(rect: DOMRect, menuHeight: number, gap = 8, minTop = gap) {
+export function commandMenuTop(rect: DOMRect, menuHeight: number, gap = 8, minTop = gap, viewportHeight?: number) {
+  const effectiveViewportHeight = viewportHeight ?? (typeof window !== 'undefined' ? (window.visualViewport ? (window.visualViewport.offsetTop + window.visualViewport.height) : window.innerHeight) : 768)
   const below = rect.bottom + gap
-  const hasRoomBelow = below + menuHeight <= window.innerHeight - gap
+  const hasRoomBelow = below + menuHeight <= effectiveViewportHeight - gap
   if (hasRoomBelow) return below
   const above = rect.top - menuHeight - gap
   if (above >= minTop) return above
-  return Math.max(minTop, window.innerHeight - menuHeight - gap)
+  return Math.max(minTop, effectiveViewportHeight - menuHeight - gap)
 }
 
 export function getSlashCommandMatch(textBeforeCursor: string) {

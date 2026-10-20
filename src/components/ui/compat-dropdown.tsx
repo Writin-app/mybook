@@ -1,6 +1,9 @@
 import type { Key, ReactNode } from 'react'
 import { createContext, useContext } from 'react'
 
+import { useIsMobile } from '@/hooks/use-mobile'
+import { cn } from '@/lib/utils'
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,16 +34,34 @@ function Trigger({
   return <DropdownMenuTrigger {...props}>{children}</DropdownMenuTrigger>
 }
 
+export interface DropdownPopoverProps {
+  children: ReactNode
+  placement?: Placement
+  bottomSheet?: boolean
+  mobileBottomSheet?: boolean
+  className?: string
+  style?: React.CSSProperties
+}
+
 function Popover({
   children,
   placement = 'bottom start',
-}: {
-  children: ReactNode
-  placement?: Placement
-}) {
+  bottomSheet,
+  mobileBottomSheet = true,
+  className,
+  style,
+}: DropdownPopoverProps) {
+  const isMobile = useIsMobile()
+  const effectiveBottomSheet = bottomSheet ?? (mobileBottomSheet ? isMobile : false)
   const { side, align } = getPlacement(placement)
   return (
-    <DropdownMenuContent side={side} align={align} className="w-auto min-w-48">
+    <DropdownMenuContent
+      side={side}
+      align={align}
+      bottomSheet={effectiveBottomSheet}
+      className={cn(!effectiveBottomSheet && 'w-auto min-w-48', className)}
+      style={style}
+    >
       {children}
     </DropdownMenuContent>
   )
@@ -61,17 +82,21 @@ function Menu({
   )
 }
 
+export interface DropdownItemProps
+  extends Omit<React.ComponentProps<typeof DropdownMenuItem>, 'id' | 'disabled' | 'variant'> {
+  children: ReactNode
+  id: Key
+  isDisabled?: boolean
+  variant?: 'default' | 'danger'
+}
+
 function Item({
   children,
   id,
   isDisabled = false,
   variant = 'default',
-}: {
-  children: ReactNode
-  id: Key
-  isDisabled?: boolean
-  variant?: 'default' | 'danger'
-}) {
+  ...props
+}: DropdownItemProps) {
   const onAction = useContext(DropdownActionContext)
 
   return (
@@ -79,6 +104,7 @@ function Item({
       disabled={isDisabled}
       variant={variant === 'danger' ? 'destructive' : 'default'}
       onClick={() => onAction?.(id)}
+      {...props}
     >
       {children}
     </DropdownMenuItem>

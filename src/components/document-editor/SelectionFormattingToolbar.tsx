@@ -199,7 +199,7 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
       ref={toolbarRef}
       role="toolbar"
       aria-label="Selected text formatting"
-      className="fixed z-30 flex h-14 items-center gap-1 rounded-[14px] border border-[var(--app-border)] bg-[var(--app-surface)] px-1.5 text-foreground shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
+      className="fixed z-30 hidden md:flex h-14 items-center gap-1 rounded-[14px] border border-[var(--app-border)] bg-[var(--app-surface)] px-1.5 text-foreground shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
       style={{ left: position.left, top: position.top }}
       onMouseDown={(event) => event.preventDefault()}
     >

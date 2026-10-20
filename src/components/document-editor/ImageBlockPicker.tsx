@@ -10,6 +10,7 @@ import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import { compressImageFile } from '../../utils/imageCompression'
+import { getVisualViewportBounds } from '../../hooks/useVisualViewport'
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB
 
@@ -210,7 +211,7 @@ export function ImageBlockPicker({
   const popoverWidth = 384 // 24rem
   const popoverHeight = 340
   const left = position ? Math.max(8, Math.min(position.left, window.innerWidth - popoverWidth - 16)) : undefined
-  const top = position ? Math.max(8, Math.min(position.top, window.innerHeight - popoverHeight - 16)) : undefined
+  const top = position ? Math.max(8, Math.min(position.top, (typeof window !== 'undefined' ? getVisualViewportBounds().visibleBottom : 768) - popoverHeight - 16)) : undefined
 
   const pickerDialog = (
     <div

@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { createSearchHighlightPlugin, findMatchesInDoc, searchHighlightPluginKey } from './extensions/SearchHighlight'
+import { scrollActiveMatchIntoView } from './findReplaceScroll'
 
 export function FindReplaceDialog({
   editor,
@@ -30,6 +31,7 @@ export function FindReplaceDialog({
 
   const findInputRef = useRef<HTMLInputElement>(null)
   const replaceInputRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
@@ -100,15 +102,15 @@ export function FindReplaceDialog({
     editor.view.dispatch(
       editor.state.tr
         .setSelection(TextSelection.create(editor.state.doc, match.from, match.to))
-        .setMeta(searchHighlightPluginKey, { query, activeIndex: normalized })
-        .scrollIntoView(),
+        .setMeta(searchHighlightPluginKey, { query, activeIndex: normalized }),
     )
     requestAnimationFrame(() => {
       if (editor.isDestroyed) return
       try {
-        editor.view.dom
-          .querySelector<HTMLElement>('.mybook-search-match-active')
-          ?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+        const activeEl = editor.view.dom.querySelector<HTMLElement>('.mybook-search-match-active')
+        if (activeEl) {
+          scrollActiveMatchIntoView(activeEl, dialogRef.current)
+        }
       } catch {
         /* The editor can unmount before the frame runs. */
       }
@@ -136,7 +138,7 @@ export function FindReplaceDialog({
       findNext(1)
       return
     }
-    editor.view.dispatch(editor.state.tr.insertText(replacement, match.from, match.to).scrollIntoView())
+    editor.view.dispatch(editor.state.tr.insertText(replacement, match.from, match.to))
     findNext(1)
   }
 
@@ -175,13 +177,14 @@ export function FindReplaceDialog({
 
   return (
     <div
+      ref={dialogRef}
       role="region"
       aria-label="Find and replace"
       className="absolute inset-x-0 top-0 z-40 border-b border-border bg-background/95 shadow-md backdrop-blur supports-[backdrop-filter]:bg-background/85"
     >
-      <div className="mx-auto flex max-w-screen-2xl flex-col gap-2 px-3 py-2 sm:px-5">
+      <div className="mx-auto flex max-w-screen-2xl flex-col gap-1.5 px-2.5 py-2 sm:gap-2 sm:px-5">
         {/* Row 1: Search & Navigation */}
-        <div className="flex w-full items-center gap-1.5 sm:gap-2">
+        <div className="flex w-full items-center gap-1 sm:gap-2">
           <Button
             type="button"
             variant="ghost"
@@ -202,7 +205,7 @@ export function FindReplaceDialog({
           <div className="relative min-w-0 flex-1">
             <MagnifyingGlassIcon
               aria-hidden="true"
-              className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground sm:left-2.5 sm:size-4"
             />
             <Input
               ref={findInputRef}
@@ -214,14 +217,14 @@ export function FindReplaceDialog({
                 setActiveIndex(0)
               }}
               onKeyDown={handleFindKeyDown}
-              className="h-8 pl-8 text-sm"
+              className="h-8 pl-7 text-xs sm:pl-8 sm:text-sm"
             />
           </div>
 
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
             <span
               aria-live="polite"
-              className="min-w-8 text-center text-xs sm:text-sm tabular-nums text-muted-foreground"
+              className="min-w-7 px-0.5 text-center text-xs tabular-nums text-muted-foreground sm:min-w-8 sm:px-0 sm:text-sm"
             >
               {matches.length
                 ? `${Math.min(activeIndex + 1, matches.length)}/${matches.length}`
@@ -264,25 +267,27 @@ export function FindReplaceDialog({
 
         {/* Row 2: Replace controls */}
         {showReplacement && (
-          <div className="flex w-full items-center gap-1.5 sm:gap-2">
-            <div className="size-7 shrink-0 sm:size-8" aria-hidden="true" />
-            <div className="min-w-0 flex-1">
-              <Input
-                ref={replaceInputRef}
-                aria-label="Replace with"
-                placeholder="Replace with"
-                value={replacement}
-                onChange={(event) => setReplacement(event.target.value)}
-                onKeyDown={handleReplaceKeyDown}
-                className="h-8 text-sm"
-              />
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2">
+              <div className="hidden size-8 shrink-0 sm:block" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <Input
+                  ref={replaceInputRef}
+                  aria-label="Replace with"
+                  placeholder="Replace with"
+                  value={replacement}
+                  onChange={(event) => setReplacement(event.target.value)}
+                  onKeyDown={handleReplaceKeyDown}
+                  className="h-8 text-xs sm:text-sm"
+                />
+              </div>
             </div>
-            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-8 px-2.5 text-xs sm:px-3 sm:text-sm"
+                className="h-8 flex-1 px-2.5 text-xs sm:flex-initial sm:px-3 sm:text-sm"
                 disabled={!matches.length}
                 onClick={replaceCurrent}
               >
@@ -292,7 +297,7 @@ export function FindReplaceDialog({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-8 px-2.5 text-xs sm:px-3 sm:text-sm"
+                className="h-8 flex-1 px-2.5 text-xs sm:flex-initial sm:px-3 sm:text-sm"
                 disabled={!matches.length}
                 onClick={replaceAll}
               >

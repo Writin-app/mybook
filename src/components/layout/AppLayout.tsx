@@ -65,9 +65,25 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
+  useSidebar,
 } from '../ui/sidebar'
 import { MobileBottomNavigation } from './MobileBottomNavigation'
 import { isSupportedDocumentImport, queueDocumentImport } from '../../services/documentImport'
+
+function MobileSidebarRouteDismissal() {
+  const { isMobile, openMobile, setOpenMobile } = useSidebar()
+  const location = useLocation()
+  const previousLocationKeyRef = useRef(location.key)
+
+  useEffect(() => {
+    if (isMobile && openMobile && previousLocationKeyRef.current !== location.key) {
+      setOpenMobile(false)
+    }
+    previousLocationKeyRef.current = location.key
+  }, [location.key, isMobile, openMobile, setOpenMobile])
+
+  return null
+}
 
 export function AppLayout() {
   const { theme, toggleTheme } = useAppStore()
@@ -275,6 +291,7 @@ export function AppLayout() {
 
   return (
     <SidebarProvider className="h-full min-h-0 overflow-hidden bg-background text-foreground">
+      <MobileSidebarRouteDismissal />
       <Sidebar side="left" collapsible="offcanvas">
         <SidebarHeader>
           <div className="flex items-center px-3 py-2">
