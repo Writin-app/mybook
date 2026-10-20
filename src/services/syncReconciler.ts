@@ -1,5 +1,5 @@
 import type { SyncStatus } from '../types/files'
-import { mergeDocuments } from '../utils/documentMerge'
+import { areDocumentContentsEquivalent, isEmptyDocument, mergeDocuments } from '../utils/documentMerge'
 
 export interface ReconcileInput {
   /** Last content known to match the remote copy. `undefined` for files created before base tracking existed. */
@@ -27,18 +27,22 @@ export function hasLocalChanges(input: Pick<ReconcileInput, 'baseContent' | 'loc
   if (input.hasUnsavedLocalEdits || input.hasPendingPush) return true
   // Unknown base: only a fully backed-up file is known to equal its remote copy.
   if (input.baseContent === undefined || input.baseContent === null) return input.syncStatus !== 'backed-up'
-  return input.localContent !== input.baseContent
+  return !areDocumentContentsEquivalent(input.localContent, input.baseContent)
 }
 
 // Remote content may only replace local content when local is provably
 // unchanged since the base. Anything uncertain is treated as a local change.
 export function reconcileExternalUpdate(input: ReconcileInput): ReconcileDecision {
   if (!input.remoteChanged) return { action: 'noop' }
-  if (!input.hasUnsavedLocalEdits && input.remoteContent === input.localContent) return { action: 'noop' }
+  if (!input.hasUnsavedLocalEdits && areDocumentContentsEquivalent(input.remoteContent, input.localContent)) return { action: 'noop' }
   if (!hasLocalChanges(input)) return { action: 'apply-remote' }
 
-  // If remote did not change content compared to base, keep local edits
-  if (input.baseContent !== undefined && input.baseContent !== null && input.remoteContent === input.baseContent) {
+  // If remote did not change content compared to base (or remote is the unchanged initial empty document), keep local edits
+  const remoteIsBase = (
+    (input.baseContent !== undefined && input.baseContent !== null && areDocumentContentsEquivalent(input.remoteContent, input.baseContent)) ||
+    (isEmptyDocument(input.baseContent) && isEmptyDocument(input.remoteContent))
+  )
+  if (remoteIsBase) {
     return { action: 'keep-local' }
   }
 

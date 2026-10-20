@@ -68,4 +68,77 @@ describe('reconcileExternalUpdate', () => {
       expect(reconcileExternalUpdate(input({ baseContent: undefined, syncStatus }))).toEqual({ action: 'conflict' })
     })
   })
+
+  describe('newly created documents and empty normalization', () => {
+    const emptyCanonicalDoc = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] })
+    const emptyArrayDoc = JSON.stringify({ type: 'doc', content: [] })
+    const typedDoc = JSON.stringify({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Typing on new document' }] }],
+    })
+
+    it('treats empty string and canonical empty TipTap document as identical content (noop)', () => {
+      expect(reconcileExternalUpdate(input({
+        localContent: '',
+        remoteContent: emptyCanonicalDoc,
+        baseContent: '',
+      }))).toEqual({ action: 'noop' })
+
+      expect(reconcileExternalUpdate(input({
+        localContent: emptyArrayDoc,
+        remoteContent: emptyCanonicalDoc,
+        baseContent: undefined,
+      }))).toEqual({ action: 'noop' })
+    })
+
+    it('preserves local typing when remote is the initial canonical empty document and push is pending', () => {
+      expect(reconcileExternalUpdate(input({
+        baseContent: undefined,
+        localContent: typedDoc,
+        remoteContent: emptyCanonicalDoc,
+        hasPendingPush: true,
+        syncStatus: 'pending',
+      }))).toEqual({ action: 'keep-local' })
+
+      expect(reconcileExternalUpdate(input({
+        baseContent: '',
+        localContent: typedDoc,
+        remoteContent: emptyCanonicalDoc,
+        hasPendingPush: true,
+        syncStatus: 'pending',
+      }))).toEqual({ action: 'keep-local' })
+    })
+
+    it('flags a conflict when remote has a genuinely competing non-empty edit on an uninitialized base', () => {
+      const competingRemoteDoc = JSON.stringify({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Competing remote edit' }] }],
+      })
+      expect(reconcileExternalUpdate(input({
+        baseContent: undefined,
+        localContent: typedDoc,
+        remoteContent: competingRemoteDoc,
+        hasPendingPush: true,
+        syncStatus: 'pending',
+      }))).toEqual({ action: 'conflict' })
+    })
+
+    it('flags a conflict on an existing document with competing edits', () => {
+      const baseDoc = JSON.stringify({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Original line' }] }],
+      })
+      const competingRemoteDoc = JSON.stringify({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Competing remote edit' }] }],
+      })
+      expect(reconcileExternalUpdate(input({
+        baseContent: baseDoc,
+        localContent: typedDoc,
+        remoteContent: competingRemoteDoc,
+        hasPendingPush: true,
+        syncStatus: 'pending',
+      }))).toEqual({ action: 'conflict' })
+    })
+  })
 })

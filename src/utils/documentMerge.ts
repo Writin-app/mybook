@@ -544,40 +544,65 @@ function mergeLines(baseRaw: string, localRaw: string, remoteRaw: string): Docum
   return { success: true, content: result.items.join('\n'), hasConflict: result.hasConflict }
 }
 
+export function parseJsonDoc(raw: string | null | undefined): JSONContent | null {
+  if (!raw || typeof raw !== 'string') return null
+  try {
+    const parsed = JSON.parse(raw) as JSONContent
+    if (parsed && typeof parsed === 'object' && parsed.type === 'doc' && Array.isArray(parsed.content)) {
+      return parsed
+    }
+  } catch {
+    // not JSON
+  }
+  return null
+}
+
+export function isEmptyDocument(raw: string | null | undefined): boolean {
+  if (!raw || !raw.trim()) return true
+  const doc = parseJsonDoc(raw)
+  if (!doc) return false
+  if (!doc.content || doc.content.length === 0) return true
+  return doc.content.every((block) => {
+    if (!block || block.type !== 'paragraph') return false
+    if (!block.content || block.content.length === 0) return true
+    return block.content.every((inline) => inline && inline.type === 'text' && (!inline.text || !inline.text.trim()))
+  })
+}
+
+export function areDocumentContentsEquivalent(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (a === b) return true
+  if (isEmptyDocument(a) && isEmptyDocument(b)) return true
+  if (!a || !b) return false
+  const docA = parseJsonDoc(a)
+  const docB = parseJsonDoc(b)
+  if (docA && docB) {
+    return JSON.stringify(docA) === JSON.stringify(docB)
+  }
+  return false
+}
+
 export function mergeDocuments(
   baseRaw: string | null | undefined,
   localRaw: string,
   remoteRaw: string
 ): DocumentMergeResult {
-  if (localRaw === remoteRaw) {
-    return { success: true, content: localRaw, hasConflict: false }
+  if (areDocumentContentsEquivalent(localRaw, remoteRaw)) {
+    return { success: true, content: localRaw || remoteRaw, hasConflict: false }
   }
 
-  if (baseRaw && localRaw === baseRaw) {
+  if (baseRaw !== undefined && baseRaw !== null && areDocumentContentsEquivalent(localRaw, baseRaw)) {
     return { success: true, content: remoteRaw, hasConflict: false }
   }
 
-  if (baseRaw && remoteRaw === baseRaw) {
+  if (baseRaw !== undefined && baseRaw !== null && areDocumentContentsEquivalent(remoteRaw, baseRaw)) {
     return { success: true, content: localRaw, hasConflict: false }
-  }
-
-  const parseJsonDoc = (raw: string): JSONContent | null => {
-    try {
-      const parsed = JSON.parse(raw) as JSONContent
-      if (parsed && parsed.type === 'doc' && Array.isArray(parsed.content)) {
-        return parsed
-      }
-    } catch {
-      // not JSON
-    }
-    return null
   }
 
   const localDoc = parseJsonDoc(localRaw)
   const remoteDoc = parseJsonDoc(remoteRaw)
 
   if (localDoc && remoteDoc) {
-    const baseDoc = baseRaw ? parseJsonDoc(baseRaw) : null
+    const baseDoc = parseJsonDoc(baseRaw)
     const { blocks, hasConflict } = mergeTiptapBlocks(
       baseDoc?.content ?? [],
       localDoc.content ?? [],
