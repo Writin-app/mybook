@@ -301,6 +301,41 @@ describe('AppLayout sidebar favorites', () => {
     fireEvent.click(screen.getByText('Add Workspace...'))
     expect(await screen.findByRole('dialog', { name: 'Add New Workspace' })).toBeInTheDocument()
   })
+
+  it('closes mobile sidebar when navigating to a new destination', async () => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query.includes('max-width: 767px'),
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/home']}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="/home" element={<p>Home page</p>} />
+            <Route path="/folders" element={<p>Library page</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    )
+
+    // Destination links in mobile sidebar trigger dismissal and route transition
+    const libraryLinks = screen.getAllByRole('link', { name: 'Library' })
+    expect(libraryLinks.length).toBeGreaterThan(0)
+    const libraryLink = libraryLinks[0]
+    expect(libraryLink).toBeDefined()
+    fireEvent.click(libraryLink!)
+    expect(await screen.findByText('Library page')).toBeInTheDocument()
+  })
 })
 
 

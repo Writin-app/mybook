@@ -471,7 +471,7 @@ function SortControls({
       <summary className={`flex h-9 cursor-pointer list-none items-center rounded-[8px] border px-3 text-sm font-medium ${sort ? 'border-[var(--accent)] text-foreground' : 'border-[var(--app-border)] text-muted-foreground'} bg-[var(--app-surface)]`}>
         Sort
       </summary>
-      <div className="fixed left-3 right-3 top-24 z-20 max-h-[70vh] overflow-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 shadow-lg sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(18rem,calc(100vw-2rem))]">
+      <div className="fixed left-3 right-3 top-24 z-20 max-h-[min(70vh,calc(100dvh-var(--mybook-keyboard-offset,0px)-7rem))] overflow-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 shadow-lg sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(18rem,calc(100vw-2rem))]">
         <div className="space-y-2">
           <label className="block text-xs font-medium text-muted-foreground" htmlFor={`${database.id}-sort-column`}>Property</label>
           <select
@@ -605,7 +605,7 @@ function FilterControls({
       <summary className={`flex h-9 cursor-pointer list-none items-center rounded-[8px] border px-3 text-sm font-medium ${filters.length ? 'border-[var(--accent)] text-foreground' : 'border-[var(--app-border)] text-muted-foreground'} bg-[var(--app-surface)]`}>
         Filter{filters.length ? ` ${filters.length}` : ''}
       </summary>
-      <div className="fixed left-3 right-3 top-24 z-20 max-h-[70vh] overflow-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 shadow-lg sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(34rem,calc(100vw-2rem))]">
+      <div className="fixed left-3 right-3 top-24 z-20 max-h-[min(70vh,calc(100dvh-var(--mybook-keyboard-offset,0px)-7rem))] overflow-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 shadow-lg sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(34rem,calc(100vw-2rem))]">
         <div className="space-y-2">
           {filters.length ? filters.map((filter) => {
             const column = columnById.get(filter.columnId) ?? database.columns[0]
@@ -704,7 +704,7 @@ function PropertyMenu({
       >
         ⋯
       </summary>
-      <div className="fixed left-3 right-3 top-24 z-20 max-h-[70vh] overflow-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 shadow-lg sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(19rem,calc(100vw-2rem))]">
+      <div className="fixed left-3 right-3 top-24 z-20 max-h-[min(70vh,calc(100dvh-var(--mybook-keyboard-offset,0px)-7rem))] overflow-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 shadow-lg sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(19rem,calc(100vw-2rem))]">
         <div className="space-y-3">
           <div>
             <div className="mb-1 text-xs font-medium text-muted-foreground">Property name</div>
@@ -901,7 +901,7 @@ export function DatabaseBlockNodeView({ node, updateAttributes, selected }: Node
                     >
                       ⋯
                     </summary>
-                    <div className="fixed left-3 right-3 top-24 z-20 max-h-[70vh] overflow-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-lg sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-1 sm:w-44">
+                    <div className="fixed left-3 right-3 top-24 z-20 max-h-[min(70vh,calc(100dvh-var(--mybook-keyboard-offset,0px)-7rem))] overflow-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-lg sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-1 sm:w-44">
                       <button
                         type="button"
                         aria-label="Move row up"

@@ -2,7 +2,7 @@
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { TextSelection } from '@tiptap/pm/state'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { SelectionFormattingToolbar } from './SelectionFormattingToolbar'
@@ -11,6 +11,7 @@ describe('SelectionFormattingToolbar', () => {
   let editor: Editor | null = null
 
   afterEach(() => {
+    cleanup()
     editor?.destroy()
     editor = null
   })
@@ -53,5 +54,19 @@ describe('SelectionFormattingToolbar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Link' }))
     expect(onEditLink).toHaveBeenCalledTimes(1)
     expect(promptSpy).not.toHaveBeenCalled()
+  })
+
+  it('applies hidden md:flex to stay hidden on mobile viewports', () => {
+    editor = new Editor({ element: document.body.appendChild(document.createElement('div')), extensions: [StarterKit], content: '<p>Hello world</p>' })
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({ left: 10, right: 20, top: 100, bottom: 120 })
+    vi.spyOn(editor, 'isFocused', 'get').mockReturnValue(true)
+
+    render(<SelectionFormattingToolbar editor={editor} onInsertBlock={() => undefined} onEditLink={() => undefined} />)
+    act(() => {
+      editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 1, 6)))
+    })
+    const toolbar = screen.getByRole('toolbar', { name: 'Selected text formatting' })
+    expect(toolbar.className).toContain('hidden')
+    expect(toolbar.className).toContain('md:flex')
   })
 })

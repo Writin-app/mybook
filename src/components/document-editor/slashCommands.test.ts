@@ -7,7 +7,7 @@ import StarterKit from '@tiptap/starter-kit'
 
 import { DateTimeBlock } from './extensions/DateTimeBlock'
 import { Columns, Column } from './extensions/Columns'
-import { filterMentionCommands, filterSlashCommands, getMentionMenuState, groupSlashCommands, isInsideColumns, runSlashCommand, slashCommands } from './slashCommands'
+import { commandMenuTop, filterMentionCommands, filterSlashCommands, getMentionMenuState, groupSlashCommands, isInsideColumns, runSlashCommand, slashCommands } from './slashCommands'
 
 describe('slashCommands', () => {
   it('keeps Date & Time in the Mention block category and exposes it for @ suggestions', () => {
@@ -303,5 +303,57 @@ describe('slashCommands', () => {
 
     editor.destroy()
     element.remove()
+  })
+
+  describe('commandMenuTop', () => {
+    it('positions below the rect when there is room below', () => {
+      const rect = { top: 100, bottom: 120, left: 10, right: 10 } as DOMRect
+      // menuHeight 250, gap 8 -> below is 120 + 8 = 128. 128 + 250 = 378 <= 768 - 8
+      expect(commandMenuTop(rect, 250)).toBe(128)
+    })
+
+    it('flips above when there is no room below in standard viewport', () => {
+      const rect = { top: 600, bottom: 620, left: 10, right: 10 } as DOMRect
+      // menuHeight 300, gap 8 -> below is 628, 628 + 300 = 928 > 768 - 8
+      // above is 600 - 300 - 8 = 292
+      expect(commandMenuTop(rect, 300)).toBe(292)
+    })
+
+    it('respects a reduced viewportHeight (e.g. virtual keyboard open)', () => {
+      const rect = { top: 220, bottom: 240, left: 10, right: 10 } as DOMRect
+      // viewportHeight 380, menuHeight 200, gap 8
+      // below is 248 + 200 = 448 > 380 - 8 (372)
+      // above is 220 - 200 - 8 = 12 >= 8
+      expect(commandMenuTop(rect, 200, 8, 8, 380)).toBe(12)
+    })
+
+    it('uses visualViewport offsetTop and height when viewportHeight argument is omitted', () => {
+      const originalVV = window.visualViewport
+      try {
+        // Mock visualViewport for a keyboard state: height 350, offsetTop 0
+        window.visualViewport = {
+          height: 350,
+          offsetTop: 0,
+          width: 375,
+          offsetLeft: 0,
+          pageTop: 0,
+          pageLeft: 0,
+          scale: 1,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+          onresize: null,
+          onscroll: null,
+        } as unknown as VisualViewport
+
+        const rect = { top: 200, bottom: 220, left: 10, right: 10 } as DOMRect
+        // below is 228 + 200 = 428 > 350 - 8 (342)
+        // above is 200 - 200 - 8 = -8 < 8
+        // clamps to max(8, 350 - 200 - 8) = 142
+        expect(commandMenuTop(rect, 200)).toBe(142)
+      } finally {
+        window.visualViewport = originalVV
+      }
+    })
   })
 })

@@ -6,6 +6,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { FindReplaceDialog } from './FindReplaceDialog'
+import * as findReplaceScroll from './findReplaceScroll'
 
 let editor: Editor | undefined
 
@@ -97,5 +98,49 @@ describe('FindReplaceDialog', () => {
     // Pressing Enter in replace input replaces next match
     fireEvent.keyDown(replaceInput, { key: 'Enter' })
     expect(editor.getText()).toBe('dog dog cat')
+  })
+
+  it('renders responsive replace controls and calls viewport-aware scrolling on navigation', async () => {
+    const scrollSpy = vi.spyOn(findReplaceScroll, 'scrollActiveMatchIntoView').mockReturnValue(true)
+
+    const editorElement = document.body.appendChild(document.createElement('div'))
+    editor = new Editor({ element: editorElement, extensions: [StarterKit], content: '<p>alpha beta alpha gamma alpha</p>' })
+    render(<FindReplaceDialog editor={editor} open onOpenChange={() => undefined} />)
+
+    // Verify Row 1 find input styling for narrow screens
+    const findInput = screen.getByLabelText('Find')
+    expect(findInput).toHaveClass('pl-7')
+
+    // Toggle replace view
+    fireEvent.click(screen.getByRole('button', { name: /toggle replace/i }))
+    const replaceInput = screen.getByLabelText('Replace with')
+    expect(replaceInput).toBeInTheDocument()
+
+    // Verify replace buttons have responsive flex-1 for touch reachability on narrow viewports
+    const replaceButton = screen.getByRole('button', { name: 'Replace' })
+    const replaceAllButton = screen.getByRole('button', { name: 'Replace all' })
+    expect(replaceButton).toHaveClass('flex-1')
+    expect(replaceAllButton).toHaveClass('flex-1')
+
+    // Enter query to find matches
+    fireEvent.change(findInput, { target: { value: 'alpha' } })
+    expect(screen.getByText('1/3')).toBeInTheDocument()
+
+    // Navigate to next match via button click
+    const nextButton = screen.getByRole('button', { name: 'Next match' })
+    fireEvent.click(nextButton)
+    expect(screen.getByText('2/3')).toBeInTheDocument()
+
+    // Wait for requestAnimationFrame to fire scroll
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+
+    expect(scrollSpy).toHaveBeenCalled()
+    const lastCall = scrollSpy.mock.calls[scrollSpy.mock.calls.length - 1]
+    expect(lastCall?.[0]).toHaveClass('mybook-search-match-active')
+    expect(lastCall?.[0].getAttribute('data-match-index')).toBe('1')
+    expect(lastCall?.[1]).toHaveAttribute('role', 'region')
+    expect(lastCall?.[1]).toHaveAttribute('aria-label', 'Find and replace')
+
+    scrollSpy.mockRestore()
   })
 })

@@ -22,6 +22,7 @@ import {
 import type { Editor } from '@tiptap/react'
 import { useEffect, useRef } from 'react'
 
+import { useVisualViewport } from '../../hooks/useVisualViewport'
 import { commandMenuTop, filterSlashCommands, groupSlashCommands, type SlashCommand, type SlashMenuState } from './slashCommands'
 
 const DESKTOP_MENU_HEIGHT = 352
@@ -176,8 +177,14 @@ export function MobileSlashCommandMenu({ editor, menu, selectedIndex, onSelectIn
   const selectedOptionRef = useRef<HTMLButtonElement>(null)
   const hasRunCommandRef = useRef(false)
   const lastMouseCoordsRef = useRef<{ x: number; y: number } | null>(null)
+  const bounds = useVisualViewport(true)
   const estimatedHeight = Math.min(MOBILE_MENU_HEIGHT, Math.max(72, commands.length * 44 + 40))
-  const top = commandMenuTop(menu.rect, estimatedHeight, 8)
+  // Reserve space for mobile document toolbar (~64px) if present above keyboard
+  const availableBottom = Math.max(80, bounds.visibleBottom - 64)
+  const top = commandMenuTop(menu.rect, estimatedHeight, 8, 8, availableBottom)
+  const menuWidth = Math.min(352, window.innerWidth - 16)
+  const left = Math.max(8, Math.min(menu.rect.left, window.innerWidth - menuWidth - 8))
+  const maxListHeight = Math.max(120, Math.min(288, availableBottom - top - 48))
 
   useEffect(() => {
     scrollOptionIntoMenuView(selectedOptionRef.current)
@@ -205,14 +212,20 @@ export function MobileSlashCommandMenu({ editor, menu, selectedIndex, onSelectIn
       data-slash-command-menu="true"
       style={{
         top: Math.max(8, top),
-        left: Math.max(8, Math.min(menu.rect.left, window.innerWidth - 360)),
+        left,
       }}
       role="presentation"
     >
       <div className="mb-1 px-2 py-1">
         <p className="text-xs font-semibold text-muted-foreground">Insert block</p>
       </div>
-      <div role="listbox" aria-label="Slash command menu" className="max-h-[min(18rem,45dvh)] overflow-y-auto overscroll-contain" data-command-menu-scroller="true">
+      <div
+        role="listbox"
+        aria-label="Slash command menu"
+        className="overflow-y-auto overscroll-contain"
+        data-command-menu-scroller="true"
+        style={{ maxHeight: maxListHeight }}
+      >
         {commands.length ? groupSlashCommands(commands).map((group) => (
           <section key={group.category} aria-label={group.category}>
             <h3 className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.category}</h3>

@@ -239,7 +239,7 @@ export function MoveItemDialog({
     if (createParentId !== parentId) return null
     return (
       <form
-        className="my-1 ml-8 mr-1"
+        className="my-1 ml-5 mr-1 sm:ml-8"
         onSubmit={handleCreateSubmit}
         onBlur={(event) => {
           if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
@@ -319,7 +319,7 @@ export function MoveItemDialog({
             aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${folder.name}`}
             aria-expanded={hasChildren ? isExpanded : undefined}
             disabled={!hasChildren}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-0"
+            className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-0 sm:size-7"
             onClick={(event) => {
               event.stopPropagation()
               toggleFolder(folder.id)
@@ -331,15 +331,15 @@ export function MoveItemDialog({
           </button>
           <span className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-2 text-sm">
             <img src="/icons/folder.svg" alt="" aria-hidden="true" className="size-5 shrink-0" />
-            <span className="truncate">{folder.name}</span>
+            <span className="truncate" title={folder.name}>{folder.name}</span>
           </span>
         </div>
         {renderCreateInput(folder.id)}
         {!hasChildren && !normalizedQuery && isSelected ? (
-          <p className="py-1 pl-12 text-xs text-muted-foreground">No Sub Folders</p>
+          <p className="py-1 pl-8 text-xs text-muted-foreground sm:pl-12">No Sub Folders</p>
         ) : null}
         {hasChildren && isExpanded ? (
-          <div role="group" className="ml-5 border-l border-border pl-2">
+          <div role="group" className="ml-2.5 border-l border-border pl-1.5 sm:ml-5 sm:pl-2">
             {children.map(renderFolder)}
           </div>
         ) : null}
@@ -433,7 +433,7 @@ export function MoveItemDialog({
                 tabIndex={-1}
                 aria-label={`${isRootExpanded ? 'Collapse' : 'Expand'} Writin root`}
                 aria-expanded={isRootExpanded}
-                className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring sm:size-7"
                 onClick={(event) => {
                   event.stopPropagation()
                   setIsRootExpanded((expanded) => !expanded)
@@ -449,11 +449,11 @@ export function MoveItemDialog({
               </span>
             </div>
             {isRootExpanded ? (
-              <div role="group" className="ml-5 border-l border-border pl-2">
+              <div role="group" className="ml-2.5 border-l border-border pl-1.5 sm:ml-5 sm:pl-2">
                 {renderCreateInput(null)}
                 {visibleFolders(null).map(renderFolder)}
                 {visibleFolders(null).length === 0 && createParentId !== null ? (
-                  <p className="py-2 pl-9 text-sm text-muted-foreground">
+                  <p className="py-2 pl-6 text-sm text-muted-foreground sm:pl-9">
                     {normalizedQuery ? 'No folders found.' : 'No Sub Folders'}
                   </p>
                 ) : null}

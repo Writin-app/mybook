@@ -6,6 +6,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { NodeSelection, TextSelection } from '@tiptap/pm/state'
 import { useEffect, useRef, useState } from 'react'
 
+import { useHoverBlockControlsAvailable } from '../../hooks/useHoverBlockControls'
 import { Button } from '../ui/button'
 import { BlockCommandMenu } from './SlashCommandMenu'
 import { commandMenuTop, type SlashCommand } from './slashCommands'
@@ -326,7 +327,13 @@ function GripHandleIcon({ className }: { className?: string }) {
   )
 }
 
-export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor; onInsertBlock: (commandId: string, target?: BlockTarget | null) => void }) {
+export function EditorBlockControls(props: { editor: Editor; onInsertBlock: (commandId: string, target?: BlockTarget | null) => void }) {
+  const isAvailable = useHoverBlockControlsAvailable()
+  if (!isAvailable) return null
+  return <EditorBlockControlsInner {...props} />
+}
+
+function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; onInsertBlock: (commandId: string, target?: BlockTarget | null) => void }) {
   const [target, setTarget] = useState<BlockTarget | null>(null)
   const [gutterTargets, setGutterTargets] = useState<BlockTarget[]>([])
   const [isInsertOpen, setIsInsertOpen] = useState(false)
@@ -360,6 +367,7 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
       setIsActionsOpen(false)
     }
     const updateFromPointer = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') return
       if (isInsertOpen || isActionsOpen || dragState?.isDragging) return
       const pointerNode = event.target as Node | null
       if (
@@ -372,6 +380,7 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
       setTarget(findPointerTarget(editor, event) ?? findGutterTarget(editor, event))
     }
     const hideFromPointerLeave = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') return
       if (isInsertOpen || isActionsOpen || dragState?.isDragging) return
       const related = event.relatedTarget
       if (related instanceof Node && (rootRef.current?.contains(related) || hoverBridgeRef.current?.contains(related))) return
@@ -445,6 +454,7 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
   useEffect(() => {
     if (!dragState) return
     const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') return
       const distance = Math.hypot(event.clientX - dragState.startX, event.clientY - dragState.startY)
       const nextTarget = findPointerTarget(editor, event, true)
       const dropBlock = nextTarget ? toMovableBlock(editor, nextTarget) : null
@@ -519,9 +529,16 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
               height: Math.max(32, gutterTarget.rect.height + 16),
             }}
             aria-hidden="true"
-            onPointerEnter={() => setTarget(gutterTarget)}
-            onPointerMove={() => setTarget(gutterTarget)}
+            onPointerEnter={(event) => {
+              if (event.pointerType === 'touch') return
+              setTarget(gutterTarget)
+            }}
+            onPointerMove={(event) => {
+              if (event.pointerType === 'touch') return
+              setTarget(gutterTarget)
+            }}
             onPointerLeave={(event) => {
+              if (event.pointerType === 'touch') return
               if (isInsertOpen || isActionsOpen || dragState?.isDragging) return
               const related = event.relatedTarget
               if (related instanceof Node && (editor.view.dom.contains(related) || rootRef.current?.contains(related) || hoverBridgeRef.current?.contains(related))) return
@@ -537,8 +554,12 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
         className="mybook-editor-block-hover-bridge fixed z-10 bg-transparent"
         style={{ top: bridgeTop, left: bridgeLeft, width: bridgeWidth, height: bridgeHeight }}
         aria-hidden="true"
-        onPointerEnter={() => setTarget(target)}
+        onPointerEnter={(event) => {
+          if (event.pointerType === 'touch') return
+          setTarget(target)
+        }}
         onPointerLeave={(event) => {
+          if (event.pointerType === 'touch') return
           if (isInsertOpen || isActionsOpen || dragState?.isDragging) return
           const related = event.relatedTarget
           if (related instanceof Node && (editor.view.dom.contains(related) || rootRef.current?.contains(related))) return
@@ -551,6 +572,7 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
         style={{ top: controlsTop, left }}
         aria-label="Block controls"
         onPointerLeave={(event) => {
+          if (event.pointerType === 'touch') return
           if (isInsertOpen || isActionsOpen || dragState?.isDragging) return
           const related = event.relatedTarget
           if (related instanceof Node && (editor.view.dom.contains(related) || hoverBridgeRef.current?.contains(related))) return
@@ -587,6 +609,7 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
           aria-label="Open block actions"
           title="Open block actions"
           onPointerDown={(event) => {
+            if (event.pointerType === 'touch') return
             event.preventDefault()
             selectTarget(editor, target)
             setDragState({ source: toMovableBlock(editor, target), startX: event.clientX, startY: event.clientY, isDragging: false, drop: null })

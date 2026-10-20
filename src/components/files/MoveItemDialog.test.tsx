@@ -239,4 +239,57 @@ describe('MoveItemDialog', () => {
     expect(screen.getByRole('heading', { name: 'Move file' })).toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'New folder name' })).not.toBeInTheDocument()
   })
+
+  it('renders nested folders with responsive indentation and touch-friendly chevron controls', () => {
+    const nestedFolders: MyBookFolder[] = [
+      {
+        id: 'level-1',
+        name: 'Very Long Department Name For Marketing & Strategy 2026',
+        parentId: null,
+        driveFolderId: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        isDeleted: false,
+      },
+      {
+        id: 'level-2',
+        name: 'Nested Subfolder Level 2',
+        parentId: 'level-1',
+        driveFolderId: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        isDeleted: false,
+      },
+    ]
+
+    render(
+      <MoveItemDialog
+        isOpen
+        itemKind="file"
+        folders={nestedFolders}
+        onClose={vi.fn()}
+        onMove={vi.fn().mockResolvedValue({ success: true })}
+        onCreateFolder={vi.fn()}
+      />,
+    )
+
+    // Expand level 1
+    const expandBtn = screen.getByRole('button', { name: /Expand Very Long Department/ })
+    expect(expandBtn).toHaveClass('size-8')
+    expect(expandBtn).toHaveClass('sm:size-7')
+    fireEvent.click(expandBtn)
+
+    // Verify title attribute on long folder name
+    const folderSpan = screen.getByTitle('Very Long Department Name For Marketing & Strategy 2026')
+    expect(folderSpan).toBeInTheDocument()
+
+    // Verify responsive indentation class on the child group container
+    const level2Item = screen.getByRole('treeitem', { name: /Nested Subfolder Level 2/ })
+    const parentGroup = level2Item.closest('div[role="group"]')
+    expect(parentGroup).toBeInTheDocument()
+    expect(parentGroup).toHaveClass('ml-2.5')
+    expect(parentGroup).toHaveClass('sm:ml-5')
+    expect(parentGroup).toHaveClass('pl-1.5')
+    expect(parentGroup).toHaveClass('sm:pl-2')
+  })
 })

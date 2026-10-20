@@ -230,6 +230,13 @@
   .tiptap h2 { font-size: 2rem; line-height: 1.25; font-weight: 650; }
   .tiptap h3 { font-size: 1.5rem; line-height: 1.35; font-weight: 650; }
   .tiptap h4 { font-size: 1.25rem; line-height: 1.4; font-weight: 650; }
+  .tiptap h1,
+  .tiptap h2,
+  .tiptap h3,
+  .tiptap h4,
+  .tiptap .mybook-toggle[data-level] {
+    scroll-margin-top: 4.5rem;
+  }
   .tiptap ul:not([data-type="taskList"]) { list-style-type: disc; padding-left: 1.5rem; }
   .tiptap ol { list-style-type: decimal; padding-left: 1.5rem; }
   .tiptap ol[data-list-marker="alpha"] { list-style-type: lower-alpha; }
@@ -409,6 +416,21 @@
   .tiptap .mybook-toggle-content > p:only-child:has(> br.ProseMirror-trailingBreak)::before { content: "Empty toggle. Click or drop blocks inside."; color: var(--muted-foreground); opacity: 0.6; pointer-events: none; }
   .tiptap .mybook-table-of-contents { text-align: left; }
   .tiptap .mybook-table-of-contents-header { display: flex; align-items: center; gap: 0.5rem; }
+  .tiptap .mybook-table-of-contents-caret {
+    position: relative;
+    touch-action: manipulation;
+  }
+  .tiptap .mybook-table-of-contents-caret::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
   .tiptap .mybook-table-of-contents-list { margin-top: 0.75rem; margin-left: 0.625rem; list-style: none; border-left: 2px solid color-mix(in srgb, var(--app-border) 85%, transparent); padding: 0 0 0 1rem; text-align: left; }
   .tiptap .mybook-table-of-contents-list > li + li { margin-top: 0.25rem; }
   .tiptap .mybook-table-of-contents-list,
@@ -679,6 +701,12 @@
     opacity: 1;
     pointer-events: auto;
   }
+  .mybook-table-column-grip.is-active-cell,
+  .mybook-table-row-grip.is-active-cell {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 15%, var(--app-surface));
+  }
   .mybook-table-column-grip:hover,
   .mybook-table-row-grip:hover,
   .mybook-table-column-grip.is-selected,
@@ -691,6 +719,47 @@
   .mybook-table-row-grip:active,
   .mybook-table-column-grip.is-dragging,
   .mybook-table-row-grip.is-dragging { cursor: grabbing; }
+
+  /* Touch target expansion for table column and row grips */
+  @media (pointer: coarse) {
+    .mybook-table-column-grip::before,
+    .mybook-table-row-grip::before {
+      content: '';
+      position: absolute;
+      width: 2.75rem;
+      height: 2.75rem;
+      pointer-events: auto;
+    }
+    .mybook-table-column-grip::before {
+      top: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .mybook-table-row-grip::before {
+      top: 50%;
+      left: -10px;
+      transform: translateY(-50%);
+    }
+  }
+
+  .mybook-table-column-grip.is-touch::before,
+  .mybook-table-row-grip.is-touch::before {
+    content: '';
+    position: absolute;
+    width: 2.75rem;
+    height: 2.75rem;
+    pointer-events: auto;
+  }
+  .mybook-table-column-grip.is-touch::before {
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .mybook-table-row-grip.is-touch::before {
+    top: 50%;
+    left: -10px;
+    transform: translateY(-50%);
+  }
   .mybook-table-add-column,
   .mybook-table-add-row,
   .mybook-table-add-corner {
@@ -837,7 +906,6 @@
   }
 
   @media (max-width: 1023px) {
-    .mybook-document-page { padding-left: 1rem !important; padding-right: 1rem !important; }
     .mybook-editor-block-gutter,
     .mybook-editor-block-hover-bridge,
     .mybook-editor-block-controls { display: none !important; }

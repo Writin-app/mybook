@@ -40,15 +40,24 @@ export function MobileBottomSheet({
       >
         {trigger}
       </SheetTrigger>
-      <SheetContent side="bottom" className="mybook-bottom-sheet min-h-0 max-h-[85vh] rounded-t-3xl p-0">
+      <SheetContent side="bottom" className="mybook-bottom-sheet min-h-0 max-h-[85dvh] rounded-t-3xl p-0">
         <SheetHeader className="min-h-0 px-6 pb-0 pt-4">
           <SheetTitle className="sr-only">{title}</SheetTitle>
           <SheetDescription className="sr-only">{title}</SheetDescription>
         </SheetHeader>
-        <div className="max-h-[calc(85vh-5rem)] overflow-y-auto overscroll-contain px-6 pb-6 pt-0 text-base leading-7">
+        <div
+          className={cn(
+            'max-h-[calc(85dvh-5rem)] overflow-y-auto overscroll-contain px-6 pt-0 text-base leading-7',
+            footer ? 'pb-3' : 'pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]',
+          )}
+        >
           {children}
         </div>
-        {footer ? <SheetFooter>{footer}</SheetFooter> : null}
+        {footer ? (
+          <SheetFooter className="px-6 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-2">
+            {footer}
+          </SheetFooter>
+        ) : null}
       </SheetContent>
     </Sheet>
   )

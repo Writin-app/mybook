@@ -21,7 +21,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type SVGProps } 
 import { getTableInteractionState, setTableInteraction } from './extensions/TableInteraction'
 import { tableColors } from './extensions/TableCellStyles'
 import { resetHeaderCellBackgrounds } from './tableHeaderBackground'
-import { tableElementsFromNodeDom } from './tableDom'
+import { activeCellCoordinates, isColumnGripInBounds, isRowGripInBounds, tableElementsFromNodeDom } from './tableDom'
 import { rowGripMenuTop, tableMenuTop } from './tableMenuPosition'
 import { useDeviceMode } from '../../hooks/useDeviceMode'
 import { Button } from '../ui/button'
@@ -601,7 +601,7 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
     if (JSON.stringify(currentMeta) !== JSON.stringify(nextMeta)) {
       editor.view.dispatch(setTableInteraction(editor.state, nextMeta))
     }
-  }, [editor, geometry, interaction])
+  }, [editor, interaction])
 
   useEffect(() => {
     if (!interaction.menuOpen) return
@@ -745,25 +745,25 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
   const selection = interaction.selection
   const isManualMenuOpen = interaction.menuOpen
   const dragState = interaction.drag
+  const isTableActive = Boolean(geometryFromEditor(editor))
+  const activeCell = useMemo(() => activeCellCoordinates(editor, geometry), [editor, geometry])
 
   useLayoutEffect(() => {
-    if (!geometry || !isManualMenuOpen || selection?.axis !== 'column' || !columnMenuRef.current) return
+    if (isTouch || !geometry || !isManualMenuOpen || selection?.axis !== 'column' || !columnMenuRef.current) return
     const menuRect = columnMenuRef.current.getBoundingClientRect()
     const gripTop = geometry.tableRect.top - 9
     const gripBottom = geometry.tableRect.top + 9
-    const below = gripBottom + 8
-    const top = below + menuRect.height <= window.innerHeight - 8
-      ? below
-      : Math.max(8, gripTop - menuRect.height - 8)
-    setColumnMenuTop(top)
-  }, [geometry, isManualMenuOpen, selection])
+    const top = tableMenuTop(gripTop, gripBottom, menuRect.height)
+    setColumnMenuTop((current) => current === top ? current : top)
+  }, [geometry, isManualMenuOpen, isTouch, selection])
 
   useLayoutEffect(() => {
-    if (!geometry || !isManualMenuOpen || selection?.axis !== 'row' || !rowMenuRef.current) return
+    if (isTouch || !geometry || !isManualMenuOpen || selection?.axis !== 'row' || !rowMenuRef.current) return
     const gripTop = selection.rect.top + selection.rect.height / 2 - 9
     const gripBottom = gripTop + 18
-    setRowMenuTop(rowGripMenuTop(gripTop, gripBottom, rowMenuRef.current.getBoundingClientRect().height))
-  }, [geometry, isManualMenuOpen, selection])
+    const top = rowGripMenuTop(gripTop, gripBottom, rowMenuRef.current.getBoundingClientRect().height)
+    setRowMenuTop((current) => current === top ? current : top)
+  }, [geometry, isManualMenuOpen, isTouch, selection])
 
   if (!geometry || !controls) return null
 
@@ -846,37 +846,50 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
   return (
     <>
       {controls.columnControls.map(({ rect, index }) => {
+        if (!isColumnGripInBounds(rect, wrapperRect)) return null
+
+        const gripCenterX = rect.left + rect.width / 2
         const gripSelection = { axis: 'column' as const, index, tablePos: geometry.tablePos, rect }
-        const isVisible = hoverState.columnIndex === index || selection?.axis === 'column' && selection.index === index || isManualMenuOpen && selection?.axis === 'column' && selection.index === index
+        const isActiveCell = activeCell?.column === index
+        const isVisible = isTouch
+          ? (isTableActive || (selection?.axis === 'column' && selection.index === index) || (isManualMenuOpen && selection?.axis === 'column' && selection.index === index))
+          : (hoverState.columnIndex === index || (selection?.axis === 'column' && selection.index === index) || (isManualMenuOpen && selection?.axis === 'column' && selection.index === index))
+
         return (
           <button
             key={`column-${index}`}
-                  type="button"
-                  aria-label={`Column ${index + 1} actions`}
-                  aria-haspopup="menu"
-                  aria-expanded={isManualMenuOpen && selection?.axis === 'column' && selection.index === index}
-                  className={`mybook-table-column-grip ${isVisible ? 'is-visible' : ''} ${selection?.axis === 'column' && selection.index === index ? 'is-selected' : ''} ${dragState?.isDragging && dragState.axis === 'column' && dragState.from === index ? 'is-dragging' : ''}`}
-                  style={{ top: rect.top - 9, left: rect.left + rect.width / 2 - 9 }}
-                  onPointerEnter={() => setHoverState((current) => ({ ...current, columnIndex: index }))}
-                  onPointerDown={(event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    event.currentTarget.setPointerCapture(event.pointerId)
-                    selectColumn(editor, geometry, index)
-                    setInteraction({
-                      selection: gripSelection,
-                      menuOpen: true,
-                      drag: { axis: 'column', from: index, tablePos: geometry.tablePos, rect, startX: event.clientX, startY: event.clientY, isDragging: false, dropIndex: null, pointerX: event.clientX, pointerY: event.clientY },
-                    })
-                  }}
-                  onPointerUp={(event) => {
-                    if (Math.hypot(event.clientX - (event.currentTarget as HTMLElement).getBoundingClientRect().left, event.clientY - (event.currentTarget as HTMLElement).getBoundingClientRect().top) < 24) {
-                      openGripMenu(gripSelection)
-                    }
-                  }}
-                  onClick={(event) => {
-                    if (event.detail === 0) openGripMenu(gripSelection)
-                  }}
+            type="button"
+            aria-label={`Column ${index + 1} actions`}
+            aria-haspopup="menu"
+            aria-expanded={isManualMenuOpen && selection?.axis === 'column' && selection.index === index}
+            className={`mybook-table-column-grip ${isTouch ? 'is-touch' : ''} ${isVisible ? 'is-visible' : ''} ${isActiveCell ? 'is-active-cell' : ''} ${selection?.axis === 'column' && selection.index === index ? 'is-selected' : ''} ${dragState?.isDragging && dragState.axis === 'column' && dragState.from === index ? 'is-dragging' : ''}`}
+            style={{ top: rect.top - 9, left: gripCenterX - 9 }}
+            onPointerEnter={() => !isTouch && setHoverState((current) => ({ ...current, columnIndex: index }))}
+            onPointerDown={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              if (isTouch) {
+                selectColumn(editor, geometry, index)
+                openGripMenu(gripSelection)
+                return
+              }
+              event.currentTarget.setPointerCapture(event.pointerId)
+              selectColumn(editor, geometry, index)
+              setInteraction({
+                selection: gripSelection,
+                menuOpen: true,
+                drag: { axis: 'column', from: index, tablePos: geometry.tablePos, rect, startX: event.clientX, startY: event.clientY, isDragging: false, dropIndex: null, pointerX: event.clientX, pointerY: event.clientY },
+              })
+            }}
+            onPointerUp={(event) => {
+              if (isTouch) return
+              if (Math.hypot(event.clientX - (event.currentTarget as HTMLElement).getBoundingClientRect().left, event.clientY - (event.currentTarget as HTMLElement).getBoundingClientRect().top) < 24) {
+                openGripMenu(gripSelection)
+              }
+            }}
+            onClick={(event) => {
+              if (event.detail === 0 || isTouch) openGripMenu(gripSelection)
+            }}
           >
             <GripVerticalIcon className="size-3" />
           </button>
@@ -884,79 +897,98 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
       })}
 
       {controls.rowControls.map(({ rect, index }) => {
+        if (!isRowGripInBounds(rect, wrapperRect) || visibleTableWidth <= 0) return null
+
+        const gripCenterY = rect.top + rect.height / 2
         const gripSelection = { axis: 'row' as const, index, tablePos: geometry.tablePos, rect }
-        const isVisible = hoverState.rowIndex === index || selection?.axis === 'row' && selection.index === index || isManualMenuOpen && selection?.axis === 'row' && selection.index === index
+        const isActiveCell = activeCell?.row === index
+        const isVisible = isTouch
+          ? (isTableActive || (selection?.axis === 'row' && selection.index === index) || (isManualMenuOpen && selection?.axis === 'row' && selection.index === index))
+          : (hoverState.rowIndex === index || (selection?.axis === 'row' && selection.index === index) || (isManualMenuOpen && selection?.axis === 'row' && selection.index === index))
+
         return (
           <button
             key={`row-${index}`}
-                  type="button"
-                  aria-label={`Row ${index + 1} actions`}
-                  aria-haspopup="menu"
-                  aria-expanded={isManualMenuOpen && selection?.axis === 'row' && selection.index === index}
-                  className={`mybook-table-row-grip ${isVisible ? 'is-visible' : ''} ${selection?.axis === 'row' && selection.index === index ? 'is-selected' : ''} ${dragState?.isDragging && dragState.axis === 'row' && dragState.from === index ? 'is-dragging' : ''}`}
-                  style={{ top: rect.top + rect.height / 2 - 9, left: visibleTableLeft - 9 }}
-                  onPointerEnter={() => setHoverState((current) => ({ ...current, rowIndex: index }))}
-                  onPointerDown={(event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    event.currentTarget.setPointerCapture(event.pointerId)
-                    selectRow(editor, geometry, index)
-                    setInteraction({
-                      selection: gripSelection,
-                      menuOpen: true,
-                      drag: { axis: 'row', from: index, tablePos: geometry.tablePos, rect, startX: event.clientX, startY: event.clientY, isDragging: false, dropIndex: null, pointerX: event.clientX, pointerY: event.clientY },
-                    })
-                  }}
-                  onPointerUp={(event) => {
-                    if (Math.hypot(event.clientX - (event.currentTarget as HTMLElement).getBoundingClientRect().left, event.clientY - (event.currentTarget as HTMLElement).getBoundingClientRect().top) < 24) {
-                      openGripMenu(gripSelection)
-                    }
-                  }}
-                  onClick={(event) => {
-                    if (event.detail === 0) openGripMenu(gripSelection)
-                  }}
+            type="button"
+            aria-label={`Row ${index + 1} actions`}
+            aria-haspopup="menu"
+            aria-expanded={isManualMenuOpen && selection?.axis === 'row' && selection.index === index}
+            className={`mybook-table-row-grip ${isTouch ? 'is-touch' : ''} ${isVisible ? 'is-visible' : ''} ${isActiveCell ? 'is-active-cell' : ''} ${selection?.axis === 'row' && selection.index === index ? 'is-selected' : ''} ${dragState?.isDragging && dragState.axis === 'row' && dragState.from === index ? 'is-dragging' : ''}`}
+            style={{ top: gripCenterY - 9, left: visibleTableLeft - 9 }}
+            onPointerEnter={() => !isTouch && setHoverState((current) => ({ ...current, rowIndex: index }))}
+            onPointerDown={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              if (isTouch) {
+                selectRow(editor, geometry, index)
+                openGripMenu(gripSelection)
+                return
+              }
+              event.currentTarget.setPointerCapture(event.pointerId)
+              selectRow(editor, geometry, index)
+              setInteraction({
+                selection: gripSelection,
+                menuOpen: true,
+                drag: { axis: 'row', from: index, tablePos: geometry.tablePos, rect, startX: event.clientX, startY: event.clientY, isDragging: false, dropIndex: null, pointerX: event.clientX, pointerY: event.clientY },
+              })
+            }}
+            onPointerUp={(event) => {
+              if (isTouch) return
+              if (Math.hypot(event.clientX - (event.currentTarget as HTMLElement).getBoundingClientRect().left, event.clientY - (event.currentTarget as HTMLElement).getBoundingClientRect().top) < 24) {
+                openGripMenu(gripSelection)
+              }
+            }}
+            onClick={(event) => {
+              if (event.detail === 0 || isTouch) openGripMenu(gripSelection)
+            }}
           >
             <GripHorizontalIcon className="size-3" />
           </button>
         )
       })}
 
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        type="button"
-        aria-label="Add column"
-        className={`mybook-table-add-column ${isTableHovering ? 'is-visible' : ''}`}
-        style={{ top: geometry.tableRect.top, left: visibleTableRight + 4, height: geometry.tableRect.height }}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={addRightColumn}
-      >
-        <HugeiconsIcon icon={PlusSignIcon} aria-hidden="true" className="size-3" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        type="button"
-        aria-label="Add row"
-        className={`mybook-table-add-row ${isTableHovering ? 'is-visible' : ''}`}
-        style={{ top: tableControlsBottom + 8, left: visibleTableLeft, width: visibleTableWidth }}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={addBottomRow}
-      >
-        <HugeiconsIcon icon={PlusSignIcon} aria-hidden="true" className="size-3" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        type="button"
-        aria-label="Add row and column"
-        className={`mybook-table-add-corner ${isTableHovering ? 'is-visible' : ''}`}
-        style={{ top: tableControlsBottom + 8, left: visibleTableRight + 4 }}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={addBottomRowAndRightColumn}
-      >
-        <HugeiconsIcon icon={PlusSignIcon} aria-hidden="true" className="size-3" />
-      </Button>
+      {geometry.tableRect.right <= wrapperRect.right + 4 && geometry.tableRect.right >= wrapperRect.left ? (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          type="button"
+          aria-label="Add column"
+          className={`mybook-table-add-column ${isTableHovering ? 'is-visible' : ''}`}
+          style={{ top: geometry.tableRect.top, left: visibleTableRight + 4, height: geometry.tableRect.height }}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={addRightColumn}
+        >
+          <HugeiconsIcon icon={PlusSignIcon} aria-hidden="true" className="size-3" />
+        </Button>
+      ) : null}
+      {tableControlsBottom <= wrapperRect.bottom + 4 && tableControlsBottom >= wrapperRect.top && visibleTableWidth > 0 ? (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          type="button"
+          aria-label="Add row"
+          className={`mybook-table-add-row ${isTableHovering ? 'is-visible' : ''}`}
+          style={{ top: tableControlsBottom + 8, left: visibleTableLeft, width: visibleTableWidth }}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={addBottomRow}
+        >
+          <HugeiconsIcon icon={PlusSignIcon} aria-hidden="true" className="size-3" />
+        </Button>
+      ) : null}
+      {geometry.tableRect.right <= wrapperRect.right + 4 && geometry.tableRect.right >= wrapperRect.left && tableControlsBottom <= wrapperRect.bottom + 4 && tableControlsBottom >= wrapperRect.top && visibleTableWidth > 0 ? (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          type="button"
+          aria-label="Add row and column"
+          className={`mybook-table-add-corner ${isTableHovering ? 'is-visible' : ''}`}
+          style={{ top: tableControlsBottom + 8, left: visibleTableRight + 4 }}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={addBottomRowAndRightColumn}
+        >
+          <HugeiconsIcon icon={PlusSignIcon} aria-hidden="true" className="size-3" />
+        </Button>
+      ) : null}
       <button
         type="button"
         aria-label="Resize table"

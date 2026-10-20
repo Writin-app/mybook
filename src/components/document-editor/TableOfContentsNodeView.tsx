@@ -1,14 +1,36 @@
 import type { NodeViewProps } from '@tiptap/react'
 import { NodeViewWrapper } from '@tiptap/react'
 import { NodeSelection, TextSelection } from '@tiptap/pm/state'
+import type { EditorView } from '@tiptap/pm/view'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { getTableOfContentsEntries, type TableOfContentsEntry } from './tableOfContentsModel'
+import { useDeviceMode } from '../../hooks/useDeviceMode'
+
+function findHeadingDOM(view: EditorView, pos: number): HTMLElement | null {
+  const nodeDom = view.nodeDOM(pos)
+  if (nodeDom instanceof HTMLElement) {
+    return nodeDom
+  }
+  try {
+    const { node } = view.domAtPos(pos)
+    if (node instanceof HTMLElement) {
+      return node.closest<HTMLElement>('h1, h2, h3, h4, .mybook-toggle, [data-node-view-wrapper]') ?? node
+    }
+    if (node.parentElement instanceof HTMLElement) {
+      return node.parentElement.closest<HTMLElement>('h1, h2, h3, h4, .mybook-toggle, [data-node-view-wrapper]') ?? node.parentElement
+    }
+  } catch {
+    /* pos out of bounds or view unmounted */
+  }
+  return null
+}
 
 export function TableOfContentsNodeView({ editor, getPos, selected }: NodeViewProps) {
   const [entries, setEntries] = useState<TableOfContentsEntry[]>(() => getTableOfContentsEntries(editor.state.doc))
   const [isExpanded, setIsExpanded] = useState(true)
   const rootRef = useRef<HTMLElement>(null)
+  const { isTouch } = useDeviceMode()
 
   useEffect(() => {
     const update = () => setEntries(getTableOfContentsEntries(editor.state.doc))
@@ -22,21 +44,37 @@ export function TableOfContentsNodeView({ editor, getPos, selected }: NodeViewPr
   const goToHeading = useCallback((pos: number) => {
     const { state, view } = editor
     const targetNode = state.doc.nodeAt(pos)
+    const targetElement = findHeadingDOM(view, pos)
+
+    // On touch devices, dismiss any open virtual keyboard by blurring the active element
+    if (isTouch && typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+
     if (targetNode?.type.name === 'toggleBlock') {
-      const dom = view.nodeDOM(pos)
-      if (dom instanceof HTMLElement) {
-        dom.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-        const titleInput = dom.querySelector<HTMLInputElement>('input.mybook-toggle-title')
-        if (titleInput) {
+      if (targetElement) {
+        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        const titleInput = targetElement.querySelector<HTMLInputElement>('input.mybook-toggle-title')
+        if (titleInput && !isTouch) {
           titleInput.focus({ preventScroll: true })
-          return
         }
+        return
       }
     }
+
     const selection = TextSelection.near(state.doc.resolve(Math.min(pos + 1, state.doc.content.size)))
-    view.dispatch(state.tr.setSelection(selection).scrollIntoView())
-    view.focus()
-  }, [editor])
+    view.dispatch(state.tr.setSelection(selection))
+
+    if (targetElement) {
+      targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    } else {
+      view.dispatch(state.tr.scrollIntoView())
+    }
+
+    if (!isTouch) {
+      view.focus()
+    }
+  }, [editor, isTouch])
 
   useEffect(() => {
     if (!selected) return
@@ -72,7 +110,7 @@ export function TableOfContentsNodeView({ editor, getPos, selected }: NodeViewPr
       <div className="mybook-table-of-contents-header">
         <button
           type="button"
-          className="mybook-toggle-caret"
+          className="mybook-toggle-caret mybook-table-of-contents-caret"
           aria-label={isExpanded ? 'Collapse table of contents' : 'Expand table of contents'}
           aria-expanded={isExpanded}
           onClick={(event) => {
