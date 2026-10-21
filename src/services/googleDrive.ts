@@ -960,8 +960,20 @@ export async function backupSpreadsheetToDrive(input: {
       const uploadedTitle = latest?.name ?? input.title
       const changedDuringUpload = !current || current.content !== uploadedContent || current.name !== uploadedTitle || current.folderId !== (latest?.folderId ?? file.folderId) || current.isDeleted
       await db.files.update(file.id, changedDuringUpload
-        ? { driveFileId: result.id, workspaceType: 'drive', syncStatus: current?.syncStatus === 'failed' ? 'failed' : 'pending' }
-        : { driveFileId: result.id, workspaceType: 'drive', syncStatus: 'backed-up', baseContent: uploadedContent, lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString() })
+        ? {
+            driveFileId: result.id,
+            workspaceType: 'drive',
+            syncStatus: current?.syncStatus === 'failed' ? 'failed' : 'pending',
+            baseContent: uploadedContent,
+            lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString(),
+          }
+        : {
+            driveFileId: result.id,
+            workspaceType: 'drive',
+            syncStatus: 'backed-up',
+            baseContent: uploadedContent,
+            lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString(),
+          })
       return { success: true, folderId: driveParentId, folderName: WRITIN_FOLDER_NAME, created: !(latest?.driveFileId ?? file.driveFileId), modifiedTime: result.modifiedTime }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not back up the spreadsheet to Google Drive.'
@@ -1798,8 +1810,21 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
   if (existingFlight) return existingFlight
 
   const flight = (async () => {
+    // If a backup is actively running for this file, await it so baseline and lastSyncedAt are committed
+    const activeBackup = backupFlights.get(fileId)
+    if (activeBackup) {
+      try {
+        await activeBackup
+      } catch {
+        // Backup finished with error; continue with check
+      }
+    }
+
     const local = await db.files.get(fileId)
     if (!local?.driveFileId) return { updated: false }
+    if (local.syncStatus === 'backing-up') {
+      return { updated: false }
+    }
     try {
       const status = await getDriveFileStatus(local.driveFileId)
       if (!status.exists) return { updated: false, error: status.error ?? 'Drive file was not found.' }
@@ -1825,9 +1850,25 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
       const imported = await readDriveFileAsLocalContent(driveFile, local.id)
       const content = imported.content
       const cleanTitle = status.name ? localFileName(status.name, fileType) : local.name
-      // Re-read right before deciding: the user may have typed during the fetch.
-      const latest = await db.files.get(local.id)
+      // Re-read right before deciding: the user may have typed during the fetch, or a backup may have finished.
+      let latest = await db.files.get(local.id)
       if (!latest) return { updated: false }
+
+      const backupDuringFetch = backupFlights.get(local.id)
+      if (backupDuringFetch) {
+        try {
+          await backupDuringFetch
+        } catch {
+          // ignore
+        }
+        const fresh = await db.files.get(local.id)
+        if (!fresh) return { updated: false }
+        latest = fresh
+        if (!driveModifiedAfterLastSync(driveModifiedTime, latest.lastSyncedAt)) {
+          return { updated: false, modifiedTime: driveModifiedTime }
+        }
+      }
+
       const unresolved = await unresolvedSyncIndex()
       const hasPendingPush = unresolved.has('file', latest.id) || latest.syncStatus === 'pending'
       const unsavedEdits = hasUnsavedLocalEdits(latest.id)
@@ -1891,6 +1932,7 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
           await db.files.update(latest.id, {
             workspaceType: 'drive',
             lastSyncedAt: driveModifiedTime,
+            baseContent: latest.baseContent ?? content,
             syncStatus: 'pending',
             syncError: null,
             updatedAt: now,

@@ -1,17 +1,33 @@
 import { db } from '../database/db'
 import { processPendingDriveSync } from '../database/repositories'
 import type { SyncConflict } from '../types/files'
+import { areDocumentContentsEquivalent } from '../utils/documentMerge'
 
 // Keeps the local document and stores the remote content as a recoverable
 // version, so a remote edit is never dropped without a trace.
 export async function recordRemoteConflict(fileId: string, remoteContent: string, remoteModifiedTime: string) {
   const file = await db.files.get(fileId)
   if (!file) return null
-  if (file.syncConflict?.remoteModifiedTime) {
+
+  if (file.syncConflict?.versionId) {
     if (file.syncConflict.remoteModifiedTime === remoteModifiedTime) return file.syncConflict
+    const existingVersion = await db.fileVersions.get(file.syncConflict.versionId)
+    if (existingVersion && (existingVersion.content === remoteContent || areDocumentContentsEquivalent(existingVersion.content, remoteContent))) {
+      // Remote content has not changed. Retain the stable conflict versionId and do not duplicate history.
+      if (remoteModifiedTime && remoteModifiedTime !== file.syncConflict.remoteModifiedTime) {
+        const updatedConflict: SyncConflict = { ...file.syncConflict, remoteModifiedTime }
+        await db.transaction('rw', db.files, db.fileVersions, async () => {
+          await db.files.update(fileId, { syncConflict: updatedConflict })
+          await db.fileVersions.update(file.syncConflict!.versionId, { driveModifiedTime: remoteModifiedTime })
+        })
+        return updatedConflict
+      }
+      return file.syncConflict
+    }
+
     const existingTime = new Date(file.syncConflict.remoteModifiedTime).getTime()
     const incomingTime = new Date(remoteModifiedTime).getTime()
-    if (!isNaN(existingTime) && !isNaN(incomingTime) && existingTime > incomingTime) {
+    if (!isNaN(existingTime) && !isNaN(incomingTime) && existingTime >= incomingTime) {
       return file.syncConflict
     }
   }
@@ -37,13 +53,20 @@ export async function recordRemoteConflict(fileId: string, remoteContent: string
 
 // Local edits win. The remote version stays in history and is acknowledged, so
 // only newer remote changes raise another conflict.
-export async function keepLocalVersion(fileId: string, expectedVersionId?: string, resolvedContent?: string) {
+export async function keepLocalVersion(
+  fileId: string,
+  expectedVersionId?: string,
+  resolvedContent?: string,
+  expectedRemoteModifiedTime?: string
+) {
   const now = new Date().toISOString()
   let kept = false
   await db.transaction('rw', db.files, db.fileVersions, db.syncQueue, async () => {
     const file = await db.files.get(fileId)
     if (!file?.syncConflict) return
-    if (expectedVersionId && file.syncConflict.versionId !== expectedVersionId) return
+    const versionMatches = !expectedVersionId || file.syncConflict.versionId === expectedVersionId
+    const timeMatches = Boolean(expectedRemoteModifiedTime && file.syncConflict.remoteModifiedTime === expectedRemoteModifiedTime)
+    if (!versionMatches && !timeMatches) return
 
     const remoteVersion = file.syncConflict.versionId ? await db.fileVersions.get(file.syncConflict.versionId) : null
     const baseContent = remoteVersion?.content ?? file.baseContent ?? file.content
@@ -90,14 +113,21 @@ export async function keepLocalVersion(fileId: string, expectedVersionId?: strin
   return kept
 }
 
-export async function mergeConflictVersions(fileId: string, mergedContent: string, expectedVersionId?: string) {
+export async function mergeConflictVersions(
+  fileId: string,
+  mergedContent: string,
+  expectedVersionId?: string,
+  expectedRemoteModifiedTime?: string
+) {
   const now = new Date().toISOString()
   let merged = false
   await db.transaction('rw', db.files, db.fileVersions, db.syncQueue, async () => {
     const file = await db.files.get(fileId)
     const conflict = file?.syncConflict
     if (!file || !conflict) return
-    if (expectedVersionId && conflict.versionId !== expectedVersionId) return
+    const versionMatches = !expectedVersionId || conflict.versionId === expectedVersionId
+    const timeMatches = Boolean(expectedRemoteModifiedTime && conflict.remoteModifiedTime === expectedRemoteModifiedTime)
+    if (!versionMatches && !timeMatches) return
 
     await db.fileVersions.add({
       id: crypto.randomUUID(),
@@ -152,14 +182,20 @@ export async function mergeConflictVersions(fileId: string, mergedContent: strin
   return merged
 }
 
-export async function applyRemoteVersion(fileId: string, expectedVersionId?: string) {
+export async function applyRemoteVersion(
+  fileId: string,
+  expectedVersionId?: string,
+  expectedRemoteModifiedTime?: string
+) {
   const now = new Date().toISOString()
   let applied = false
   await db.transaction('rw', db.files, db.fileVersions, db.syncQueue, async () => {
     const file = await db.files.get(fileId)
     const conflict = file?.syncConflict
     if (!file || !conflict) return
-    if (expectedVersionId && conflict.versionId !== expectedVersionId) return
+    const versionMatches = !expectedVersionId || conflict.versionId === expectedVersionId
+    const timeMatches = Boolean(expectedRemoteModifiedTime && conflict.remoteModifiedTime === expectedRemoteModifiedTime)
+    if (!versionMatches && !timeMatches) return
     const remote = await db.fileVersions.get(conflict.versionId)
     if (!remote) return
 

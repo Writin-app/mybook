@@ -21,6 +21,7 @@ export function useAutosave(file: MyBookFile | undefined) {
   const inFlightPromiseRef = useRef<Promise<boolean> | null>(null)
   const replaceEpochRef = useRef(0)
   const saveTimeoutRef = useRef<number | null>(null)
+  const staleBaselineRef = useRef<{ updatedAt?: string; content?: string } | null>(null)
 
   useEffect(() => { fileRef.current = file }, [file])
   useEffect(() => {
@@ -29,6 +30,7 @@ export function useAutosave(file: MyBookFile | undefined) {
     const next = file.content
 
     if (isNewFile) {
+      staleBaselineRef.current = null
       const previousFileId = hydratedFileIdRef.current
       if (previousFileId && contentRef.current !== lastSaved.current) {
         // Persist edits that were still waiting for the autosave delay to the file they belong to.
@@ -72,18 +74,49 @@ export function useAutosave(file: MyBookFile | undefined) {
 
     const savingContent = contentRef.current
     const epoch = replaceEpochRef.current
+    const expectedUpdatedAt = currentFile.updatedAt
+    const expectedContent = lastSaved.current
     inFlightContentRef.current = savingContent
     setStatus('saving-locally')
 
     const flight = (async () => {
-      const result = await fileRepository.update(currentFile.id, {
-        content: savingContent,
-        syncStatus: isLocalWorkspace() ? 'local' : 'pending',
-      })
+      const result = await fileRepository.update(
+        currentFile.id,
+        {
+          content: savingContent,
+          syncStatus: isLocalWorkspace() ? 'local' : 'pending',
+        },
+        { expectedUpdatedAt, expectedContent }
+      )
 
-      if (replaceEpochRef.current !== epoch) {
+      if (replaceEpochRef.current !== epoch || result.stale) {
         inFlightContentRef.current = null
-        return true
+        if (replaceEpochRef.current === epoch) {
+          setStatus(isLocalWorkspace() ? 'local' : (fileRef.current?.syncStatus ?? (navigator.onLine ? 'pending' : 'offline')))
+          if (result.stale) {
+            const currentFileRef = fileRef.current
+            const alreadyRefreshed =
+              currentFileRef &&
+              currentFileRef.updatedAt !== expectedUpdatedAt &&
+              currentFileRef.content === lastSaved.current
+
+            if (alreadyRefreshed) {
+              staleBaselineRef.current = null
+              if (contentRef.current !== lastSaved.current) {
+                if (saveTimeoutRef.current !== null) {
+                  window.clearTimeout(saveTimeoutRef.current)
+                }
+                saveTimeoutRef.current = window.setTimeout(() => {
+                  saveTimeoutRef.current = null
+                  void save()
+                }, SAVE_DELAY)
+              }
+            } else {
+              staleBaselineRef.current = { updatedAt: expectedUpdatedAt, content: expectedContent }
+            }
+          }
+        }
+        return false
       }
 
       if (!result.success) {
@@ -122,6 +155,25 @@ export function useAutosave(file: MyBookFile | undefined) {
   }, [])
 
   useEffect(() => {
+    if (!file) return
+    if (staleBaselineRef.current !== null) {
+      const baselineRefreshed =
+        staleBaselineRef.current.updatedAt === undefined ||
+        file.updatedAt !== staleBaselineRef.current.updatedAt
+
+      if (baselineRefreshed && file.content === lastSaved.current) {
+        staleBaselineRef.current = null
+        if (contentRef.current !== lastSaved.current && saveTimeoutRef.current === null) {
+          saveTimeoutRef.current = window.setTimeout(() => {
+            saveTimeoutRef.current = null
+            void save()
+          }, SAVE_DELAY)
+        }
+      }
+    }
+  }, [file, save])
+
+  useEffect(() => {
     if (!file || content === lastSaved.current) return
     const timer = window.setTimeout(() => void save(), SAVE_DELAY)
     return () => {
@@ -151,6 +203,7 @@ export function useAutosave(file: MyBookFile | undefined) {
 
   const replaceContent = useCallback((value: string, nextStatus: EditorSaveStatus = 'saved-locally') => {
     replaceEpochRef.current += 1
+    staleBaselineRef.current = null
     if (saveTimeoutRef.current !== null) {
       window.clearTimeout(saveTimeoutRef.current)
       saveTimeoutRef.current = null

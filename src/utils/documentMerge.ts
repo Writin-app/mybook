@@ -548,8 +548,13 @@ export function parseJsonDoc(raw: string | null | undefined): JSONContent | null
   if (!raw || typeof raw !== 'string') return null
   try {
     const parsed = JSON.parse(raw) as JSONContent
-    if (parsed && typeof parsed === 'object' && parsed.type === 'doc' && Array.isArray(parsed.content)) {
-      return parsed
+    if (parsed && typeof parsed === 'object' && parsed.type === 'doc') {
+      if (!parsed.content) {
+        parsed.content = []
+      }
+      if (Array.isArray(parsed.content)) {
+        return parsed
+      }
     }
   } catch {
     // not JSON
@@ -569,6 +574,49 @@ export function isEmptyDocument(raw: string | null | undefined): boolean {
   })
 }
 
+export function normalizeDocValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(normalizeDocValue)
+  }
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    const normalized: Record<string, unknown> = {}
+    const sortedKeys = Object.keys(obj).sort()
+    for (const key of sortedKeys) {
+      const val = obj[key]
+      if (key === 'attrs') {
+        if (val && typeof val === 'object' && Object.keys(val).length > 0) {
+          const sortedAttrs: Record<string, unknown> = {}
+          for (const attrKey of Object.keys(val as Record<string, unknown>).sort()) {
+            const attrVal = (val as Record<string, unknown>)[attrKey]
+            if (attrVal !== undefined) {
+              sortedAttrs[attrKey] = normalizeDocValue(attrVal)
+            }
+          }
+          if (Object.keys(sortedAttrs).length > 0) {
+            normalized.attrs = sortedAttrs
+          }
+        }
+      } else if (key === 'content') {
+        if (Array.isArray(val) && val.length > 0) {
+          normalized.content = val.map(normalizeDocValue)
+        }
+      } else if (key === 'marks') {
+        if (Array.isArray(val) && val.length > 0) {
+          const sortedMarks = val
+            .map(normalizeDocValue)
+            .sort((m1, m2) => JSON.stringify(m1).localeCompare(JSON.stringify(m2)))
+          normalized.marks = sortedMarks
+        }
+      } else if (val !== undefined) {
+        normalized[key] = normalizeDocValue(val)
+      }
+    }
+    return normalized
+  }
+  return value
+}
+
 export function areDocumentContentsEquivalent(a: string | null | undefined, b: string | null | undefined): boolean {
   if (a === b) return true
   if (isEmptyDocument(a) && isEmptyDocument(b)) return true
@@ -576,9 +624,18 @@ export function areDocumentContentsEquivalent(a: string | null | undefined, b: s
   const docA = parseJsonDoc(a)
   const docB = parseJsonDoc(b)
   if (docA && docB) {
-    return JSON.stringify(docA) === JSON.stringify(docB)
+    return JSON.stringify(normalizeDocValue(docA)) === JSON.stringify(normalizeDocValue(docB))
   }
-  return false
+  try {
+    const parsedA = JSON.parse(a)
+    const parsedB = JSON.parse(b)
+    if (parsedA && parsedB && typeof parsedA === 'object' && typeof parsedB === 'object') {
+      return JSON.stringify(normalizeDocValue(parsedA)) === JSON.stringify(normalizeDocValue(parsedB))
+    }
+  } catch {
+    // not JSON
+  }
+  return a.trim() === b.trim()
 }
 
 export function mergeDocuments(

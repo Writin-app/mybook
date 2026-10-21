@@ -80,7 +80,7 @@ describe('useAutosave external updates', () => {
     })
 
     expect(updateMock).toHaveBeenCalledTimes(1)
-    expect(updateMock).toHaveBeenCalledWith('file-1', expect.objectContaining({ content: 'first edit' }))
+    expect(updateMock).toHaveBeenCalledWith('file-1', expect.objectContaining({ content: 'first edit' }), expect.anything())
 
     // Step 2: User types second edit while first save is still in flight
     act(() => result.current.setContent('second edit'))
@@ -106,7 +106,7 @@ describe('useAutosave external updates', () => {
 
     // Verify second save runs for 'second edit'
     expect(updateMock).toHaveBeenCalledTimes(2)
-    expect(updateMock).toHaveBeenCalledWith('file-1', expect.objectContaining({ content: 'second edit' }))
+    expect(updateMock).toHaveBeenCalledWith('file-1', expect.objectContaining({ content: 'second edit' }), expect.anything())
     expect(result.current.hasUnsavedChanges()).toBe(false)
   })
 
@@ -144,5 +144,45 @@ describe('useAutosave external updates', () => {
     expect(result.current.content).toBe('remote version')
     expect(result.current.hasUnsavedChanges()).toBe(false)
     expect(updateMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-arms trailing save when in-flight save is rejected as stale if local typing continues', async () => {
+    let resolveSave!: (value: { success: boolean; stale?: boolean }) => void
+    const savePromise = new Promise<{ success: boolean; stale?: boolean }>((res) => { resolveSave = res })
+    const updateMock = vi.mocked(fileRepository.update)
+      .mockImplementationOnce(() => savePromise)
+      .mockResolvedValueOnce({ success: true })
+
+    const initial = file('initial')
+    const { result } = renderHook(() => useAutosave(initial))
+
+    // Step 1: User types local edit and triggers save
+    act(() => result.current.setContent('first edit'))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    expect(updateMock).toHaveBeenCalledTimes(1)
+
+    // Step 2: User types more local edits while first save is in flight
+    act(() => result.current.setContent('second edit'))
+
+    // Step 3: First save resolves as stale (e.g., rejected because a concurrent remote merge committed to Dexie)
+    await act(async () => {
+      resolveSave({ success: false, stale: true })
+      await result.current.waitForPendingSave()
+    })
+
+    // Local buffer must be intact
+    expect(result.current.content).toBe('second edit')
+    expect(result.current.hasUnsavedChanges()).toBe(true)
+
+    // Step 4: Advance timers to allow re-armed trailing save to fire
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+
+    // Trailing save fired for 'second edit'
+    expect(updateMock).toHaveBeenCalledTimes(2)
+    expect(updateMock).toHaveBeenLastCalledWith('file-1', expect.objectContaining({ content: 'second edit' }), expect.anything())
   })
 })

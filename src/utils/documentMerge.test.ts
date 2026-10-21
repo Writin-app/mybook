@@ -1,7 +1,7 @@
 import type { JSONContent } from '@tiptap/core'
 import { describe, expect, it } from 'vitest'
 
-import { mergeDocuments } from './documentMerge'
+import { areDocumentContentsEquivalent, mergeDocuments } from './documentMerge'
 
 const docWith = (texts: string[]) => JSON.stringify({
   type: 'doc',
@@ -333,6 +333,83 @@ describe('mergeDocuments', () => {
       const dbBlock = parsed.content?.find((n) => n.type === 'databaseBlock')
       expect(dbBlock?.attrs?.databaseId).toBe('db-123')
       expect(dbBlock?.attrs?.databaseName).toBe('Projects')
+    })
+  })
+
+  describe('areDocumentContentsEquivalent', () => {
+    it('recognizes both empty strings and empty doc JSON as equivalent', () => {
+      expect(areDocumentContentsEquivalent('', '{"type":"doc","content":[{"type":"paragraph"}]}')).toBe(true)
+      expect(areDocumentContentsEquivalent('{"type":"doc"}', '{"type":"doc","content":[{"type":"paragraph"}]}')).toBe(true)
+      expect(areDocumentContentsEquivalent(undefined, '')).toBe(true)
+      expect(areDocumentContentsEquivalent(null, '{"type":"doc"}')).toBe(true)
+    })
+
+    it('normalizes key ordering and empty attrs', () => {
+      const doc1 = JSON.stringify({
+        type: 'doc',
+        content: [
+          { type: 'paragraph', attrs: {}, content: [{ type: 'text', text: 'Hello' }] },
+        ],
+      })
+      const doc2 = JSON.stringify({
+        content: [
+          { content: [{ text: 'Hello', type: 'text' }], type: 'paragraph' },
+        ],
+        type: 'doc',
+      })
+      expect(areDocumentContentsEquivalent(doc1, doc2)).toBe(true)
+    })
+
+    it('normalizes marks sorting', () => {
+      const doc1 = JSON.stringify({
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'Bold italic', marks: [{ type: 'bold' }, { type: 'italic' }] }],
+          },
+        ],
+      })
+      const doc2 = JSON.stringify({
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'Bold italic', marks: [{ type: 'italic' }, { type: 'bold' }] }],
+          },
+        ],
+      })
+      expect(areDocumentContentsEquivalent(doc1, doc2)).toBe(true)
+    })
+
+    it('detects genuine content differences', () => {
+      const doc1 = JSON.stringify({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello' }] }],
+      })
+      const doc2 = JSON.stringify({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'World' }] }],
+      })
+      expect(areDocumentContentsEquivalent(doc1, doc2)).toBe(false)
+    })
+
+    it('normalizes workbook and generic JSON object key ordering', () => {
+      const sheet1 = JSON.stringify({
+        id: 'wb-1',
+        name: 'Budget',
+        sheets: [
+          { name: 'Q1', id: 's1', cellData: { 0: { 0: { v: 100, t: 1 } } } },
+        ],
+      })
+      const sheet2 = JSON.stringify({
+        sheets: [
+          { id: 's1', cellData: { 0: { 0: { t: 1, v: 100 } } }, name: 'Q1' },
+        ],
+        name: 'Budget',
+        id: 'wb-1',
+      })
+      expect(areDocumentContentsEquivalent(sheet1, sheet2)).toBe(true)
     })
   })
 })
