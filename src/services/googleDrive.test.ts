@@ -2173,5 +2173,220 @@ describe('googleDrive helpers', () => {
       expect(db.fileVersions.add).not.toHaveBeenCalled()
       expect(mockedFiles.update).not.toHaveBeenCalled()
     })
+
+    it('skips refresh when file is actively in backing-up state', async () => {
+      mockedFiles.get.mockResolvedValue({
+        id: 'local-backing-up',
+        driveFileId: 'drive-backing-up',
+        name: 'Untitled',
+        type: 'document',
+        mimeType: 'application/x-mybook-document',
+        content: 'typing...',
+        syncStatus: 'backing-up',
+      })
+
+      const result = await refreshDriveFileToLocal('local-backing-up')
+      expect(result.updated).toBe(false)
+      expect(db.fileVersions.add).not.toHaveBeenCalled()
+    })
+
+    it('waits for an active in-flight backup before refreshing, avoiding false conflicts from self-upload', async () => {
+      let fileState = {
+        id: 'file-race-1',
+        driveFileId: 'drive-race-1',
+        name: 'RaceDoc',
+        type: 'document' as const,
+        mimeType: 'application/x-mybook-document',
+        content: JSON.stringify({
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Uploaded text' }] }],
+        }),
+        baseContent: undefined,
+        syncStatus: 'pending' as const,
+        lastSyncedAt: '2026-10-03T10:00:00.000Z',
+        folderId: null,
+        isFavorite: false,
+        isDeleted: false,
+      }
+
+      mockedFiles.get.mockImplementation(((id: string) => Promise.resolve(id === 'file-race-1' ? { ...fileState } : null)) as never)
+      mockedFiles.update.mockImplementation(((id: string, patch: Record<string, unknown>) => {
+        if (id === 'file-race-1') {
+          fileState = { ...fileState, ...patch }
+        }
+        return Promise.resolve(1)
+      }) as never)
+      mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'folder-root', updatedAt: '2026-07-24T00:00:00.000Z' })
+      mockedGetState.mockReturnValue({ getAccessToken: vi.fn().mockResolvedValue('test-token') } as never)
+
+      let resolveUploadFetch!: (val: unknown) => void
+      const uploadFetchPromise = new Promise((res) => { resolveUploadFetch = res })
+
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('upload/drive/v3/files') || url.includes('uploadType=multipart')) {
+          return uploadFetchPromise
+        }
+        if (url.includes('drive/v3/files/drive-race-1?alt=media')) {
+          return Promise.resolve({
+            ok: true,
+            text: async () => '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Uploaded text"}]}]}',
+          })
+        }
+        if (url.includes('drive/v3/files/drive-race-1')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              id: 'drive-race-1',
+              name: 'RaceDoc.md',
+              mimeType: 'text/markdown',
+              modifiedTime: '2026-10-03T12:00:00.000Z',
+              trashed: false,
+            }),
+          })
+        }
+        if (url.includes('folder-root')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              id: 'folder-root',
+              name: 'Writin',
+              mimeType: 'application/vnd.google-apps.folder',
+              trashed: false,
+            }),
+          })
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}), text: async () => '' })
+      })
+      stubDriveFetch(fetchMock)
+
+      // 1. Initiate backup - this registers in backupFlights and stays unresolved
+      const backupPromise = backupDocumentToDrive({
+        fileId: 'file-race-1',
+        title: 'RaceDoc',
+        content: fileState.content,
+        folderId: null,
+      })
+
+      // 2. Start refreshDriveFileToLocal while backup is still in flight
+      let refreshDone = false
+      const refreshPromise = refreshDriveFileToLocal('file-race-1').then((res) => {
+        refreshDone = true
+        return res
+      })
+
+      // Allow microtasks to run and verify refresh is suspended waiting for active backup
+      await new Promise((res) => setTimeout(res, 20))
+      expect(refreshDone).toBe(false)
+
+      // 3. Resolve the backup upload fetch
+      resolveUploadFetch({
+        ok: true,
+        json: async () => ({
+          id: 'drive-race-1',
+          name: 'RaceDoc.md',
+          modifiedTime: '2026-10-03T12:00:00.000Z',
+        }),
+      })
+
+      const backupResult = await backupPromise
+      expect(backupResult.success).toBe(true)
+      expect(fileState.syncStatus).toBe('backed-up')
+      expect(fileState.lastSyncedAt).toBe('2026-10-03T12:00:00.000Z')
+
+      // 4. Now refresh finishes because backup unblocked it
+      const refreshResult = await refreshPromise
+      expect(refreshDone).toBe(true)
+      expect(refreshResult.updated).toBe(false)
+      expect(refreshResult.modifiedTime).toBe('2026-10-03T12:00:00.000Z')
+      expect(db.fileVersions.add).not.toHaveBeenCalled()
+    })
+
+    it('releases backupFlights coordination entry even when backup fails or rejects', async () => {
+      const fileState = {
+        id: 'file-fail-1',
+        driveFileId: 'drive-fail-1',
+        name: 'FailDoc',
+        type: 'document' as const,
+        mimeType: 'application/x-mybook-document',
+        content: '{"type":"doc","content":[{"type":"paragraph"}]}',
+        syncStatus: 'pending' as const,
+        lastSyncedAt: '2026-10-03T10:00:00.000Z',
+        folderId: null,
+        isFavorite: false,
+        isDeleted: false,
+      }
+
+      mockedFiles.get.mockImplementation(((id: string) => Promise.resolve(id === 'file-fail-1' ? { ...fileState } : null)) as never)
+      mockedFiles.update.mockImplementation(((id: string, patch: Record<string, unknown>) => {
+        if (id === 'file-fail-1') Object.assign(fileState, patch)
+        return Promise.resolve(1)
+      }) as never)
+      mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'folder-root', updatedAt: '2026-07-24T00:00:00.000Z' })
+      mockedGetState.mockReturnValue({ getAccessToken: vi.fn().mockResolvedValue('test-token') } as never)
+
+      let rejectUploadFetch!: (err: Error) => void
+      const uploadFetchPromise = new Promise((_, rej) => { rejectUploadFetch = rej })
+
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('upload/drive/v3/files') || url.includes('uploadType=multipart')) {
+          return uploadFetchPromise
+        }
+        if (url.includes('folder-root')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              id: 'folder-root',
+              name: 'Writin',
+              mimeType: 'application/vnd.google-apps.folder',
+              trashed: false,
+            }),
+          })
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'drive-fail-1',
+            name: 'FailDoc.md',
+            mimeType: 'text/markdown',
+            modifiedTime: '2026-10-03T10:00:00.000Z',
+            trashed: false,
+          }),
+        })
+      })
+      stubDriveFetch(fetchMock)
+
+      // Start backup
+      const backupPromise = backupDocumentToDrive({
+        fileId: 'file-fail-1',
+        title: 'FailDoc',
+        content: fileState.content,
+        folderId: null,
+      })
+
+      // Start refresh while backup is in flight
+      let refreshDone = false
+      const refreshPromise = refreshDriveFileToLocal('file-fail-1').then((res) => {
+        refreshDone = true
+        return res
+      })
+
+      await new Promise((res) => setTimeout(res, 10))
+      expect(refreshDone).toBe(false)
+
+      // Reject the backup fetch
+      rejectUploadFetch(new Error('Network disconnected'))
+
+      const backupRes = await backupPromise
+      expect(backupRes.success).toBe(false)
+
+      // The refresh should catch the backup failure and proceed safely without throwing
+      const refreshRes = await refreshPromise
+      expect(refreshDone).toBe(true)
+      expect(refreshRes.updated).toBe(false)
+
+      // Verify coordination entry was released: a subsequent refresh runs without awaiting stale promise
+      const subsequentRefresh = await refreshDriveFileToLocal('file-fail-1')
+      expect(subsequentRefresh.updated).toBe(false)
+    })
   })
 })

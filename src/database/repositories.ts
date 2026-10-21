@@ -536,7 +536,11 @@ export const fileRepository = {
       return { success: true, data: file ? { ...file, name: appFileName(file.name, file.type) } : file }
     } catch (error) { return failure(error, 'Could not load file.') }
   },
-  async update(id: string, changes: Partial<Omit<MyBookFile, 'id'>>): Promise<RepositoryResult> {
+  async update(
+    id: string,
+    changes: Partial<Omit<MyBookFile, 'id'>>,
+    options?: { expectedUpdatedAt?: string; expectedContent?: string }
+  ): Promise<RepositoryResult & { stale?: boolean }> {
     try {
       const existing = await db.files.get(id)
       if (!existing) return { success: false, error: 'File could not be found.' }
@@ -580,10 +584,35 @@ export const fileRepository = {
           }
         }
       }
-      await db.files.update(id, { ...nextChanges, updatedAt: new Date().toISOString() })
+      if (options?.expectedUpdatedAt !== undefined || options?.expectedContent !== undefined) {
+        let isStale = false
+        await db.transaction('rw', db.files, db.syncQueue, async () => {
+          const current = await db.files.get(id)
+          if (!current) throw new Error('File could not be found.')
+          if (options.expectedUpdatedAt !== undefined && current.updatedAt !== options.expectedUpdatedAt) {
+            isStale = true
+            return
+          }
+          if (options.expectedContent !== undefined && current.content !== options.expectedContent) {
+            isStale = true
+            return
+          }
+          await db.files.update(id, { ...nextChanges, updatedAt: new Date().toISOString() })
+          if (changes.name !== undefined || changes.folderId !== undefined || changes.content !== undefined) {
+            await maybeQueueFileSync(id, current.driveFileId ? 'update' : 'create', navigator.onLine ? null : 'Offline. File changes will sync when you reconnect.')
+          }
+        })
+        if (isStale) {
+          return { success: false, stale: true, error: 'File was modified concurrently.' }
+        }
+      } else {
+        await db.files.update(id, { ...nextChanges, updatedAt: new Date().toISOString() })
+        if (changes.name !== undefined || changes.folderId !== undefined || changes.content !== undefined) {
+          await maybeQueueFileSync(id, existing.driveFileId ? 'update' : 'create', navigator.onLine ? null : 'Offline. File changes will sync when you reconnect.')
+        }
+      }
       await persistLocalFile(await db.files.get(id))
       if (changes.name !== undefined || changes.folderId !== undefined || changes.content !== undefined) {
-        await maybeQueueFileSync(id, existing.driveFileId ? 'update' : 'create', navigator.onLine ? null : 'Offline. File changes will sync when you reconnect.')
         processPendingDriveSyncInBackground()
       }
       return { success: true }

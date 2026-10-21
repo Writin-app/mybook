@@ -46,8 +46,16 @@ export function reconcileExternalUpdate(input: ReconcileInput): ReconcileDecisio
     return { action: 'keep-local' }
   }
 
-  // Attempt smart merge when there are no unsaved in-flight keystrokes or queued pushes
-  if (!input.hasUnsavedLocalEdits && !input.hasPendingPush) {
+  // Attempt smart merge when there are no unsaved in-flight keystrokes and baseContent is known
+  if (!input.hasUnsavedLocalEdits && input.baseContent !== undefined && input.baseContent !== null) {
+    const isLocalContentUnchanged = areDocumentContentsEquivalent(input.localContent, input.baseContent)
+
+    // If local content was unchanged relative to base, the only pending local push is metadata (e.g. rename/move).
+    // Safely adopt the remote content via merge so the pending metadata push retains the new remote content.
+    if (isLocalContentUnchanged) {
+      return { action: 'merge', mergedContent: input.remoteContent }
+    }
+
     const mergeResult = mergeDocuments(input.baseContent, input.localContent, input.remoteContent)
     if (mergeResult.success && !mergeResult.hasConflict) {
       return { action: 'merge', mergedContent: mergeResult.content }

@@ -153,4 +153,25 @@ describe('sync conflicts', () => {
     expect(stored?.syncConflict).toBeNull()
     expect(stored?.syncStatus).toBe('pending')
   })
+
+  it('keeps versionId stable and updates timestamp in place when same content is polled with newer time', async () => {
+    const c1 = await recordRemoteConflict('file-1', 'remote draft', '2026-10-03T12:00:00.000Z')
+    expect(c1).toBeDefined()
+    const c2 = await recordRemoteConflict('file-1', 'remote draft', '2026-10-03T12:05:00.000Z')
+    expect(c2?.versionId).toBe(c1?.versionId)
+    expect(c2?.remoteModifiedTime).toBe('2026-10-03T12:05:00.000Z')
+
+    // fileVersions should only have 1 version record for this stable conflict
+    expect(await db.fileVersions.count()).toBe(1)
+  })
+
+  it('resolves keepLocalVersion using matching expectedRemoteModifiedTime', async () => {
+    await recordRemoteConflict('file-1', 'remote colliding draft', '2026-10-03T12:00:00.000Z')
+    const kept = await keepLocalVersion('file-1', undefined, 'my final draft', '2026-10-03T12:00:00.000Z')
+    expect(kept).toBe(true)
+
+    const stored = await db.files.get('file-1')
+    expect(stored?.content).toBe('my final draft')
+    expect(stored?.syncConflict).toBeNull()
+  })
 })

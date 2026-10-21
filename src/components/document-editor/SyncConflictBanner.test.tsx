@@ -300,4 +300,76 @@ describe('SyncConflictBanner', () => {
     expect(screen.getByText('Conflicting changes (pending review)')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Review changes' })).toBeInTheDocument()
   })
+
+  it('9. Keep my changes persists resolution across component remount / document reopen', async () => {
+    let persistedFile = { ...mockFile }
+    const onKeepMine = vi.fn().mockImplementation(async () => {
+      persistedFile = {
+        ...persistedFile,
+        syncConflict: undefined,
+        lastSyncedAt: '2026-10-18T12:30:00.000Z',
+      }
+      return true
+    })
+
+    function EditorHarness({ file }: { file: typeof mockFile }) {
+      return (
+        <div>
+          {file.syncConflict ? (
+            <SyncConflictBanner
+              file={file}
+              conflictVersionId={file.syncConflict.versionId}
+              onKeepMine={onKeepMine}
+              onUseRemote={vi.fn()}
+            />
+          ) : (
+            <div data-testid="editor-clean">Document Editor Active (No Banner)</div>
+          )}
+        </div>
+      )
+    }
+
+    // 1. Initial mount: Document has an unresolved conflict banner
+    const { unmount } = render(<EditorHarness file={persistedFile} />)
+    expect(screen.getByRole('region', { name: 'Conflicting changes' })).toBeInTheDocument()
+
+    // 2. User reviews and clicks "Keep my version"
+    fireEvent.click(screen.getByRole('button', { name: 'Review changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Keep my version' }))
+
+    await waitFor(() => {
+      expect(onKeepMine).toHaveBeenCalledTimes(1)
+    })
+
+    // 3. Document is closed/unmounted (simulating closing tab or navigating away)
+    unmount()
+    expect(screen.queryByRole('region', { name: 'Conflicting changes' })).not.toBeInTheDocument()
+
+    // 4. Document is reopened (fresh React mount loading from persisted storage)
+    const { rerender: rerenderReopened } = render(<EditorHarness file={persistedFile} />)
+    // Banner must NOT be present
+    expect(screen.queryByRole('region', { name: 'Conflicting changes' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('editor-clean')).toBeInTheDocument()
+
+    // 5. Subsequent polling of the SAME remote version (modifiedTime: '2026-10-18T12:30:00.000Z')
+    // Polling sees remote modifiedTime <= persistedFile.lastSyncedAt, so syncConflict remains undefined
+    rerenderReopened(<EditorHarness file={persistedFile} />)
+    expect(screen.queryByRole('region', { name: 'Conflicting changes' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('editor-clean')).toBeInTheDocument()
+
+    // 6. A genuinely NEWER remote version arrives (modifiedTime: '2026-10-18T13:00:00.000Z')
+    const newerFile = {
+      ...persistedFile,
+      syncConflict: {
+        versionId: 'remote-ver-2',
+        remoteModifiedTime: '2026-10-18T13:00:00.000Z',
+        detectedAt: '2026-10-18T13:01:00.000Z',
+      },
+    }
+    rerenderReopened(<EditorHarness file={newerFile} />)
+
+    // Banner MUST reappear for the new conflict
+    expect(screen.getByRole('region', { name: 'Conflicting changes' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Review changes' })).toBeInTheDocument()
+  })
 })

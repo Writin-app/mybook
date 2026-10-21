@@ -61,13 +61,14 @@ describe('useDriveLiveSync', () => {
     expect(googleDriveService.refreshDriveFileToLocal).toHaveBeenCalledTimes(2)
   })
 
-  it('skips polling when isEditing is true', async () => {
+  it('continues polling refreshDriveFileToLocal even when isEditing is true', async () => {
     renderHook(() => useDriveLiveSync('doc-1', 'drive-1', { enabled: true, intervalMs: 5000, isEditing: true }))
 
     await act(async () => {
-      vi.advanceTimersByTime(10000)
+      vi.advanceTimersByTime(5000)
     })
-    expect(googleDriveService.refreshDriveFileToLocal).not.toHaveBeenCalled()
+    expect(googleDriveService.refreshDriveFileToLocal).toHaveBeenCalledWith('doc-1')
+    expect(googleDriveService.refreshDriveFileToLocal).toHaveBeenCalledTimes(1)
   })
 
   it('skips polling when offline or in local workspace', async () => {
