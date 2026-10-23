@@ -6,34 +6,44 @@ import { areDocumentContentsEquivalent } from '../utils/documentMerge'
 // Keeps the local document and stores the remote content as a recoverable
 // version, so a remote edit is never dropped without a trace.
 export async function recordRemoteConflict(fileId: string, remoteContent: string, remoteModifiedTime: string) {
-  const file = await db.files.get(fileId)
-  if (!file) return null
+  return db.transaction('rw', db.files, db.fileVersions, async () => {
+    const file = await db.files.get(fileId)
+    if (!file) return null
 
-  if (file.syncConflict?.versionId) {
-    if (file.syncConflict.remoteModifiedTime === remoteModifiedTime) return file.syncConflict
-    const existingVersion = await db.fileVersions.get(file.syncConflict.versionId)
-    if (existingVersion && (existingVersion.content === remoteContent || areDocumentContentsEquivalent(existingVersion.content, remoteContent))) {
-      // Remote content has not changed. Retain the stable conflict versionId and do not duplicate history.
-      if (remoteModifiedTime && remoteModifiedTime !== file.syncConflict.remoteModifiedTime) {
-        const updatedConflict: SyncConflict = { ...file.syncConflict, remoteModifiedTime }
-        await db.transaction('rw', db.files, db.fileVersions, async () => {
+    // Check the saved snapshot inside the same transaction that records the
+    // conflict. Autosave may have converged after the refresh began; an early
+    // non-transactional read would otherwise publish a stale banner afterward.
+    if (areDocumentContentsEquivalent(file.content, remoteContent)) {
+      await db.files.update(fileId, {
+        syncConflict: null,
+        baseContent: remoteContent,
+        lastSyncedAt: remoteModifiedTime || file.lastSyncedAt,
+      })
+      return null
+    }
+
+    if (file.syncConflict?.versionId) {
+      if (file.syncConflict.remoteModifiedTime === remoteModifiedTime) return file.syncConflict
+      const existingVersion = await db.fileVersions.get(file.syncConflict.versionId)
+      if (existingVersion && areDocumentContentsEquivalent(existingVersion.content, remoteContent)) {
+        // Remote content has not changed. Retain the stable conflict versionId and do not duplicate history.
+        if (remoteModifiedTime && remoteModifiedTime !== file.syncConflict.remoteModifiedTime) {
+          const updatedConflict: SyncConflict = { ...file.syncConflict, remoteModifiedTime }
           await db.files.update(fileId, { syncConflict: updatedConflict })
-          await db.fileVersions.update(file.syncConflict!.versionId, { driveModifiedTime: remoteModifiedTime })
-        })
-        return updatedConflict
+          await db.fileVersions.update(file.syncConflict.versionId, { driveModifiedTime: remoteModifiedTime })
+          return updatedConflict
+        }
+        return file.syncConflict
       }
-      return file.syncConflict
+
+      const existingTime = new Date(file.syncConflict.remoteModifiedTime).getTime()
+      const incomingTime = new Date(remoteModifiedTime).getTime()
+      if (!isNaN(existingTime) && !isNaN(incomingTime) && existingTime >= incomingTime) {
+        return file.syncConflict
+      }
     }
 
-    const existingTime = new Date(file.syncConflict.remoteModifiedTime).getTime()
-    const incomingTime = new Date(remoteModifiedTime).getTime()
-    if (!isNaN(existingTime) && !isNaN(incomingTime) && existingTime >= incomingTime) {
-      return file.syncConflict
-    }
-  }
-
-  const conflict: SyncConflict = { remoteModifiedTime, versionId: crypto.randomUUID(), detectedAt: new Date().toISOString() }
-  await db.transaction('rw', db.files, db.fileVersions, async () => {
+    const conflict: SyncConflict = { remoteModifiedTime, versionId: crypto.randomUUID(), detectedAt: new Date().toISOString() }
     await db.fileVersions.add({
       id: conflict.versionId,
       fileId,
@@ -47,8 +57,8 @@ export async function recordRemoteConflict(fileId: string, remoteContent: string
       label: 'Remote version (not applied)',
     })
     await db.files.update(fileId, { syncConflict: conflict })
+    return conflict
   })
-  return conflict
 }
 
 // Local edits win. The remote version stays in history and is acknowledged, so

@@ -47,6 +47,7 @@ vi.mock('../database/db', () => ({
     },
     fileVersions: {
       add: vi.fn(),
+      get: vi.fn(),
     },
     folders: {
       toArray: vi.fn(),
@@ -111,6 +112,7 @@ describe('googleDrive helpers', () => {
     vi.clearAllMocks()
     mockedGetState.mockReturnValue({ getAccessToken: () => Promise.resolve('token') } as never)
     mockedFiles.get.mockResolvedValue(undefined)
+    vi.mocked(db.fileVersions.get).mockResolvedValue(undefined)
     mockedFolders.get.mockResolvedValue(undefined)
     mockUnresolvedSyncQueue()
     mockEmptyFileFilter()
@@ -1936,7 +1938,7 @@ describe('googleDrive helpers', () => {
       expect(mockedFiles.update).not.toHaveBeenCalledWith('local-1', expect.objectContaining({ content: expect.anything() }))
     })
 
-    it('treats keystrokes that are not saved yet as local changes', async () => {
+    it('defers conflict decisions while keystrokes are not saved yet', async () => {
       mockedFiles.get.mockResolvedValue({
         id: 'local-1', driveFileId: 'drive-1', name: 'Doc', type: 'document', mimeType: 'application/x-mybook-document',
         content: 'base', baseContent: 'base', syncStatus: 'backed-up', lastSyncedAt: '2026-10-03T11:00:00.000Z',
@@ -1948,7 +1950,8 @@ describe('googleDrive helpers', () => {
       unregister()
 
       expect(result.updated).toBe(false)
-      expect(mockedFiles.update).toHaveBeenCalledWith('local-1', { syncConflict: expect.anything() })
+      expect(mockedFiles.update).not.toHaveBeenCalledWith('local-1', { syncConflict: expect.anything() })
+      expect(db.fileVersions.add).not.toHaveBeenCalled()
       expect(mockedFiles.update).not.toHaveBeenCalledWith('local-1', expect.objectContaining({ content: expect.anything() }))
     })
 
@@ -1963,6 +1966,25 @@ describe('googleDrive helpers', () => {
       await refreshDriveFileToLocal('local-1')
 
       expect(mockedFiles.update).not.toHaveBeenCalled()
+    })
+
+    it('clears a stored conflict when its saved remote version matches local content', async () => {
+      const sameContent = '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"same"}]}]}'
+      mockedFiles.get.mockResolvedValue({
+        id: 'local-1', driveFileId: 'drive-1', content: sameContent, baseContent: sameContent, syncStatus: 'backed-up',
+        lastSyncedAt: '2026-10-03T11:00:00.000Z',
+        syncConflict: { remoteModifiedTime: '2026-10-03T12:00:00.000Z', versionId: 'v1', detectedAt: '2026-10-03T12:00:01.000Z' },
+      })
+      vi.mocked(db.fileVersions.get).mockResolvedValue({ content: sameContent } as never)
+      stubDriveFetch(remoteFetch())
+
+      await refreshDriveFileToLocal('local-1')
+
+      expect(mockedFiles.update).toHaveBeenCalledWith('local-1', {
+        syncConflict: null,
+        baseContent: sameContent,
+        lastSyncedAt: '2026-10-03T12:00:00.000Z',
+      })
     })
 
     it('queues an upload and saves pending syncStatus when 3-way merge succeeds', async () => {
@@ -2072,6 +2094,59 @@ describe('googleDrive helpers', () => {
       expect(mockedFiles.update).not.toHaveBeenCalledWith('local-1', expect.objectContaining({
         syncStatus: 'backed-up',
       }))
+      expect(mockedSyncQueue.add).toHaveBeenCalledWith(expect.objectContaining({
+        entityId: 'local-1',
+        entityType: 'file',
+        operation: 'update',
+        status: 'pending',
+      }))
+    })
+
+    it('does not show a conflict when a second locally saved edit is pending and Drive still has the last synced version', async () => {
+      const syncedJson = JSON.stringify({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'first edit already synced' }] }],
+      })
+      const secondEditJson = JSON.stringify({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'first edit already synced, now a second edit' }] }],
+      })
+
+      mockedFiles.get.mockResolvedValue({
+        id: 'local-1',
+        driveFileId: 'drive-1',
+        name: 'Doc',
+        type: 'document',
+        mimeType: 'application/x-mybook-document',
+        content: secondEditJson,
+        baseContent: syncedJson,
+        syncStatus: 'pending',
+        lastSyncedAt: '2026-10-03T11:00:00.000Z',
+      })
+
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'drive-1',
+            name: 'Doc.md',
+            mimeType: 'text/markdown',
+            modifiedTime: '2026-10-03T12:00:00.000Z',
+            trashed: false,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          text: vi.fn().mockResolvedValue('first edit already synced'),
+        })
+      stubDriveFetch(fetchMock)
+
+      const result = await refreshDriveFileToLocal('local-1')
+
+      expect(result.updated).toBe(false)
+      expect(db.fileVersions.add).not.toHaveBeenCalled()
+      expect(mockedFiles.update).not.toHaveBeenCalledWith('local-1', { syncConflict: expect.anything() })
+      expect(mockedFiles.update).toHaveBeenCalledWith('local-1', expect.objectContaining({ syncStatus: 'pending' }))
       expect(mockedSyncQueue.add).toHaveBeenCalledWith(expect.objectContaining({
         entityId: 'local-1',
         entityType: 'file',

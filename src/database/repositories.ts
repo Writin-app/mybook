@@ -4,6 +4,7 @@ import { backupDocumentToDrive, backupSpreadsheetToDrive, ensureMyBookDriveFolde
 import { deleteLocalWorkspaceFile, deleteLocalWorkspaceFolder, ensureLocalWorkspaceFolder, getDeviceDirectoryHandle, readLocalWorkspaceFile, syncAttachmentsOnRenameOrMove, writeLocalWorkspaceFile } from '../services/localWorkspace'
 import { isLocalWorkspace, shouldSyncWithDrive } from '../stores/useWorkspaceStore'
 import { devLog } from '../utils/safeLog'
+import { areDocumentContentsEquivalent } from '../utils/documentMerge'
 
 export interface RepositoryResult<T = void> {
   success: boolean
@@ -586,7 +587,7 @@ export const fileRepository = {
       }
       if (options?.expectedUpdatedAt !== undefined || options?.expectedContent !== undefined) {
         let isStale = false
-        await db.transaction('rw', db.files, db.syncQueue, async () => {
+        await db.transaction('rw', db.files, db.fileVersions, db.syncQueue, async () => {
           const current = await db.files.get(id)
           if (!current) throw new Error('File could not be found.')
           if (options.expectedUpdatedAt !== undefined && current.updatedAt !== options.expectedUpdatedAt) {
@@ -597,7 +598,22 @@ export const fileRepository = {
             isStale = true
             return
           }
-          await db.files.update(id, { ...nextChanges, updatedAt: new Date().toISOString() })
+          let persistedChanges = nextChanges
+          if (changes.content !== undefined && current.syncConflict?.versionId) {
+            const remoteVersion = await db.fileVersions.get(current.syncConflict.versionId)
+            if (remoteVersion && areDocumentContentsEquivalent(changes.content, remoteVersion.content)) {
+              // Autosave may catch up to the saved remote version after a
+              // transient conflict was recorded. Clear that stale banner in
+              // the same transaction as the converging content write.
+              persistedChanges = {
+                ...nextChanges,
+                syncConflict: null,
+                baseContent: remoteVersion.content,
+                lastSyncedAt: remoteVersion.driveModifiedTime ?? current.syncConflict.remoteModifiedTime ?? current.lastSyncedAt,
+              }
+            }
+          }
+          await db.files.update(id, { ...persistedChanges, updatedAt: new Date().toISOString() })
           if (changes.name !== undefined || changes.folderId !== undefined || changes.content !== undefined) {
             await maybeQueueFileSync(id, current.driveFileId ? 'update' : 'create', navigator.onLine ? null : 'Offline. File changes will sync when you reconnect.')
           }

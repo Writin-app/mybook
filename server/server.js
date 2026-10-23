@@ -9,6 +9,14 @@ const STATE_COOKIE = 'mybook_oauth_state'
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
 const USERINFO_ENDPOINT = 'https://www.googleapis.com/oauth2/v3/userinfo'
 
+function createCollaborationToken(email) {
+  const secret = requiredEnv('COLLAB_TOKEN_SECRET')
+  if (secret.length < 32) throw new Error('COLLAB_TOKEN_SECRET must be at least 32 characters.')
+  const payload = Buffer.from(JSON.stringify({ email, expiresAt: Date.now() + 5 * 60_000 })).toString('base64url')
+  const signature = crypto.createHmac('sha256', secret).update(payload).digest('base64url')
+  return `${payload}.${signature}`
+}
+
 function requiredEnv(name) {
   const value = process.env[name]?.trim()
   if (!value) throw new Error(`${name} is required.`)
@@ -216,6 +224,12 @@ export async function handleRequest(req, res) {
       return sendJson(res, 200, { authenticated: Boolean(session), email: session?.email ?? null })
     }
     if (path === '/token') return await handleToken(req, res)
+    if (path === '/collab-token') {
+      if (req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed.' })
+      const session = sessionFromRequest(req)
+      if (!session) return sendJson(res, 401, { error: 'Please sign in again.' })
+      return sendJson(res, 200, { token: createCollaborationToken(session.email) })
+    }
     if (path === '/logout') {
       return sendJson(res, 200, { success: true }, {
         'Set-Cookie': [cookie(req, SESSION_COOKIE, '', 0), cookie(req, STATE_COOKIE, '', 0)],

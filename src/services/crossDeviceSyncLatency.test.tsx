@@ -12,6 +12,7 @@ import * as googleDriveService from './googleDrive'
 import { useAuthStore } from '../stores/useAuthStore'
 import * as workspaceStore from '../stores/useWorkspaceStore'
 import { reconcileExternalUpdate } from './syncReconciler'
+import { broadcastDocUpdate } from './tabSyncChannel'
 import { areDocumentContentsEquivalent, mergeDocuments } from '../utils/documentMerge'
 import { applyRemoteDocumentPatch } from '../components/document-editor/remoteEditorPatch'
 import { db } from '../database/db'
@@ -96,8 +97,8 @@ describe('Phase 7: Cross-Device Sync Latency and Safe Live Updates', () => {
       vi.useRealTimers()
     })
 
-    // 1. Device B detects remote metadata changes while the document is focused but has no local edits
-    it('detects remote metadata changes while the document is focused without local edits', async () => {
+    // 1. Device B polls while focused and idle, but pauses during active typing
+    it('detects remote changes while focused and idle, and pauses during typing', async () => {
       const { unmount } = renderHook(() =>
         useDriveLiveSync('doc-1', 'drive-1', { enabled: true, intervalMs: 2500, isEditing: false })
       )
@@ -117,8 +118,7 @@ describe('Phase 7: Cross-Device Sync Latency and Safe Live Updates', () => {
       await act(async () => {
         vi.advanceTimersByTime(2500)
       })
-      expect(googleDriveService.refreshDriveFileToLocal).toHaveBeenCalledWith('doc-2')
-      expect(googleDriveService.refreshDriveFileToLocal).toHaveBeenCalledTimes(1)
+      expect(googleDriveService.refreshDriveFileToLocal).not.toHaveBeenCalled()
       hook2.unmount()
     })
 
@@ -475,6 +475,13 @@ describe('Phase 7: Cross-Device Sync Latency and Safe Live Updates', () => {
       // Diff3 considers Remote 1 and Remote 2 as conflicting edits to the same block:
       expect(buggyDiff3.hasConflict).toBe(true)
 
+      // A sibling editor has already accepted Remote 1, so Remote 2 must be
+      // reconciled from that last accepted snapshot rather than the cloud base.
+      const successiveTabUpdate = mergeDocuments(remote1, remote1, remote2)
+      expect(successiveTabUpdate.success).toBe(true)
+      expect(successiveTabUpdate.hasConflict).toBe(false)
+      expect(successiveTabUpdate.content).toBe(remote2)
+
       // But with queuePendingRemotePatch superseding existing.content = incomingContent:
       // When Remote 2 arrives, pending patch becomes Remote 2 with originalBase.
       // When merged with local content (e.g. unchanged base or local non-overlapping edit):
@@ -488,6 +495,25 @@ describe('Phase 7: Cross-Device Sync Latency and Safe Live Updates', () => {
       const parsed = JSON.parse(correctMerge.content)
       expect(parsed.content[0].content[0].text).toBe('Remote revision 2')
       expect(parsed.content[1].content[0].text).toBe('Local footer')
+    })
+
+    it('Scenario 3b: A second local edit uses the most recently synced snapshot as its merge base', () => {
+      const staleBase = createDocJson('I am')
+      const firstSyncedEdit = createDocJson('I am t')
+      const secondLocalEdit = createDocJson('I am t y ping')
+
+      // The stale base should still merge cleanly when the remote snapshot is
+      // merely a prefix of the newer local typing snapshot.
+      const staleBaseMerge = mergeDocuments(staleBase, secondLocalEdit, firstSyncedEdit)
+      expect(staleBaseMerge.hasConflict).toBe(false)
+      expect(staleBaseMerge.content).toBe(secondLocalEdit)
+
+      // Once the first edit is accepted as the sync baseline, its Drive echo
+      // must be treated as already known, preserving the newer local draft.
+      const latestBaseMerge = mergeDocuments(firstSyncedEdit, secondLocalEdit, firstSyncedEdit)
+      expect(latestBaseMerge.success).toBe(true)
+      expect(latestBaseMerge.hasConflict).toBe(false)
+      expect(latestBaseMerge.content).toBe(secondLocalEdit)
     })
 
     // Scenario 4: Genuine local-vs-remote overlapping edit on the same block produces a conflict banner.
@@ -708,6 +734,60 @@ describe('Phase 7: Cross-Device Sync Latency and Safe Live Updates', () => {
       // The incoming content was processed and patched into the active editor
       await waitFor(() => {
         expect(screen.getByText(/Section 2 - Remote Update from Cloud/i)).toBeInTheDocument()
+      })
+
+      unmount()
+    })
+
+    it('merges tab updates against live editor content before the typing debounce flushes', async () => {
+      const fileId = 'live-harness-tab-debounce-doc'
+      const baseDoc = createMultiBlockDocJson('Section 1 - Base', 'Section 2 - Base')
+      const initialDoc: MyBookFile = {
+        id: fileId,
+        driveFileId: 'drive-tab-debounce',
+        name: 'Tab Debounce Document',
+        type: 'document',
+        folderId: null,
+        content: baseDoc,
+        baseContent: baseDoc,
+        mimeType: 'application/json',
+        createdAt: '2026-10-21T10:00:00.000Z',
+        updatedAt: '2026-10-21T10:00:00.000Z',
+        lastSyncedAt: '2026-10-21T10:00:00.000Z',
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+      currentMockLiveFile = initialDoc
+      await db.files.put(initialDoc)
+
+      const { unmount } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileId} />
+        </MemoryRouter>
+      )
+      await waitFor(() => expect(screen.getByLabelText(/Page title/i)).toBeInTheDocument())
+
+      const pmEl = document.querySelector('.ProseMirror') as (HTMLElement & { editor?: Editor }) | null
+      const editor = pmEl?.editor
+      expect(editor).toBeTruthy()
+      if (!editor) throw new Error('Editor not found')
+      await waitFor(() => expect(editor.getText()).toContain('Section 1 - Base'))
+
+      // This edit is in the editor immediately, but editorContentRef is still
+      // waiting for its 100 ms snapshot broadcast debounce.
+      act(() => editor.commands.insertContentAt(17, ' - Local'))
+
+      const remoteDoc = createMultiBlockDocJson('Section 1 - Base', 'Section 2 - Remote')
+      act(() => broadcastDocUpdate(fileId, remoteDoc, 'Tab Debounce Document'))
+
+      await waitFor(() => {
+        expect(editor.getText()).toContain('Local')
+        expect(editor.getText()).toContain('Section 2 - Remote')
+      })
+      await waitFor(async () => {
+        const saved = await db.files.get(fileId)
+        expect(saved?.content).toContain('Section 1 - Base - Local')
+        expect(saved?.content).toContain('Section 2 - Remote')
       })
 
       unmount()

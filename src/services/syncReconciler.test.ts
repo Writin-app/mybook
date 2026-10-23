@@ -41,8 +41,8 @@ describe('reconcileExternalUpdate', () => {
     expect(reconcileExternalUpdate(input({ localContent: 'same', remoteContent: 'same' }))).toEqual({ action: 'noop' })
   })
 
-  it('still reports a conflict for identical content while edits are unsaved', () => {
-    expect(reconcileExternalUpdate(input({ localContent: 'same', remoteContent: 'same', hasUnsavedLocalEdits: true }))).toEqual({ action: 'conflict' })
+  it('keeps unsaved local edits without showing a conflict when saved and remote content match', () => {
+    expect(reconcileExternalUpdate(input({ localContent: 'same', remoteContent: 'same', hasUnsavedLocalEdits: true }))).toEqual({ action: 'keep-local' })
   })
 
   it('keeps local when remote content matches the base content', () => {
@@ -77,13 +77,18 @@ describe('reconcileExternalUpdate', () => {
     }
   })
 
-  it('flags a genuine conflict on overlapping block edits even when a local push is pending', () => {
+  it('automatically preserves concurrent insertions at the same text boundary while a local push is pending', () => {
     const base = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'P1' }] }] })
     const local = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'P1 local edit' }] }] })
     const remote = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'P1 remote edit' }] }] })
 
     const decision = reconcileExternalUpdate(input({ baseContent: base, localContent: local, remoteContent: remote, hasPendingPush: true, syncStatus: 'pending' }))
-    expect(decision.action).toBe('conflict')
+    expect(decision.action).toBe('merge')
+    if (decision.action === 'merge') {
+      const mergedText = JSON.parse(decision.mergedContent).content[0].content[0].text
+      expect(mergedText).toContain('local edit')
+      expect(mergedText).toContain('remote edit')
+    }
   })
 
   describe('files created before base tracking', () => {

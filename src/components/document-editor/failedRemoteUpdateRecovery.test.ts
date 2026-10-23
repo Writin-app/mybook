@@ -203,7 +203,7 @@ describe('Phase 3B: Failed Remote Update Recovery', () => {
       id: fileId,
       name: 'Duplicate Test Doc',
       type: 'document',
-      content,
+      content: '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Local A"}]}]}',
       folderId: null,
       driveFileId: null,
       workspaceType: 'local',

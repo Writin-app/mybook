@@ -1388,5 +1388,31 @@ describe('IndexedDB repositories', () => {
     const finalQueueItem = await db.syncQueue.get(activeQueueItem!.id)
     expect(finalQueueItem?.status).toBe('completed')
   })
+
+  it('clears a transient conflict atomically when autosave converges to its remote version', async () => {
+    useWorkspaceStore.setState({ mode: 'drive' })
+    vi.stubGlobal('navigator', { onLine: true })
+    const file = (await fileRepository.create('document')).data!
+    await fileRepository.update(file.id, { content: 'local draft' })
+
+    const remoteModifiedTime = new Date().toISOString()
+    await recordRemoteConflict(file.id, 'remote version', remoteModifiedTime)
+    const conflictedFile = await db.files.get(file.id)
+    expect(conflictedFile?.syncConflict).toBeDefined()
+
+    const result = await fileRepository.update(
+      file.id,
+      { content: 'remote version', syncStatus: 'pending' },
+      { expectedUpdatedAt: conflictedFile!.updatedAt, expectedContent: conflictedFile!.content }
+    )
+
+    expect(result.success).toBe(true)
+    expect(await db.files.get(file.id)).toMatchObject({
+      content: 'remote version',
+      syncConflict: null,
+      baseContent: 'remote version',
+      lastSyncedAt: remoteModifiedTime,
+    })
+  })
 })
 

@@ -32,6 +32,8 @@ import { broadcastDocUpdate, subscribeToTabDocUpdates } from '../../services/tab
 import { areDocumentContentsEquivalent, mergeDocuments } from '../../utils/documentMerge'
 import { applyRemoteDocumentPatch } from './remoteEditorPatch'
 import { useDriveLiveSync } from '../../hooks/useDriveLiveSync'
+import { useYjsDocumentSync } from '../../hooks/useYjsDocumentSync'
+import { useAuthStore } from '../../stores/useAuthStore'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { useIsMobile } from '../../hooks/use-mobile'
 import { getVisualViewportBounds } from '../../hooks/useVisualViewport'
@@ -1037,6 +1039,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const redoShortcut = isMacPlatform ? '⌘⇧Z' : 'Ctrl+Shift+Z'
   const findShortcut = isMacPlatform ? '⌘F' : 'Ctrl+F'
   const { files, folders } = useLibraryData(true)
+  const accountEmail = useAuthStore((state) => state.email)
+  const collaboration = useYjsDocumentSync(fileId, accountEmail)
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
   const { content, hasUnsavedChanges, hydratedFileId, isHydrated, replaceContent, save, setContent, status, waitForPendingSave } = useAutosave(file)
   const [title, setTitle] = useState('')
@@ -1134,6 +1138,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   } | null>(null)
   const pendingRetryTimerRef = useRef<number | null>(null)
   const lastProcessedRemoteContentRef = useRef<string | null>(null)
+  const lastTabSyncFileUpdatedAtRef = useRef<string | null>(null)
   const inFlightMergeRef = useRef<Promise<boolean> | null>(null)
 
   const retryPendingPatch = useCallback(async () => {
@@ -1348,7 +1353,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (!file?.id) return
     return subscribeToTabDocUpdates((msg) => {
       if (msg.fileId !== file.id) return
-      if (msg.content === editorContentRef.current || msg.content === lastProcessedRemoteContentRef.current) return
+      const currentEditor = editorRef.current
+      const liveContent = currentEditor && !currentEditor.isDestroyed
+        ? JSON.stringify(currentEditor.getJSON())
+        : editorContentRef.current
+      if (msg.content === liveContent || msg.content === editorContentRef.current || msg.content === lastProcessedRemoteContentRef.current) return
+      lastTabSyncFileUpdatedAtRef.current = file.updatedAt ?? null
 
       if (pendingRemotePatchRef.current) {
         queuePendingRemotePatch(msg.content, file.baseContent ?? lastBackedUpContentRef.current ?? undefined)
@@ -1362,9 +1372,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         status === 'saving-locally'
 
       if (hasLocalChanges) {
-        const base = file.baseContent ?? lastBackedUpContentRef.current
-        const merged = mergeDocuments(base, editorContentRef.current, msg.content)
-        if (merged.success && !merged.hasConflict && merged.content !== editorContentRef.current) {
+        // A tab's next snapshot is based on the last snapshot we accepted from
+        // that tab, not the much older cloud base. Otherwise ordinary typing in
+        // one pane looks like overlapping edits in another pane.
+        const base = lastProcessedRemoteContentRef.current ?? file.baseContent ?? lastBackedUpContentRef.current
+        const merged = mergeDocuments(base, liveContent, msg.content)
+        if (merged.success && !merged.hasConflict && merged.content !== liveContent) {
           const currentEditor = editorRef.current
           if (currentEditor && !currentEditor.isDestroyed) {
             const patchRes = applyRemoteDocumentPatch(currentEditor, merged.content)
@@ -1372,7 +1385,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
               lastProcessedRemoteContentRef.current = msg.content
               pendingRemotePatchRef.current = null
               editorContentRef.current = merged.content
-              replaceContent(merged.content, 'saved-locally')
+              // A merged tab update includes local typing that may not have
+              // reached autosave yet. Keep it dirty so autosave persists the
+              // combined document instead of treating an in-memory patch as saved.
+              setContent(merged.content)
             } else if (patchRes.error?.includes('conflicts with active selection/typing')) {
               queuePendingRemotePatch(msg.content, base ?? undefined)
             } else {
@@ -1381,10 +1397,13 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
               void recordRemoteConflict(file.id, msg.content, new Date().toISOString())
             }
           }
-        } else if (merged.hasConflict) {
-          console.warn('[TabSync] Three-way merge identified concurrent conflict; recording recoverable conflict.')
+        } else if (merged.success && !merged.hasConflict) {
           lastProcessedRemoteContentRef.current = msg.content
-          void recordRemoteConflict(file.id, msg.content, new Date().toISOString())
+        } else if (merged.hasConflict) {
+          // Tab snapshots can race the local autosave debounce. Give the
+          // latest snapshot time to settle and retry against the live editor
+          // before surfacing a conflict; normal typing must not flash a banner.
+          queuePendingRemotePatch(msg.content, base ?? undefined)
         }
       } else {
         if (msg.content !== editorContentRef.current) {
@@ -1395,7 +1414,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
               lastProcessedRemoteContentRef.current = msg.content
               pendingRemotePatchRef.current = null
               editorContentRef.current = msg.content
-              replaceContent(msg.content, 'saved-locally')
+              setContent(msg.content)
             } else if (patchRes.error?.includes('conflicts with active selection/typing')) {
               queuePendingRemotePatch(msg.content, undefined)
             } else {
@@ -1410,7 +1429,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         updateTitle(msg.title)
       }
     })
-  }, [file?.id, file?.baseContent, hasUnsavedChanges, hasUnsavedTitleEdits, queuePendingRemotePatch, replaceContent, status, updateTitle])
+  }, [file?.id, file?.updatedAt, file?.baseContent, hasUnsavedChanges, hasUnsavedTitleEdits, queuePendingRemotePatch, setContent, status, updateTitle])
 
   const duplicateTitleFile = useMemo(() => {
     if (!file || titleFileId !== file.id) return null
@@ -1589,6 +1608,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     extensions: [
       StarterKit.configure({
         codeBlock: false,
+        undoRedo: collaboration.enabled ? false : undefined,
         link: {
           openOnClick: true,
           autolink: true,
@@ -1628,8 +1648,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       EditorKeyboardShortcuts,
       BlockMarkdownShortcuts,
       SearchHighlight,
+      ...(collaboration.extension ? [collaboration.extension] : []),
     ],
-    content: emptyDocument,
+    content: collaboration.enabled ? undefined : emptyDocument,
     editorProps: {
       attributes: {
         class: 'tiptap min-h-[65vh] outline-none',
@@ -2076,11 +2097,22 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         return false
       },
     },
-    onUpdate: ({ editor: currentEditor }) => {
+    onUpdate: ({ editor: currentEditor, transaction }) => {
       updateDocumentLinkPicker(currentEditor)
       updateSlashMenu(currentEditor)
       updateMentionMenu(currentEditor)
       updatePasteAsMenu(currentEditor)
+
+      // Remote patches are already reflected in editorContentRef and the local
+      // save state by their caller. Treating them as user edits schedules a
+      // delayed echo that can race the next keystroke from the other pane.
+      if (transaction.getMeta('remoteUpdate')) return
+
+      // Mirror each actual editor transaction immediately to other views.
+      // Saving remains debounced, so live typing does not wait for persistence.
+      if (!collaboration.enabled) {
+        broadcastDocUpdate(fileId, JSON.stringify(currentEditor.getJSON()), titleRef.current)
+      }
 
       if (contentSyncTimerRef.current !== null) {
         window.clearTimeout(contentSyncTimerRef.current)
@@ -2105,7 +2137,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       updateMentionMenu(currentEditor)
       updatePasteAsMenu(currentEditor)
     },
-  })
+  }, [collaboration.extension])
 
   useEffect(() => {
     editorRef.current = editor
@@ -2400,6 +2432,34 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   useEffect(() => {
     if (!editor || !file || !isHydrated || hydratedFileId !== file.id || isImportingRef.current) return
     const incomingContent = file.content ?? ''
+    if (loadedId === file.id && lastTabSyncFileUpdatedAtRef.current !== null) {
+      if (file.updatedAt === lastTabSyncFileUpdatedAtRef.current &&
+        areDocumentContentsEquivalent(incomingContent, file.baseContent ?? '') &&
+        !areDocumentContentsEquivalent(incomingContent, lastProcessedRemoteContentRef.current ?? '')) {
+        // A sibling tab update arrives before its debounced IndexedDB write.
+        // Ignore the unchanged base snapshot until that write advances updatedAt.
+        return
+      }
+      if (file.updatedAt !== lastTabSyncFileUpdatedAtRef.current) {
+        lastTabSyncFileUpdatedAtRef.current = null
+      }
+    }
+    if (collaboration.enabled) {
+      if (loadedId !== file.id) setLoadedId(file.id)
+      if (!collaboration.isSynced) return
+      const liveContent = JSON.stringify(editor.getJSON())
+      const liveIsBlank = editor.state.doc.textContent.trim() === '' && editor.state.doc.childCount <= 1
+      const storedIsBlank = !incomingContent || incomingContent === emptyDocumentJson
+      if (liveIsBlank && !storedIsBlank) {
+        const initial = parseContent(incomingContent)
+        editor.commands.setContent(initial, { emitUpdate: false })
+        editorContentRef.current = incomingContent
+      } else if (liveContent !== incomingContent && !areDocumentContentsEquivalent(liveContent, incomingContent)) {
+        editorContentRef.current = liveContent
+        replaceContent(liveContent, isLocalWorkspace() ? 'local' : 'saved-locally')
+      }
+      return
+    }
     const hasActiveEdits =
       status === 'editing' ||
       status === 'saving-locally' ||
@@ -2526,7 +2586,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       lastImportedContentRef.current = null
       setLoadedId(file.id)
     }
-  }, [content, editor, file, hasUnsavedChanges, hydratedFileId, isHydrated, loadedId, queuePendingRemotePatch, replaceContent, setContent, status])
+  }, [collaboration.enabled, collaboration.isSynced, content, editor, file, hasUnsavedChanges, hydratedFileId, isHydrated, loadedId, queuePendingRemotePatch, replaceContent, setContent, status])
 
   useEffect(() => {
     if (!editor || !file || !isHydrated || loadedId !== file.id || handledPendingImportRef.current === file.id) return
@@ -2544,6 +2604,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }, [title])
   if (file && lastBackedUpFileIdRef.current !== file.id) {
     lastBackedUpFileIdRef.current = file.id
+    lastTabSyncFileUpdatedAtRef.current = null
+    // Remote merge history belongs to one document only. Seed it from this
+    // file's actual sync baseline instead of carrying a previous document's
+    // accepted snapshot into the newly opened document.
+    lastProcessedRemoteContentRef.current = file.baseContent ?? null
     if (file.syncStatus === 'backed-up') {
       lastBackedUpContentRef.current = file.content
       lastBackedUpTitleRef.current = file.name
@@ -2558,11 +2623,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (file.syncStatus === 'backed-up') {
       lastBackedUpContentRef.current = file.content
       lastBackedUpTitleRef.current = file.name
+      lastProcessedRemoteContentRef.current = file.baseContent ?? file.content
     }
   }, [file])
 
   useDriveLiveSync(file?.id, file?.driveFileId, {
-    enabled: Boolean(file && !file.isDeleted && !isLocalWorkspace()),
+    enabled: Boolean(file && !file.isDeleted && !isLocalWorkspace() && !collaboration.enabled),
     intervalMs: 2500,
     isEditing:
       status === 'editing' ||
@@ -2662,6 +2728,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           if (result.success) {
             lastBackedUpContentRef.current = latest.content
             lastBackedUpTitleRef.current = latestTitle
+            // The uploaded snapshot is now the common ancestor for later
+            // edits. Without advancing this ref, a later Drive echo can be
+            // diffed against an older pre-sync snapshot and look conflicting.
+            lastProcessedRemoteContentRef.current = latest.content
           } else {
             toast.add({ title: "Couldn't sync", description: result.error, type: 'error', priority: 'low' })
           }
@@ -2697,6 +2767,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (result.success) {
       lastBackedUpContentRef.current = latest.content
       lastBackedUpTitleRef.current = latestTitle
+      lastProcessedRemoteContentRef.current = latest.content
     } else {
       toast.add({ title: "Couldn't sync", description: result.error ?? 'Sync failed.', type: 'error', priority: 'low' })
     }
