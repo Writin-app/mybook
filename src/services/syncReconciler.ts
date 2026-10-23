@@ -34,7 +34,12 @@ export function hasLocalChanges(input: Pick<ReconcileInput, 'baseContent' | 'loc
 // unchanged since the base. Anything uncertain is treated as a local change.
 export function reconcileExternalUpdate(input: ReconcileInput): ReconcileDecision {
   if (!input.remoteChanged) return { action: 'noop' }
-  if (!input.hasUnsavedLocalEdits && areDocumentContentsEquivalent(input.remoteContent, input.localContent)) return { action: 'noop' }
+  if (areDocumentContentsEquivalent(input.remoteContent, input.localContent)) {
+    // Equal saved and remote snapshots are never a conflict. Any keystrokes
+    // still in the editor remain local; acknowledge this remote snapshot and
+    // let the normal autosave queue upload those edits afterward.
+    return input.hasUnsavedLocalEdits || input.hasPendingPush ? { action: 'keep-local' } : { action: 'noop' }
+  }
   if (!hasLocalChanges(input)) return { action: 'apply-remote' }
 
   // If remote did not change content compared to base (or remote is the unchanged initial empty document), keep local edits

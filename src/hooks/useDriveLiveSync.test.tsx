@@ -61,14 +61,33 @@ describe('useDriveLiveSync', () => {
     expect(googleDriveService.refreshDriveFileToLocal).toHaveBeenCalledTimes(2)
   })
 
-  it('continues polling refreshDriveFileToLocal even when isEditing is true', async () => {
-    renderHook(() => useDriveLiveSync('doc-1', 'drive-1', { enabled: true, intervalMs: 5000, isEditing: true }))
+  it('pauses Drive polling while the document has active local edits, then resumes', async () => {
+    const { rerender } = renderHook(
+      ({ isEditing }) => useDriveLiveSync('doc-1', 'drive-1', { enabled: true, intervalMs: 5000, isEditing }),
+      { initialProps: { isEditing: true } }
+    )
 
+    await act(async () => {
+      vi.advanceTimersByTime(5000)
+    })
+    expect(googleDriveService.refreshDriveFileToLocal).not.toHaveBeenCalled()
+
+    rerender({ isEditing: false })
     await act(async () => {
       vi.advanceTimersByTime(5000)
     })
     expect(googleDriveService.refreshDriveFileToLocal).toHaveBeenCalledWith('doc-1')
     expect(googleDriveService.refreshDriveFileToLocal).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not start an immediate focus refresh while the user is editing', async () => {
+    renderHook(() => useDriveLiveSync('doc-1', 'drive-1', { enabled: true, intervalMs: 5000, isEditing: true }))
+
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    expect(googleDriveService.refreshDriveFileToLocal).not.toHaveBeenCalled()
   })
 
   it('skips polling when offline or in local workspace', async () => {

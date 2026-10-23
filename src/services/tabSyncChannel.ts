@@ -37,7 +37,6 @@ function getChannel(): BroadcastChannel | null {
 
 export function broadcastDocUpdate(fileId: string, content: string, title?: string) {
   const ch = getChannel()
-  if (!ch) return
   const message: TabDocUpdateMessage = {
     type: 'doc-update',
     fileId,
@@ -45,6 +44,17 @@ export function broadcastDocUpdate(fileId: string, content: string, title?: stri
     title,
     senderId: TAB_ID,
   }
+  // BroadcastChannel does not deliver a message back to the document that
+  // sent it. Views of the same document in this page still need to receive
+  // the update, so notify in-page subscribers synchronously as well.
+  listeners.forEach((listener) => {
+    try {
+      listener(message)
+    } catch {
+      // Ignore listener errors
+    }
+  })
+  if (!ch) return
   try {
     ch.postMessage(message)
   } catch {

@@ -35,6 +35,25 @@ describe('mergeDocuments', () => {
     expect(result.hasConflict).toBe(false)
   })
 
+  it('keeps successive autosave snapshots of a new paragraph as one paragraph without a baseline', () => {
+    const earlier = docWith(['abc'])
+    const later = docWith(['abcdef'])
+
+    const localLater = mergeDocuments(undefined, later, earlier)
+    expect(JSON.parse(localLater.content).content.map((block: JSONContent) => block.content?.[0]?.text)).toEqual(['abcdef'])
+    expect(localLater.hasConflict).toBe(false)
+
+    const remoteLater = mergeDocuments('', earlier, later)
+    expect(JSON.parse(remoteLater.content).content.map((block: JSONContent) => block.content?.[0]?.text)).toEqual(['abcdef'])
+    expect(remoteLater.hasConflict).toBe(false)
+  })
+
+  it('does not auto-merge unrelated content when a document has no known baseline', () => {
+    const result = mergeDocuments(undefined, docWith(['local text']), docWith(['remote text']))
+    expect(result.content).toBe(docWith(['local text']))
+    expect(result.hasConflict).toBe(true)
+  })
+
   it('merges non-overlapping block edits cleanly', () => {
     const base = docWith(['Block 1', 'Block 2', 'Block 3'])
     // Local edits block 1
@@ -138,6 +157,52 @@ describe('mergeDocuments', () => {
 
       const parsed = JSON.parse(result.content) as JSONContent
       expect(parsed.content?.[0]?.content?.[0]?.text).toBe('Intro. Sentence One. Sentence Two. Local edit.')
+    })
+
+    it('automatically merges edits to separate parts of the same line', () => {
+      const base = docWith(['The quick brown fox jumps over the lazy dog.'])
+      const local = docWith(['The fast brown fox jumps over the lazy dog.'])
+      const remote = docWith(['The quick brown fox walks over the lazy dog.'])
+
+      const result = mergeDocuments(base, local, remote)
+      const parsed = JSON.parse(result.content) as JSONContent
+
+      expect(result.hasConflict).toBe(false)
+      expect(parsed.content?.[0]?.content?.[0]?.text).toBe('The fast brown fox walks over the lazy dog.')
+    })
+
+    it('merges same-position insertions without duplicating an incremental snapshot or raising a conflict', () => {
+      const base = docWith(['I am'])
+      const earlier = docWith(['I am t'])
+      const later = docWith(['I am ty'])
+
+      const incremental = mergeDocuments(base, earlier, later)
+      expect(incremental.hasConflict).toBe(false)
+      expect(JSON.parse(incremental.content).content[0].content[0].text).toBe('I am ty')
+
+      const simultaneous = mergeDocuments(base, docWith(['I am A']), docWith(['I am B']))
+      expect(simultaneous.hasConflict).toBe(false)
+      expect(JSON.parse(simultaneous.content).content[0].content[0].text).toBe('I am A B')
+    })
+
+    it('keeps the latest incremental snapshot intact when it extends a trailing space or line break', () => {
+      const base = docWith(['I am'])
+      const trailingSpace = docWith(['I am '])
+      const afterSpace = docWith(['I am typing'])
+
+      const spaced = mergeDocuments(base, trailingSpace, afterSpace)
+      expect(spaced.hasConflict).toBe(false)
+      expect(JSON.parse(spaced.content).content[0].content[0].text).toBe('I am typing')
+
+      const oneLine = docWith(['First line'])
+      const lineBreak = docWith(['First line', ''])
+      const typedOnNextLine = docWith(['First line', 'Second line'])
+      const multiline = mergeDocuments(oneLine, lineBreak, typedOnNextLine)
+      expect(multiline.hasConflict).toBe(false)
+      expect(JSON.parse(multiline.content).content.map((block: JSONContent) => block.content?.[0]?.text ?? '')).toEqual([
+        'First line',
+        'Second line',
+      ])
     })
 
     it('handles concurrent list-item deletion and sub-item insertion', () => {

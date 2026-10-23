@@ -28,6 +28,22 @@ describe('tabSyncChannel', () => {
     expect(() => broadcastDocUpdate('file-1', 'content', 'Title')).not.toThrow()
   })
 
+  it('delivers updates synchronously to sibling views in the same page', () => {
+    const listener = vi.fn()
+    const unsubscribe = subscribeToTabDocUpdates(listener)
+
+    broadcastDocUpdate('file-1', 'new content', 'Title')
+
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'doc-update',
+      fileId: 'file-1',
+      content: 'new content',
+      title: 'Title',
+      senderId: getTabId(),
+    }))
+    unsubscribe()
+  })
+
   it('delivers messages from another tab to subscribers and ignores self-sent messages', async () => {
     let messageHandler: ((event: { data: unknown }) => void) | undefined
     const postMessageMock = vi.fn()

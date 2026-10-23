@@ -29,6 +29,7 @@ export function useDriveLiveSync(
         isLocalWorkspace() ||
         !useAuthStore.getState().isAuthenticated ||
         document.visibilityState === 'hidden' ||
+        isEditingRef.current ||
         isSyncingRef.current
       ) {
         return

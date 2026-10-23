@@ -33,6 +33,35 @@ describe('sync conflicts', () => {
     expect(await db.fileVersions.count()).toBe(1)
   })
 
+  it('does not create a conflict when autosave has already converged to the remote content', async () => {
+    await db.files.update('file-1', { content: 'same content' })
+
+    const conflict = await recordRemoteConflict('file-1', 'same content', '2026-10-03T12:00:00.000Z')
+
+    expect(conflict).toBeNull()
+    expect((await db.files.get('file-1'))).toMatchObject({
+      syncConflict: null,
+      baseContent: 'same content',
+      lastSyncedAt: '2026-10-03T12:00:00.000Z',
+    })
+    expect(await db.fileVersions.count()).toBe(0)
+  })
+
+  it('clears a stored conflict when its remote version now equals the saved local content', async () => {
+    const conflict = await recordRemoteConflict('file-1', 'remote edit', '2026-10-03T12:00:00.000Z')
+    await db.files.update('file-1', { content: 'remote edit' })
+
+    const cleared = await recordRemoteConflict('file-1', 'remote edit', '2026-10-03T12:00:00.000Z')
+
+    expect(cleared).toBeNull()
+    expect((await db.files.get('file-1'))).toMatchObject({
+      syncConflict: null,
+      baseContent: 'remote edit',
+      lastSyncedAt: '2026-10-03T12:00:00.000Z',
+    })
+    expect(await db.fileVersions.get(conflict!.versionId)).toMatchObject({ content: 'remote edit' })
+  })
+
   it('keeps local edits, acknowledges the remote version and queues a push', async () => {
     await recordRemoteConflict('file-1', 'remote edit', '2026-10-03T12:00:00.000Z')
     await keepLocalVersion('file-1')

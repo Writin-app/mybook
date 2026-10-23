@@ -6,6 +6,7 @@ import { devLog } from '../utils/safeLog'
 import { hasUnsavedLocalEdits } from './localEditState'
 import { recordRemoteConflict } from './syncConflicts'
 import { reconcileExternalUpdate } from './syncReconciler'
+import { areDocumentContentsEquivalent } from '../utils/documentMerge'
 
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3'
 const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder'
@@ -1830,13 +1831,25 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
       if (!status.exists) return { updated: false, error: status.error ?? 'Drive file was not found.' }
       const driveModifiedTime = status.modifiedTime ?? new Date().toISOString()
 
+      // Already surfaced as a conflict; wait for the user to resolve it unless
+      // its saved remote copy now matches the local snapshot. That case is a
+      // stale false alarm (for example, autosave caught up after polling).
+      if (local.syncConflict?.remoteModifiedTime === driveModifiedTime) {
+        const conflictVersion = await db.fileVersions.get(local.syncConflict.versionId)
+        if (conflictVersion && areDocumentContentsEquivalent(local.content, conflictVersion.content)) {
+          await db.files.update(local.id, {
+            syncConflict: null,
+            baseContent: conflictVersion.content,
+            lastSyncedAt: driveModifiedTime,
+          })
+        }
+        return { updated: false, modifiedTime: driveModifiedTime }
+      }
+
       // Skip reading content if Drive file hasn't been modified after local sync
       if (!driveModifiedAfterLastSync(driveModifiedTime, local.lastSyncedAt)) {
         return { updated: false, modifiedTime: driveModifiedTime }
       }
-
-      // Already surfaced as a conflict; wait for the user to resolve it.
-      if (local.syncConflict?.remoteModifiedTime === driveModifiedTime) return { updated: false, modifiedTime: driveModifiedTime }
 
       const fileType = local.type ?? inferFileType(status.name ?? local.name, status.mimeType ?? '')
       const driveFile: DriveFile = {
@@ -1967,6 +1980,10 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
       }
 
       if (decision.action === 'conflict') {
+        // The Drive response may have raced active typing. Wait for autosave to
+        // persist those keystrokes, then compare the saved document before
+        // recording a conflict banner.
+        if (unsavedEdits) return { updated: false, modifiedTime: driveModifiedTime }
         await recordRemoteConflict(latest.id, content, driveModifiedTime)
         return { updated: false, modifiedTime: driveModifiedTime }
       }

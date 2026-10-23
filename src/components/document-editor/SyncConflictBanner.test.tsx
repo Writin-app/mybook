@@ -48,6 +48,7 @@ describe('SyncConflictBanner', () => {
     // Verify compact inline notice
     const notice = screen.getByRole('region', { name: 'Conflicting changes' })
     expect(notice).toBeInTheDocument()
+    expect(screen.getByText('This document has competing edits. Review both versions before deciding what to keep.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Review changes' })).toBeInTheDocument()
 
     // Open review interface
@@ -62,7 +63,7 @@ describe('SyncConflictBanner', () => {
     expect(screen.getAllByText('Your version').length).toBeGreaterThan(0)
     expect(screen.getAllByText('This device • Local draft').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Other version').length).toBeGreaterThan(0)
-    expect(screen.getByText('Google Drive')).toBeInTheDocument()
+    expect(screen.getByText('Other copy')).toBeInTheDocument()
 
     // Actions visible
     expect(screen.getByRole('button', { name: 'Keep my version' })).toBeInTheDocument()

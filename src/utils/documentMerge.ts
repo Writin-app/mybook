@@ -183,6 +183,35 @@ function areSlicesEqual<T>(s1: T[], s2: T[], isEqual: (x: T, y: T) => boolean): 
   return true
 }
 
+function areSlicesPrefix<T>(prefix: T[], value: T[], isEqual: (x: T, y: T) => boolean): boolean {
+  if (prefix.length > value.length) return false
+  return prefix.every((item, index) => {
+    const candidate = value[index]!
+    if (isEqual(item, candidate)) return true
+
+    // Entering text after Return changes an empty trailing paragraph into a
+    // populated paragraph. Treat that as the same incremental block so a
+    // delayed empty-line snapshot cannot leave an extra blank row behind.
+    if (item && candidate && typeof item === 'object' && typeof candidate === 'object') {
+      const emptyBlock = item as JSONContent
+      const populatedBlock = candidate as JSONContent
+      const isEmptyTextBlock =
+        (emptyBlock.type === 'paragraph' || emptyBlock.type === 'heading') &&
+        (!emptyBlock.content || emptyBlock.content.length === 0 || emptyBlock.content.every(
+          (child) => child.type === 'text' && (child.text ?? '') === '' && (!child.marks || child.marks.length === 0)
+        ))
+      return isEmptyTextBlock &&
+        emptyBlock.type === populatedBlock.type &&
+        canonicalJson(emptyBlock.attrs ?? {}) === canonicalJson(populatedBlock.attrs ?? {})
+    }
+    return false
+  })
+}
+
+function stableSliceKey<T>(slice: T[]): string {
+  return slice.map((item) => typeof item === 'string' ? item : JSON.stringify(item) ?? String(item)).join('')
+}
+
 /**
  * Three-way sequence merge using LCS alignment.
  * Preserves independent non-overlapping edits and correctly reports conflicts on overlapping edits.
@@ -204,6 +233,19 @@ function sequence3WayMerge<T>(
     }
     if (areSlicesEqual(remote, base, isEqual)) {
       return { items: local, hasConflict: false }
+    }
+
+    // A typing snapshot can arrive just before or after its longer successor.
+    // When both versions extend the same base and one is a prefix of the
+    // other, the longer snapshot is the newer incremental edit. Merging the
+    // suffixes separately can otherwise duplicate spaces or paragraph breaks.
+    if (areSlicesPrefix(base, local, isEqual) && areSlicesPrefix(base, remote, isEqual)) {
+      if (areSlicesPrefix(local, remote, isEqual)) {
+        return { items: remote, hasConflict: false }
+      }
+      if (areSlicesPrefix(remote, local, isEqual)) {
+        return { items: local, hasConflict: false }
+      }
     }
   }
 
@@ -329,6 +371,24 @@ function sequence3WayMerge<T>(
       // Both changed
       if (areSlicesEqual(localSlice, remoteSlice, isEqual)) {
         resultItems.push(...localSlice)
+      } else if (
+        cluster.baseStart === cluster.baseEnd &&
+        cluster.localHunks.every((hunk) => hunk.baseStart === hunk.baseEnd && hunk.baseStart === cluster.baseStart) &&
+        cluster.remoteHunks.every((hunk) => hunk.baseStart === hunk.baseEnd && hunk.baseStart === cluster.baseStart)
+      ) {
+        // Concurrent insertions at the same boundary are both valid. If one
+        // snapshot extends the other, use the longer snapshot (common while a
+        // device is still typing). Otherwise order whole insertions stably so
+        // every replica produces the same combined text without a banner.
+        if (areSlicesPrefix(localSlice, remoteSlice, isEqual)) {
+          resultItems.push(...remoteSlice)
+        } else if (areSlicesPrefix(remoteSlice, localSlice, isEqual)) {
+          resultItems.push(...localSlice)
+        } else if (stableSliceKey(localSlice) <= stableSliceKey(remoteSlice)) {
+          resultItems.push(...localSlice, ...remoteSlice)
+        } else {
+          resultItems.push(...remoteSlice, ...localSlice)
+        }
       } else {
         const candidate = mergeConflictCandidate
           ? mergeConflictCandidate(baseSlice, localSlice, remoteSlice)
@@ -475,7 +535,8 @@ function mergeBlockCluster(
           const lText = extractText(lNode)
           const rText = extractText(rNode)
 
-          const tokenize = (s: string) => s.match(/\s+|\S+/g) ?? []
+          const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+          const tokenize = (s: string) => Array.from(graphemeSegmenter.segment(s), ({ segment }) => segment)
           const bTokens = tokenize(bText)
           const lTokens = tokenize(lText)
           const rTokens = tokenize(rText)
@@ -638,6 +699,47 @@ export function areDocumentContentsEquivalent(a: string | null | undefined, b: s
   return a.trim() === b.trim()
 }
 
+function isDocumentPrefix(shorter: JSONContent, longer: JSONContent): boolean {
+  const shortBlocks = shorter.content ?? []
+  const longBlocks = longer.content ?? []
+  if (shortBlocks.length > longBlocks.length) return false
+
+  for (let index = 0; index < shortBlocks.length; index += 1) {
+    const shortBlock = shortBlocks[index]!
+    const longBlock = longBlocks[index]!
+    if (serializeNode(shortBlock) === serializeNode(longBlock)) continue
+
+    // A common case for an uninitialized document is the previous autosaved
+    // snapshot being a prefix of the text currently in the editor. Treat that
+    // as one continuing edit, not as two paragraphs to concatenate.
+    const isLastShortBlock = index === shortBlocks.length - 1
+    const isTextBlock = shortBlock.type === 'paragraph' || shortBlock.type === 'heading'
+    const shortInline = shortBlock.content ?? []
+    const longInline = longBlock.content ?? []
+    const hasPlainTextOnly = (items: JSONContent[]) =>
+      items.length === 0 || (items.length === 1 && items[0]?.type === 'text' && !(items[0].marks?.length))
+
+    if (
+      !isLastShortBlock ||
+      !isTextBlock ||
+      shortBlock.type !== longBlock.type ||
+      serializeNode({ type: shortBlock.type, attrs: shortBlock.attrs }) !== serializeNode({ type: longBlock.type, attrs: longBlock.attrs }) ||
+      !hasPlainTextOnly(shortInline) ||
+      !hasPlainTextOnly(longInline)
+    ) return false
+
+    const shortText = shortInline[0]?.text ?? ''
+    const longText = longInline[0]?.text ?? ''
+    if (!longText.startsWith(shortText)) return false
+  }
+
+  return true
+}
+
+function isRawTextPrefix(shorter: string, longer: string): boolean {
+  return longer.startsWith(shorter)
+}
+
 export function mergeDocuments(
   baseRaw: string | null | undefined,
   localRaw: string,
@@ -653,6 +755,40 @@ export function mergeDocuments(
 
   if (baseRaw !== undefined && baseRaw !== null && areDocumentContentsEquivalent(remoteRaw, baseRaw)) {
     return { success: true, content: localRaw, hasConflict: false }
+  }
+
+  // A missing or empty baseline is common while a new document is being
+  // created and its first local save is still syncing. Snapshot merging from
+  // an empty ancestor can turn successive versions of one paragraph into two
+  // paragraphs (for example "abc" + "abcdef"). Only auto-accept a clear
+  // prefix relationship; otherwise preserve local content and surface a real
+  // conflict instead of inventing a merge.
+  if (baseRaw === undefined || baseRaw === null || isEmptyDocument(baseRaw)) {
+    const localDoc = parseJsonDoc(localRaw)
+    const remoteDoc = parseJsonDoc(remoteRaw)
+    if (localDoc && remoteDoc) {
+      if (isDocumentPrefix(localDoc, remoteDoc)) {
+        return { success: true, content: remoteRaw, hasConflict: false }
+      }
+      if (isDocumentPrefix(remoteDoc, localDoc)) {
+        return { success: true, content: localRaw, hasConflict: false }
+      }
+
+      const isSingleTextBlock = (doc: JSONContent) => {
+        const blocks = doc.content ?? []
+        return blocks.length === 1 && (blocks[0]?.type === 'paragraph' || blocks[0]?.type === 'heading')
+      }
+      if (isSingleTextBlock(localDoc) && isSingleTextBlock(remoteDoc)) {
+        return { success: true, content: localRaw, hasConflict: true }
+      }
+      // Keep the existing sequence merge for independent block additions such
+      // as two devices adding separate paragraphs to a previously empty doc.
+    }
+
+    if (!localDoc || !remoteDoc) {
+      if (isRawTextPrefix(localRaw, remoteRaw)) return { success: true, content: remoteRaw, hasConflict: false }
+      if (isRawTextPrefix(remoteRaw, localRaw)) return { success: true, content: localRaw, hasConflict: false }
+    }
   }
 
   const localDoc = parseJsonDoc(localRaw)

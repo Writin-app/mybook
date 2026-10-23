@@ -4,9 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "start:collaboration": "node collaborationServer.js"
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "@hocuspocus/server": "^3.4.0",
+    "yjs": "^13.6.33"
   }
 }

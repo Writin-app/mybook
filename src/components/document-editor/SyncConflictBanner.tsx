@@ -350,7 +350,7 @@ export function SyncConflictBanner({
           <div className="min-w-0 flex-1">
             <p className="font-medium text-foreground">Conflicting changes</p>
             <p className="text-muted-foreground">
-              This document was changed on another device. Review the versions before deciding what to keep.
+              This document has competing edits. Review both versions before deciding what to keep.
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2 pt-1 sm:pt-0">
@@ -477,7 +477,7 @@ export function SyncConflictBanner({
                 <div className="mb-2 flex items-center justify-between border-b border-border/40 pb-2 shrink-0">
                   <div>
                     <span className="text-xs font-semibold text-foreground">Merged result preview</span>
-                    <p className="text-[11px] text-muted-foreground">3-way clean merge • Preserves non-conflicting edits from both devices</p>
+                    <p className="text-[11px] text-muted-foreground">3-way clean merge • Preserves non-conflicting edits from both versions</p>
                   </div>
                   <span className="rounded bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 text-[11px] font-medium border border-emerald-500/20">
                     Clean 3-way merge
@@ -529,7 +529,7 @@ export function SyncConflictBanner({
                   <div className="mb-2 flex items-center justify-between border-b border-border/40 pb-2 shrink-0">
                     <div>
                       <span className="text-xs font-semibold text-foreground">Other version</span>
-                      <p className="text-[11px] text-muted-foreground">Google Drive</p>
+                      <p className="text-[11px] text-muted-foreground">Other copy</p>
                     </div>
                     {formattedRemoteTime ? (
                       <span className="rounded bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground border border-border/40">
@@ -539,7 +539,7 @@ export function SyncConflictBanner({
                   </div>
                   <div className="flex-1 min-h-0 overflow-y-auto rounded-md border border-border/40 bg-background/80 p-3 font-mono text-xs leading-relaxed text-foreground select-text whitespace-pre-wrap">
                     {file?.type === 'spreadsheet' ? (
-                      <p className="text-muted-foreground italic">Spreadsheet data from Google Drive.</p>
+                      <p className="text-muted-foreground italic">Spreadsheet data from the other copy.</p>
                     ) : (
                       <div className="flex flex-col gap-0.5">
                         {diffRemote.map((line, idx) => (
@@ -577,7 +577,7 @@ export function SyncConflictBanner({
                     {activeMobileTab === 'local'
                       ? 'This device • Local draft'
                       : activeMobileTab === 'remote'
-                        ? 'Google Drive'
+                        ? 'Other copy'
                         : 'Clean 3-way merge'}
                   </p>
                 </div>
@@ -606,7 +606,7 @@ export function SyncConflictBanner({
                   )
                 ) : activeMobileTab === 'remote' ? (
                   file?.type === 'spreadsheet' ? (
-                    'Spreadsheet data from Google Drive.'
+                    'Spreadsheet data from the other copy.'
                   ) : (
                     readableRemoteText
                   )
