@@ -29,7 +29,7 @@ import { SyncConflictBanner } from './SyncConflictBanner'
 import { applyRemoteVersion, keepLocalVersion, mergeConflictVersions, recordRemoteConflict } from '../../services/syncConflicts'
 import { registerUnsavedEditsProbe } from '../../services/localEditState'
 import { broadcastDocUpdate, subscribeToTabDocUpdates } from '../../services/tabSyncChannel'
-import { areDocumentContentsEquivalent, mergeDocuments } from '../../utils/documentMerge'
+import { areDocumentContentsEquivalent, isDocumentPrefix, mergeDocuments, parseJsonDoc } from '../../utils/documentMerge'
 import { applyRemoteDocumentPatch } from './remoteEditorPatch'
 import { useDriveLiveSync } from '../../hooks/useDriveLiveSync'
 import { useYjsDocumentSync } from '../../hooks/useYjsDocumentSync'
@@ -1140,6 +1140,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const lastProcessedRemoteContentRef = useRef<string | null>(null)
   const lastTabSyncFileUpdatedAtRef = useRef<string | null>(null)
   const inFlightMergeRef = useRef<Promise<boolean> | null>(null)
+  const editorInstanceIdRef = useRef<string>(
+    typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `editor-${Math.random()}`
+  )
+  const localSnapshotsRef = useRef<Set<string>>(new Set())
 
   const retryPendingPatch = useCallback(async () => {
     if (pendingRetryTimerRef.current !== null) {
@@ -1205,6 +1209,18 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       }
     }
 
+    const isCurrentlyEditing =
+      currentEditor.isFocused ||
+      hasUnsavedChanges() ||
+      contentSyncTimerRef.current !== null ||
+      status === 'editing' ||
+      status === 'saving-locally'
+
+    if (isCurrentlyEditing) {
+      // User is actively editing. Do not force-record a conflict against live typing.
+      return
+    }
+
     try {
       await recordRemoteConflict(file.id, pending.content, new Date(pending.timestamp).toISOString())
       if (pendingRemotePatchRef.current?.timestamp === pending.timestamp) {
@@ -1213,7 +1229,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     } catch (err) {
       console.warn('[Sync] Failed to persist conflict record to database; retaining pending in-memory state.', err)
     }
-  }, [file?.baseContent, file?.id, file?.updatedAt, replaceContent, setContent])
+  }, [file?.baseContent, file?.id, file?.updatedAt, hasUnsavedChanges, replaceContent, setContent, status])
 
   const queuePendingRemotePatch = useCallback((incomingContent: string, baseContent?: string) => {
     if (!file?.id) return
@@ -1252,17 +1268,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         window.clearTimeout(pendingRetryTimerRef.current)
         pendingRetryTimerRef.current = null
       }
-      if (pendingRemotePatchRef.current && fileId) {
-        const pending = pendingRemotePatchRef.current
-        void recordRemoteConflict(fileId, pending.content, new Date(pending.timestamp).toISOString())
-          .then(() => {
-            if (pendingRemotePatchRef.current?.timestamp === pending.timestamp) {
-              pendingRemotePatchRef.current = null
-            }
-          })
-          .catch((err) => {
-            console.warn('[Sync] Failed to persist conflict record during unmount.', err)
-          })
+      if (pendingRemotePatchRef.current) {
+        pendingRemotePatchRef.current = null
       }
     }
   }, [fileId])
@@ -1277,9 +1284,14 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const next = JSON.stringify(target.getJSON())
     if (editorContentRef.current !== next) {
       editorContentRef.current = next
+      localSnapshotsRef.current.add(next)
+      if (localSnapshotsRef.current.size > 30) {
+        const oldest = localSnapshotsRef.current.values().next().value
+        if (oldest) localSnapshotsRef.current.delete(oldest)
+      }
       setContent(next)
       if (file?.id) {
-        broadcastDocUpdate(file.id, next, titleRef.current)
+        broadcastDocUpdate(file.id, next, titleRef.current, editorInstanceIdRef.current)
       }
       retryPendingPatch()
     } else if (pendingRemotePatchRef.current) {
@@ -1327,12 +1339,15 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   useEffect(() => {
     if (!file?.id) return
     return registerUnsavedEditsProbe(file.id, () =>
+      Boolean(editorRef.current?.isFocused) ||
       contentSyncTimerRef.current !== null ||
       hasUnsavedChanges() ||
       hasUnsavedTitleEdits() ||
-      titleAutosaveTimerRef.current !== null
+      titleAutosaveTimerRef.current !== null ||
+      file?.syncStatus === 'pending' ||
+      file?.syncStatus === 'backing-up'
     )
-  }, [file?.id, hasUnsavedChanges, hasUnsavedTitleEdits])
+  }, [file?.id, file?.syncStatus, hasUnsavedChanges, hasUnsavedTitleEdits])
 
   const restoreLastActiveSelection = useCallback(() => {
     const currentEditor = editorRef.current
@@ -1353,6 +1368,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (!file?.id) return
     return subscribeToTabDocUpdates((msg) => {
       if (msg.fileId !== file.id) return
+      if (msg.senderId === editorInstanceIdRef.current) return
       const currentEditor = editorRef.current
       const liveContent = currentEditor && !currentEditor.isDestroyed
         ? JSON.stringify(currentEditor.getJSON())
@@ -1383,6 +1399,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             const patchRes = applyRemoteDocumentPatch(currentEditor, merged.content)
             if (patchRes.applied) {
               lastProcessedRemoteContentRef.current = msg.content
+              localSnapshotsRef.current.add(msg.content)
               pendingRemotePatchRef.current = null
               editorContentRef.current = merged.content
               // A merged tab update includes local typing that may not have
@@ -1392,13 +1409,18 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             } else if (patchRes.error?.includes('conflicts with active selection/typing')) {
               queuePendingRemotePatch(msg.content, base ?? undefined)
             } else {
-              console.warn('[TabSync] Clean 3-way merge could not be safely patched into active editor; recording recoverable conflict.', patchRes.error)
-              lastProcessedRemoteContentRef.current = msg.content
-              void recordRemoteConflict(file.id, msg.content, new Date().toISOString())
+              if (currentEditor.isFocused) {
+                queuePendingRemotePatch(msg.content, base ?? undefined)
+              } else {
+                console.warn('[TabSync] Clean 3-way merge could not be safely patched into active editor; recording recoverable conflict.', patchRes.error)
+                lastProcessedRemoteContentRef.current = msg.content
+                void recordRemoteConflict(file.id, msg.content, new Date().toISOString())
+              }
             }
           }
         } else if (merged.success && !merged.hasConflict) {
           lastProcessedRemoteContentRef.current = msg.content
+          localSnapshotsRef.current.add(msg.content)
         } else if (merged.hasConflict) {
           // Tab snapshots can race the local autosave debounce. Give the
           // latest snapshot time to settle and retry against the live editor
@@ -1412,15 +1434,20 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             const patchRes = applyRemoteDocumentPatch(currentEditor, msg.content)
             if (patchRes.applied) {
               lastProcessedRemoteContentRef.current = msg.content
+              localSnapshotsRef.current.add(msg.content)
               pendingRemotePatchRef.current = null
               editorContentRef.current = msg.content
               setContent(msg.content)
             } else if (patchRes.error?.includes('conflicts with active selection/typing')) {
               queuePendingRemotePatch(msg.content, undefined)
             } else {
-              console.warn('[TabSync] Remote patch could not be safely applied; recording recoverable conflict.', patchRes.error)
-              lastProcessedRemoteContentRef.current = msg.content
-              void recordRemoteConflict(file.id, msg.content, new Date().toISOString())
+              if (currentEditor.isFocused) {
+                queuePendingRemotePatch(msg.content, undefined)
+              } else {
+                console.warn('[TabSync] Remote patch could not be safely applied; recording recoverable conflict.', patchRes.error)
+                lastProcessedRemoteContentRef.current = msg.content
+                void recordRemoteConflict(file.id, msg.content, new Date().toISOString())
+              }
             }
           }
         }
@@ -2108,12 +2135,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       // delayed echo that can race the next keystroke from the other pane.
       if (transaction.getMeta('remoteUpdate')) return
 
-      // Mirror each actual editor transaction immediately to other views.
-      // Saving remains debounced, so live typing does not wait for persistence.
-      if (!collaboration.enabled) {
-        broadcastDocUpdate(fileId, JSON.stringify(currentEditor.getJSON()), titleRef.current)
-      }
-
       if (contentSyncTimerRef.current !== null) {
         window.clearTimeout(contentSyncTimerRef.current)
       }
@@ -2460,15 +2481,33 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       }
       return
     }
+    const isFocused = Boolean(editor.isFocused)
     const hasActiveEdits =
+      isFocused ||
       status === 'editing' ||
       status === 'saving-locally' ||
       hasUnsavedChanges() ||
       contentSyncTimerRef.current !== null
     if (loadedId === file.id && (incomingContent === editorContentRef.current || areDocumentContentsEquivalent(incomingContent, editorContentRef.current))) return
+    if (loadedId === file.id && incomingContent === content) return
+    if (loadedId === file.id && localSnapshotsRef.current.has(incomingContent)) {
+      // incomingContent was authored and saved by this tab.
+      return
+    }
+    if (loadedId === file.id && lastProcessedRemoteContentRef.current && (incomingContent === lastProcessedRemoteContentRef.current || areDocumentContentsEquivalent(incomingContent, lastProcessedRemoteContentRef.current))) {
+      // incomingContent was already processed via cross-tab broadcast.
+      return
+    }
     if (loadedId === file.id && (!incomingContent || incomingContent === emptyDocumentJson) && editorContentRef.current && editorContentRef.current !== emptyDocumentJson) return
     if (loadedId === file.id && lastImportedContentRef.current && editorContentRef.current === lastImportedContentRef.current && incomingContent !== editorContentRef.current) return
-    if (loadedId === file.id && lastProcessedRemoteContentRef.current && incomingContent === lastProcessedRemoteContentRef.current) return
+    if (loadedId === file.id && hasActiveEdits) {
+      const incomingDoc = parseJsonDoc(incomingContent)
+      const currentDoc = parseJsonDoc(editorContentRef.current)
+      if (incomingDoc && currentDoc && isDocumentPrefix(incomingDoc, currentDoc)) {
+        // incomingContent is an earlier local save catching up in storage while user continues typing.
+        return
+      }
+    }
     if (loadedId === file.id) {
       if (pendingRemotePatchRef.current) {
         queuePendingRemotePatch(incomingContent, file.baseContent ?? lastBackedUpContentRef.current ?? undefined)
@@ -2539,12 +2578,20 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             queuePendingRemotePatch(incomingContent, base ?? undefined)
             return
           } else {
+            if (isFocused) {
+              queuePendingRemotePatch(incomingContent, base ?? undefined)
+              return
+            }
             console.warn('[LiveSync] Clean 3-way merge could not be safely patched into active editor; recording recoverable conflict.', patchRes.error)
             lastProcessedRemoteContentRef.current = incomingContent
             void recordRemoteConflict(file.id, incomingContent, file.lastSyncedAt ?? new Date().toISOString())
             return
           }
         } else if (merged.hasConflict) {
+          if (isFocused) {
+            queuePendingRemotePatch(incomingContent, base ?? undefined)
+            return
+          }
           console.warn('[LiveSync] Three-way merge identified concurrent conflict; recording recoverable conflict.')
           lastProcessedRemoteContentRef.current = incomingContent
           void recordRemoteConflict(file.id, incomingContent, file.lastSyncedAt ?? new Date().toISOString())
@@ -2564,6 +2611,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       } else if (patchRes.error?.includes('conflicts with active selection/typing')) {
         queuePendingRemotePatch(incomingContent, file.baseContent ?? lastBackedUpContentRef.current ?? undefined)
       } else {
+        if (isFocused) {
+          queuePendingRemotePatch(incomingContent, file.baseContent ?? lastBackedUpContentRef.current ?? undefined)
+          return
+        }
         console.warn('[LiveSync] Background repository update could not be safely patched into active editor; recording recoverable conflict.', patchRes.error)
         lastProcessedRemoteContentRef.current = incomingContent
         void recordRemoteConflict(file.id, incomingContent, file.lastSyncedAt ?? new Date().toISOString())
@@ -2631,12 +2682,15 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     enabled: Boolean(file && !file.isDeleted && !isLocalWorkspace() && !collaboration.enabled),
     intervalMs: 2500,
     isEditing:
+      Boolean(editor?.isFocused) ||
       status === 'editing' ||
       status === 'saving-locally' ||
       hasUnsavedChanges() ||
       hasUnsavedTitleEdits() ||
       contentSyncTimerRef.current !== null ||
-      titleAutosaveTimerRef.current !== null,
+      titleAutosaveTimerRef.current !== null ||
+      file?.syncStatus === 'pending' ||
+      file?.syncStatus === 'backing-up',
   })
   const saveTitle = useCallback(async () => {
     if (titleAutosaveTimerRef.current !== null) {

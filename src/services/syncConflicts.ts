@@ -1,7 +1,60 @@
 import { db } from '../database/db'
 import { processPendingDriveSync } from '../database/repositories'
-import type { SyncConflict } from '../types/files'
+import type { MyBookFile, SyncConflict } from '../types/files'
 import { areDocumentContentsEquivalent } from '../utils/documentMerge'
+
+// Creates a non-blocking companion file following the Obsidian pattern (Option A)
+// so genuine external Drive conflicts never lock the active editor or cause data loss.
+export async function createConflictedCopyFile(
+  fileId: string,
+  remoteContent: string,
+  remoteModifiedTime: string
+): Promise<MyBookFile | null> {
+  return db.transaction('rw', db.files, async () => {
+    const file = await db.files.get(fileId)
+    if (!file) return null
+
+    if (areDocumentContentsEquivalent(file.content, remoteContent)) {
+      return null
+    }
+
+    const baseName = file.name.replace(/\.(?:md|markdown)$/i, '').trim()
+    const dateStr = remoteModifiedTime
+      ? new Date(remoteModifiedTime).toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10)
+    const copyName = `${baseName} (Conflicted copy ${dateStr})`
+
+    const existing = await db.files
+      .filter((candidate) => !candidate.isDeleted && candidate.folderId === file.folderId && candidate.name === copyName)
+      .first()
+    if (existing) {
+      if (areDocumentContentsEquivalent(existing.content, remoteContent)) {
+        return existing
+      }
+    }
+
+    const now = new Date().toISOString()
+    const conflictedCopy: MyBookFile = {
+      id: crypto.randomUUID(),
+      driveFileId: null,
+      workspaceType: file.workspaceType ?? 'drive',
+      name: copyName,
+      type: file.type,
+      folderId: file.folderId,
+      content: remoteContent,
+      baseContent: remoteContent,
+      mimeType: file.mimeType,
+      createdAt: now,
+      updatedAt: now,
+      lastSyncedAt: remoteModifiedTime,
+      syncStatus: 'backed-up',
+      isDeleted: false,
+    }
+
+    await db.files.add(conflictedCopy)
+    return conflictedCopy
+  })
+}
 
 // Keeps the local document and stores the remote content as a recoverable
 // version, so a remote edit is never dropped without a trace.

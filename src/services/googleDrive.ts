@@ -4,7 +4,7 @@ import type { JSONContent } from '@tiptap/core'
 import type { MyBookFolder, SyncEntityType, SyncQueueItem } from '../types/files'
 import { devLog } from '../utils/safeLog'
 import { hasUnsavedLocalEdits } from './localEditState'
-import { recordRemoteConflict } from './syncConflicts'
+import { createConflictedCopyFile, recordRemoteConflict } from './syncConflicts'
 import { reconcileExternalUpdate } from './syncReconciler'
 import { areDocumentContentsEquivalent } from '../utils/documentMerge'
 
@@ -1985,6 +1985,20 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
         // recording a conflict banner.
         if (unsavedEdits) return { updated: false, modifiedTime: driveModifiedTime }
         await recordRemoteConflict(latest.id, content, driveModifiedTime)
+        const conflictedCopy = await createConflictedCopyFile(latest.id, content, driveModifiedTime)
+        if (conflictedCopy) {
+          try {
+            const { toast } = await import('../components/ui/toast')
+            toast.add({
+              title: 'Conflict saved as copy',
+              description: `A newer version from Google Drive was saved as "${conflictedCopy.name}".`,
+              type: 'warning',
+              priority: 'low',
+            })
+          } catch {
+            // Toast not available in background worker or test
+          }
+        }
         return { updated: false, modifiedTime: driveModifiedTime }
       }
 

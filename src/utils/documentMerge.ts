@@ -253,6 +253,8 @@ function sequence3WayMerge<T>(
   if (base.length === 0) {
     if (local.length === 0) return { items: remote, hasConflict: false }
     if (remote.length === 0) return { items: local, hasConflict: false }
+    if (areSlicesPrefix(local, remote, isEqual)) return { items: remote, hasConflict: false }
+    if (areSlicesPrefix(remote, local, isEqual)) return { items: local, hasConflict: false }
 
     const matches = computeLcsMatches(local, remote, isEqual)
     const result: T[] = []
@@ -535,6 +537,34 @@ function mergeBlockCluster(
           const lText = extractText(lNode)
           const rText = extractText(rNode)
 
+          if (lText === rText) {
+            return { merged: [lNode], resolvedCleanly: true }
+          }
+          if (bText === lText) {
+            return {
+              merged: [{ ...rNode, attrs: attrsResolved }],
+              resolvedCleanly: true,
+            }
+          }
+          if (bText === rText) {
+            return {
+              merged: [{ ...lNode, attrs: attrsResolved }],
+              resolvedCleanly: true,
+            }
+          }
+          if (lText.startsWith(rText) && (!bText || rText.startsWith(bText))) {
+            return {
+              merged: [{ ...lNode, attrs: attrsResolved }],
+              resolvedCleanly: true,
+            }
+          }
+          if (rText.startsWith(lText) && (!bText || lText.startsWith(bText))) {
+            return {
+              merged: [{ ...rNode, attrs: attrsResolved }],
+              resolvedCleanly: true,
+            }
+          }
+
           const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
           const tokenize = (s: string) => Array.from(graphemeSegmenter.segment(s), ({ segment }) => segment)
           const bTokens = tokenize(bText)
@@ -699,7 +729,7 @@ export function areDocumentContentsEquivalent(a: string | null | undefined, b: s
   return a.trim() === b.trim()
 }
 
-function isDocumentPrefix(shorter: JSONContent, longer: JSONContent): boolean {
+export function isDocumentPrefix(shorter: JSONContent, longer: JSONContent): boolean {
   const shortBlocks = shorter.content ?? []
   const longBlocks = longer.content ?? []
   if (shortBlocks.length > longBlocks.length) return false

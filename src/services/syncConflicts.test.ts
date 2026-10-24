@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { db } from '../database/db'
 import type { MyBookFile } from '../types/files'
-import { applyRemoteVersion, keepLocalVersion, mergeConflictVersions, recordRemoteConflict } from './syncConflicts'
+import { applyRemoteVersion, createConflictedCopyFile, keepLocalVersion, mergeConflictVersions, recordRemoteConflict } from './syncConflicts'
 
 const file = (overrides: Partial<MyBookFile> = {}): MyBookFile => ({
   id: 'file-1', driveFileId: 'drive-1', name: 'Doc', type: 'document', folderId: null, content: 'local edit', baseContent: 'base',
@@ -202,5 +202,38 @@ describe('sync conflicts', () => {
     const stored = await db.files.get('file-1')
     expect(stored?.content).toBe('my final draft')
     expect(stored?.syncConflict).toBeNull()
+  })
+
+  describe('createConflictedCopyFile (Obsidian Option A Pattern)', () => {
+    it('creates a companion file with remote content and conflicted copy naming', async () => {
+      const copy = await createConflictedCopyFile('file-1', 'remote different edit', '2026-10-03T12:00:00.000Z')
+      expect(copy).not.toBeNull()
+      expect(copy?.name).toBe('Doc (Conflicted copy 2026-10-03)')
+      expect(copy?.content).toBe('remote different edit')
+      expect(copy?.syncStatus).toBe('backed-up')
+
+      // Original file remains completely unchanged
+      const original = await db.files.get('file-1')
+      expect(original?.content).toBe('local edit')
+
+      // Conflicted copy file is persisted in db.files
+      const inDb = await db.files.get(copy!.id)
+      expect(inDb?.name).toBe('Doc (Conflicted copy 2026-10-03)')
+    })
+
+    it('does not duplicate companion file when same remote content is received', async () => {
+      const copy1 = await createConflictedCopyFile('file-1', 'remote different edit', '2026-10-03T12:00:00.000Z')
+      const copy2 = await createConflictedCopyFile('file-1', 'remote different edit', '2026-10-03T12:00:00.000Z')
+      expect(copy1?.id).toBe(copy2?.id)
+
+      const totalFiles = await db.files.count()
+      expect(totalFiles).toBe(2) // Original + 1 copy
+    })
+
+    it('returns null and creates no file when remote content equals local content', async () => {
+      const copy = await createConflictedCopyFile('file-1', 'local edit', '2026-10-03T12:00:00.000Z')
+      expect(copy).toBeNull()
+      expect(await db.files.count()).toBe(1)
+    })
   })
 })
