@@ -84,20 +84,16 @@ export const ToggleBlock = Node.create({
                   .run()
               }
 
-              const isLastChild = $from.index(depth) === parentNode.childCount - 1
-              if (isLastChild) {
-                const blockStart = $from.before()
-                const blockEnd = $from.after()
-                return this.editor
-                  .chain()
-                  .deleteRange({ from: blockStart, to: blockEnd })
-                  .insertContentAt(insertPos - (blockEnd - blockStart), { type: 'paragraph' })
-                  .setTextSelection(insertPos - (blockEnd - blockStart) + 1)
-                  .scrollIntoView()
-                  .run()
-              }
-
-              return false
+              // Empty child (last or in the middle): remove it and exit below the toggle
+              const blockStart = $from.before()
+              const blockEnd = $from.after()
+              return this.editor
+                .chain()
+                .deleteRange({ from: blockStart, to: blockEnd })
+                .insertContentAt(insertPos - (blockEnd - blockStart), { type: 'paragraph' })
+                .setTextSelection(insertPos - (blockEnd - blockStart) + 1)
+                .scrollIntoView()
+                .run()
             }
           }
         }

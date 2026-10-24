@@ -6,7 +6,7 @@ import {
   Download01Icon,
   LinkIcon,
   MoreHorizontalIcon,
-  Refresh01Icon,
+  ReloadIcon,
   SquareArrowOutUpRightIcon,
   Tick02Icon,
 } from '@hugeicons/core-free-icons'
@@ -240,7 +240,7 @@ export function FileBlockNodeView({
           onClick={handleOpenReplace}
           className="mybook-image-toolbar-button"
         >
-          <HugeiconsIcon icon={Refresh01Icon} strokeWidth={2} className="size-4" />
+          <HugeiconsIcon icon={ReloadIcon} strokeWidth={2} className="size-4" />
         </Button>
       </span>
 
@@ -304,7 +304,7 @@ export function FileBlockNodeView({
                 }}
                 className="flex items-center gap-2"
               >
-                <HugeiconsIcon icon={Refresh01Icon} strokeWidth={2} className="size-4 shrink-0" />
+                <HugeiconsIcon icon={ReloadIcon} strokeWidth={2} className="size-4 shrink-0" />
                 <span className="whitespace-nowrap">Replace</span>
               </DropdownMenuItem>
               <DropdownMenuItem

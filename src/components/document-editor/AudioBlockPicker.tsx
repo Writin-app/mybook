@@ -40,7 +40,7 @@ export function AudioBlockPicker({
   position,
   onClose,
   onInsert,
-  title = 'Add audio',
+  title = 'Add an audio',
   submitLabel = 'Add audio',
   initialTab = 'upload',
   initialUrl = '',

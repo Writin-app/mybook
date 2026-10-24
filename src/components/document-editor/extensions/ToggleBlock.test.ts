@@ -181,4 +181,40 @@ describe('ToggleBlock', () => {
     editor.destroy()
     element.remove()
   })
+
+  it('exits the toggle on Enter when an empty child is between other blocks', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({
+      element,
+      extensions: [Document, Paragraph, Text, ToggleBlock],
+      content: {
+        type: 'doc',
+        content: [{
+          type: 'toggleBlock',
+          attrs: { title: 'T', open: true, level: null },
+          content: [
+            { type: 'paragraph', content: [{ type: 'text', text: 'one' }] },
+            { type: 'paragraph' },
+            { type: 'paragraph', content: [{ type: 'text', text: 'two' }] },
+          ],
+        }],
+      },
+    })
+
+    // toggle(0) > p"one"(1..6) > empty p starts at 6, cursor at 7
+    editor.commands.setTextSelection(7)
+    expect(editor.state.selection.$from.parent.content.size).toBe(0)
+
+    const shortcuts = ToggleBlock.config.addKeyboardShortcuts?.call({ editor } as never)
+    expect(shortcuts?.Enter?.({ editor } as never)).toBe(true)
+
+    expect(editor.state.doc.childCount).toBe(2)
+    expect(editor.state.doc.child(0).type.name).toBe('toggleBlock')
+    expect(editor.state.doc.child(0).childCount).toBe(2)
+    expect(editor.state.doc.child(1).type.name).toBe('paragraph')
+    expect(editor.state.selection.$from.parent).toBe(editor.state.doc.child(1))
+
+    editor.destroy()
+    element.remove()
+  })
 })

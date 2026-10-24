@@ -215,6 +215,18 @@
     content: "Add an image";
   }
 
+  .mybook-document-editor:has([data-video-picker="true"]) .tiptap .mybook-empty-block-placeholder::before {
+    content: "Add a video";
+  }
+
+  .mybook-document-editor:has([data-audio-picker="true"]) .tiptap .mybook-empty-block-placeholder::before {
+    content: "Add an audio";
+  }
+
+  .mybook-document-editor:has([data-file-picker="true"]) .tiptap .mybook-empty-block-placeholder::before {
+    content: "Add a file";
+  }
+
   .tiptap .mybook-heading-placeholder::before { content: attr(data-placeholder); font-weight: inherit; }
   .tiptap .mybook-column-placeholder::before { content: attr(data-placeholder); font-weight: inherit; }
 
@@ -256,7 +268,8 @@
     white-space: nowrap;
     content: attr(data-placeholder);
   }
-  .tiptap hr { margin: 2rem 0; border: 0; border-top: 1px solid var(--app-border); }
+  .tiptap hr { margin: 2rem 0; border: 0; border-top: 2px solid color-mix(in srgb, var(--app-border) 75%, var(--foreground)); }
+  .tiptap .mybook-date-time-block button { color: color-mix(in srgb, var(--muted-foreground) 65%, var(--foreground)); }
   .tiptap a {
     color: var(--primary);
     text-decoration: underline;
@@ -321,6 +334,12 @@
   .mybook-image-block-toolbar { position: absolute; top: 0.5rem; right: 0.5rem; z-index: 10; display: flex; max-width: calc(100% - 1rem); align-items: center; justify-content: flex-end; gap: 0.25rem; padding: 0.25rem; border-radius: 8px; background: color-mix(in srgb, var(--app-surface) 88%, transparent); backdrop-filter: blur(8px); border: 1px solid color-mix(in srgb, var(--app-border) 60%, transparent); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
   .mybook-image-block-toolbar::before,
   .mybook-link-card-action-slot::before { content: ""; position: absolute; inset: -6px; z-index: -1; pointer-events: auto; }
+  @media (hover: hover) and (pointer: fine) {
+    .tiptap.mybook-block-just-inserted .mybook-image-block-toolbar,
+    .tiptap.mybook-block-just-inserted .mybook-link-card-action-slot,
+    .tiptap.mybook-block-just-inserted .mybook-file-pdf-actions,
+    .tiptap.mybook-block-just-inserted .mybook-embed-header-actions { opacity: 0 !important; pointer-events: none !important; }
+  }
   .mybook-desktop-only-action { display: inline-flex; }
   .mybook-mobile-only-action { display: none; }
   @media (max-width: 1023px) {

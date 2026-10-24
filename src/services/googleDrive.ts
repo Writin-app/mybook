@@ -131,6 +131,7 @@ export interface DriveFile {
   parents?: string[]
   appProperties?: Record<string, string>
   modifiedTime?: string
+  createdTime?: string
 }
 
 export type DriveTrashClassification = 'active' | 'independent-trash-root' | 'recursive-trash-descendant'
@@ -229,7 +230,7 @@ async function listChildFolders(parentId: string): Promise<DriveFolder[]> {
 
 async function listChildFiles(parentId: string): Promise<DriveFile[]> {
   const query = `'${parentId}' in parents and mimeType!='${DRIVE_FOLDER_MIME}' and trashed=false`
-  return await driveFetchAllFiles<DriveFile>(query, 'id,name,mimeType,trashed,webViewLink,parents,modifiedTime,appProperties')
+  return await driveFetchAllFiles<DriveFile>(query, 'id,name,mimeType,trashed,webViewLink,parents,modifiedTime,createdTime,appProperties')
 }
 
 function normalizeDriveTrashMetadata(item: DriveFile | DriveFolder): DriveTrashMetadata {
@@ -1732,7 +1733,7 @@ export async function importDriveFilesToLocal(
           content,
           baseContent: content,
           mimeType: driveFile.mimeType,
-          createdAt: now,
+          createdAt: driveFile.createdTime ?? now,
           updatedAt: driveModifiedTime,
           lastSyncedAt: driveModifiedTime,
           syncStatus: 'backed-up' as const,
