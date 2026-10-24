@@ -1,6 +1,6 @@
 import { pastedEmbed } from './embedClipboard'
 import { pastedBookmark } from './bookmarkClipboard'
-import { ArrowReloadHorizontalIcon, CopyLinkIcon, Edit02Icon, Unlink02Icon } from '@hugeicons/core-free-icons'
+import { ArrowReloadHorizontalIcon, CopyLinkIcon, Edit02Icon, Tick02Icon, Unlink02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Dropdown } from '../ui/compat-dropdown'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '../ui/dropdown-menu'
@@ -56,6 +56,7 @@ import { Callout, calloutNode } from './extensions/Callout'
 import { CodeBlock } from './extensions/CodeBlock'
 import { DatabaseBlock } from './extensions/DatabaseBlock'
 import { DateTimeBlock, handleDateTimeBlockAdjacentDelete } from './extensions/DateTimeBlock'
+import { FreshBlockToolbarGuard } from './extensions/FreshBlockToolbarGuard'
 import { DocumentLink, documentLinkNode } from './extensions/DocumentLink'
 import { EmbedBlock, embedBlockNode } from './extensions/EmbedBlock'
 import { FileAttachment, fileAttachmentNode } from './extensions/FileAttachment'
@@ -952,6 +953,12 @@ function InlineLinkToolbar({
     onAction('edit', { href: normalizedHref, text: text.trim() || normalizedHref })
     setIsEditOpen(false)
   }
+  const [copiedLink, setCopiedLink] = useState(false)
+  useEffect(() => {
+    if (!copiedLink) return
+    const timer = window.setTimeout(() => setCopiedLink(false), 1400)
+    return () => window.clearTimeout(timer)
+  }, [copiedLink])
   const compact = Boolean(toolbar.startInEdit)
   const cancelEdit = () => {
     setIsEditOpen(false)
@@ -989,7 +996,7 @@ function InlineLinkToolbar({
     >
       {!isEditOpen ? (
         <>
-          <Button type="button" variant="ghost" size="icon-sm" title="Copy link" aria-label="Copy link" onClick={() => onAction('copy')}><HugeiconsIcon icon={CopyLinkIcon} strokeWidth={2} className="size-4" /></Button>
+          <Button type="button" variant="ghost" size="icon-sm" title={copiedLink ? 'Copied' : 'Copy link'} aria-label={copiedLink ? 'Copied' : 'Copy link'} onClick={() => { onAction('copy'); setCopiedLink(true) }}><HugeiconsIcon icon={copiedLink ? Tick02Icon : CopyLinkIcon} strokeWidth={2} className="size-4" /></Button>
           <Button type="button" variant="ghost" size="icon-sm" title="Edit link" aria-label="Edit link" onClick={() => { setHref(toolbar.href); setText(toolbar.text); setIsEditOpen((open) => !open); setIsChangeOpen(false) }}><HugeiconsIcon icon={Edit02Icon} strokeWidth={2} className="size-4" /></Button>
           <DropdownMenu onOpenChange={setIsChangeOpen}>
             <DropdownMenuTrigger title="Change to" aria-label="Change link to" className="mybook-inline-link-toolbar-trigger" onClick={() => { setIsChangeOpen(true); setIsEditOpen(false) }}>
@@ -1033,8 +1040,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const isMobile = useIsMobile()
   const isHoverBlockControlsAvailable = useHoverBlockControlsAvailable()
   const isMacPlatform = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/u.test(navigator.platform)
-  const duplicateShortcut = isMacPlatform ? '⌃⌘D' : 'Ctrl+Alt+D'
-  const moveShortcut = isMacPlatform ? '⌃⌘M' : 'Ctrl+Alt+M'
+  const duplicateShortcut = isMacPlatform ? '⌘⇧D' : 'Ctrl+Shift+D'
+  const moveShortcut = isMacPlatform ? '⌘⇧M' : 'Ctrl+Shift+M'
   const undoShortcut = isMacPlatform ? '⌘Z' : 'Ctrl+Z'
   const redoShortcut = isMacPlatform ? '⌘⇧Z' : 'Ctrl+Shift+Z'
   const findShortcut = isMacPlatform ? '⌘F' : 'Ctrl+F'
@@ -1107,6 +1114,20 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const editorRef = useRef<NonNullable<ReturnType<typeof useEditor>> | null>(null)
   const blankOverlayRef = useRef<HTMLDivElement | null>(null)
   const blankSelectionRangeRef = useRef<{ from: number; to: number } | null>(null)
+  const findBarObserverRef = useRef<ResizeObserver | null>(null)
+  // Keep the find bar flush with the real header height instead of a fixed offset.
+  const findBarAnchorRef = useCallback((anchor: HTMLDivElement | null) => {
+    findBarObserverRef.current?.disconnect()
+    findBarObserverRef.current = null
+    const header = anchor?.previousElementSibling
+    if (!anchor || !(header instanceof HTMLElement)) return
+    const sync = () => { anchor.style.top = `${header.getBoundingClientRect().height}px` }
+    sync()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(sync)
+    observer.observe(header)
+    findBarObserverRef.current = observer
+  }, [])
   useEffect(() => {
     const handleEditorMenuShortcuts = (event: KeyboardEvent) => {
       const target = event.target
@@ -1667,6 +1688,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       ToggleBlock,
       DatabaseBlock,
       DateTimeBlock,
+      FreshBlockToolbarGuard,
       TableOfContents,
       DocumentLink,
       EmptyBlockPlaceholder,
@@ -2954,7 +2976,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (!toolbar) return
     if (action === 'copy') {
       void navigator.clipboard?.writeText(toolbar.href)
-      closeInlineLinkToolbar()
       return
     }
     if (action === 'edit') {
@@ -3447,7 +3468,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           </>
         }
       />
-      <div className="sticky top-[57px] md:top-[65px] z-40 h-0 overflow-visible">
+      <div ref={findBarAnchorRef} className="sticky top-[57px] md:top-[65px] z-40 h-0 overflow-visible">
         <FindReplaceDialog editor={editor} open={isFindReplaceOpen} onOpenChange={setIsFindReplaceOpen} />
       </div>
       <nav aria-label="Desktop document commands" className="hidden">

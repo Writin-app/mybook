@@ -13,7 +13,7 @@ import {
   MusicNote01Icon,
   PauseIcon,
   PlayIcon,
-  Refresh01Icon,
+  ReloadIcon,
   SquareArrowOutUpRightIcon,
   TextAlignCenterIcon,
   TextAlignEndIcon,
@@ -429,7 +429,7 @@ export function AudioBlockNodeView({
                 onClick={handleOpenReplace}
                 className="mybook-image-toolbar-button"
               >
-                <HugeiconsIcon icon={Refresh01Icon} strokeWidth={2} className="size-4" />
+                <HugeiconsIcon icon={ReloadIcon} strokeWidth={2} className="size-4" />
               </Button>
             </div>
 
@@ -554,7 +554,7 @@ export function AudioBlockNodeView({
                       }}
                       className="flex items-center gap-2"
                     >
-                      <HugeiconsIcon icon={Refresh01Icon} strokeWidth={2} className="size-4 shrink-0" />
+                      <HugeiconsIcon icon={ReloadIcon} strokeWidth={2} className="size-4 shrink-0" />
                       <span className="whitespace-nowrap">Replace</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem

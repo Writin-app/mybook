@@ -21,7 +21,7 @@ describe('AudioBlockPicker', () => {
       />
     )
 
-    expect(screen.getByRole('dialog', { name: 'Add audio' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Add an audio' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Upload' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Embed link' })).toBeInTheDocument()
     expect(screen.getByText(/drag & drop an audio file here/i)).toBeInTheDocument()
