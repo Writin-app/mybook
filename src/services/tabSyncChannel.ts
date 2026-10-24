@@ -35,14 +35,14 @@ function getChannel(): BroadcastChannel | null {
   return channel
 }
 
-export function broadcastDocUpdate(fileId: string, content: string, title?: string) {
+export function broadcastDocUpdate(fileId: string, content: string, title?: string, senderInstanceId?: string) {
   const ch = getChannel()
   const message: TabDocUpdateMessage = {
     type: 'doc-update',
     fileId,
     content,
     title,
-    senderId: TAB_ID,
+    senderId: senderInstanceId ?? TAB_ID,
   }
   // BroadcastChannel does not deliver a message back to the document that
   // sent it. Views of the same document in this page still need to receive
