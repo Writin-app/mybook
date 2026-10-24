@@ -37,7 +37,7 @@ function selectionPosition(editor: Editor): ToolbarPosition | null {
   const start = editor.view.coordsAtPos(from)
   const end = editor.view.coordsAtPos(to)
   if (!Number.isFinite(start.left) || !Number.isFinite(end.right)) return null
-  return { left: Math.min(start.left, end.left), top: Math.min(start.top, end.top) - 58 }
+  return { left: Math.min(start.left, end.left), top: Math.min(start.top, end.top) - 44 }
 }
 
 function ToolButton({ label, active, children, onClick }: { label: string; active?: boolean; children: React.ReactNode; onClick: () => void }) {
@@ -49,7 +49,7 @@ function ToolButton({ label, active, children, onClick }: { label: string; activ
       aria-pressed={active}
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
-      className={`flex size-10 shrink-0 items-center justify-center rounded-[8px] text-foreground transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${active ? 'bg-[var(--app-subtle)]' : ''}`}
+      className={`flex size-7 shrink-0 items-center justify-center rounded-[6px] text-foreground transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${active ? 'bg-[var(--app-subtle)]' : ''}`}
     >
       {children}
     </button>
@@ -194,21 +194,38 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
 
   if (!position) return null
 
+  const viewportHeight = typeof window !== 'undefined'
+    ? (window.visualViewport && window.visualViewport.height > 0
+        ? window.visualViewport.offsetTop + window.visualViewport.height
+        : window.innerHeight)
+    : 768
+
+  const toolbarHeight = toolbarRef.current?.offsetHeight || 36
+  const toolbarTop = position.top
+  const toolbarBottom = position.top + toolbarHeight
+  const spaceBelow = viewportHeight - toolbarBottom
+  const spaceAbove = toolbarTop
+
+  const openBlockOnTop = spaceBelow < 260 && spaceAbove > spaceBelow
+  const openColorOnTop = spaceBelow < 260 && spaceAbove > spaceBelow
+  const openMoreOnTop = spaceBelow < 340 && spaceAbove > spaceBelow
+  const moreMaxHeight = Math.min(384, Math.max(160, (openMoreOnTop ? spaceAbove : spaceBelow) - 16))
+
   return (
     <div
       ref={toolbarRef}
       role="toolbar"
       aria-label="Selected text formatting"
-      className="fixed z-30 hidden md:flex h-14 items-center gap-1 rounded-[14px] border border-[var(--app-border)] bg-[var(--app-surface)] px-1.5 text-foreground shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
+      className="fixed z-30 hidden md:flex h-9 items-center gap-0.5 rounded-[8px] bg-[var(--app-surface)] px-1 text-foreground shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
       style={{ left: position.left, top: position.top }}
       onMouseDown={(event) => event.preventDefault()}
     >
       <div className="relative">
-        <button type="button" aria-label="Block style" aria-expanded={blockMenuOpen} onClick={() => { setBlockMenuOpen((open) => !open); setColorMenu(null) }} className="flex h-10 min-w-24 items-center justify-center gap-2 rounded-[9px] bg-[var(--app-subtle)] px-2.5 text-sm font-medium hover:bg-[var(--app-subtle)]/80">
+        <button type="button" aria-label="Block style" aria-expanded={blockMenuOpen} onClick={() => { setBlockMenuOpen((open) => !open); setColorMenu(null) }} className="flex h-7 min-w-20 items-center justify-center gap-1.5 rounded-[6px] bg-[var(--app-subtle)] px-2 text-xs font-medium hover:bg-[var(--app-subtle)]/80">
           {blockStyle}<ChevronDownIcon aria-hidden="true" className="size-4" />
         </button>
         {blockMenuOpen ? (
-          <div role="menu" aria-label="Block style" className="absolute left-0 top-full z-40 mt-2 w-56 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)]">
+          <div role="menu" aria-label="Block style" className={`absolute left-0 z-40 w-56 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openBlockOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
             {['Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Heading 4'].map((label, index) => (
               <button key={label} type="button" role="menuitemradio" aria-checked={blockStyle === label} onClick={() => setBlockStyle(index)} className={`flex min-h-11 w-full items-center justify-between rounded-lg px-3 text-left text-sm hover:bg-[var(--app-subtle)] ${blockStyle === label ? 'bg-[var(--app-subtle)]' : ''}`}>
                 <span>{label}</span><span className="text-muted-foreground">{'#'.repeat(index)}</span>
@@ -217,48 +234,51 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
           </div>
         ) : null}
       </div>
-      <span aria-hidden="true" className="mx-1 h-7 w-px bg-[var(--app-border)]" />
-      <ToolButton label="Bold" active={editor.isActive('bold')} onClick={() => { restoreSelection(); editor.chain().focus().toggleBold().run() }}><BoldIcon className="size-5" /></ToolButton>
-      <ToolButton label="Underline" active={editor.isActive('underline')} onClick={() => { restoreSelection(); editor.chain().focus().toggleUnderline().run() }}><UnderlineIcon className="size-5" /></ToolButton>
-      <ToolButton label="Italic" active={editor.isActive('italic')} onClick={() => { restoreSelection(); editor.chain().focus().toggleItalic().run() }}><ItalicIcon className="size-5" /></ToolButton>
-      <ToolButton label="Strikethrough" active={editor.isActive('strike')} onClick={() => { restoreSelection(); editor.chain().focus().toggleStrike().run() }}><StrikethroughIcon className="size-5" /></ToolButton>
-      <span aria-hidden="true" className="mx-1 h-7 w-px bg-[var(--app-border)]" />
+      <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
+      <ToolButton label="Bold" active={editor.isActive('bold')} onClick={() => { restoreSelection(); editor.chain().focus().toggleBold().run() }}><BoldIcon className="size-4" /></ToolButton>
+      <ToolButton label="Underline" active={editor.isActive('underline')} onClick={() => { restoreSelection(); editor.chain().focus().toggleUnderline().run() }}><UnderlineIcon className="size-4" /></ToolButton>
+      <ToolButton label="Italic" active={editor.isActive('italic')} onClick={() => { restoreSelection(); editor.chain().focus().toggleItalic().run() }}><ItalicIcon className="size-4" /></ToolButton>
+      <ToolButton label="Strikethrough" active={editor.isActive('strike')} onClick={() => { restoreSelection(); editor.chain().focus().toggleStrike().run() }}><StrikethroughIcon className="size-4" /></ToolButton>
+      <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
       <div className="relative">
         <ToolButton label="Text color" active={editor.isActive('textColor')} onClick={() => { setColorMenu((current) => current === 'text' ? null : 'text'); setBlockMenuOpen(false) }}>
-          <span className="flex h-7 flex-col items-center justify-center text-lg font-medium leading-none">A<span className="mt-0.5 h-1 w-4 rounded-full" style={{ backgroundColor: editor.getAttributes('textColor').color ?? 'currentColor' }} /></span>
+          <span className="flex h-5 flex-col items-center justify-center text-sm font-medium leading-none">A<span className="mt-0.5 h-0.5 w-3 rounded-full" style={{ backgroundColor: editor.getAttributes('textColor').color ?? 'currentColor' }} /></span>
         </ToolButton>
         {colorMenu === 'text' ? (
-          <div role="menu" aria-label="Text color" className="absolute left-1/2 top-full z-40 mt-2 w-48 -translate-x-1/2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)]">
+          <div role="menu" aria-label="Text color" className={`absolute left-1/2 z-40 w-48 -translate-x-1/2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openColorOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
             {textColors.map((color) => <button key={color.name} type="button" role="menuitemradio" aria-checked={(editor.getAttributes('textColor').color ?? null) === color.value} onClick={() => applyColor('text', color.value)} className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--app-subtle)]"><span className="size-4 rounded border border-[var(--app-border)]" style={{ backgroundColor: color.value ?? 'transparent' }}>{color.value ? null : <span className="block rotate-45 border-t border-destructive" />}</span>{color.name}{(editor.getAttributes('textColor').color ?? null) === color.value ? <CheckIcon className="ml-auto size-4" /> : null}</button>)}
           </div>
         ) : null}
       </div>
       <div className="relative">
         <ToolButton label="Highlight" active={editor.isActive('highlight')} onClick={() => { setColorMenu((current) => current === 'highlight' ? null : 'highlight'); setBlockMenuOpen(false) }}>
-          <span className="flex size-5 items-center justify-center rounded border border-current text-xs font-bold" style={{ backgroundColor: editor.getAttributes('highlight').color ?? 'transparent' }}>H</span>
+          <span className="flex size-4 items-center justify-center rounded border border-current text-[10px] font-bold" style={{ backgroundColor: editor.getAttributes('highlight').color ?? 'transparent' }}>H</span>
         </ToolButton>
         {colorMenu === 'highlight' ? (
-          <div role="menu" aria-label="Highlight color" className="absolute left-1/2 top-full z-40 mt-2 w-48 -translate-x-1/2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)]">
+          <div role="menu" aria-label="Highlight color" className={`absolute left-1/2 z-40 w-48 -translate-x-1/2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openColorOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
             <button type="button" role="menuitem" onClick={() => applyColor('highlight', null)} className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--app-subtle)]">Remove highlight</button>
             {tableColors.filter((color) => color.name !== 'White').map((color) => <button key={color.name} type="button" role="menuitemradio" aria-checked={editor.getAttributes('highlight').color === color.value} onClick={() => applyColor('highlight', color.value)} className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--app-subtle)]"><span className="size-4 rounded border border-[var(--app-border)]" style={{ backgroundColor: color.value }} />{color.name}{editor.getAttributes('highlight').color === color.value ? <CheckIcon className="ml-auto size-4" /> : null}</button>)}
           </div>
         ) : null}
       </div>
-      <span aria-hidden="true" className="mx-1 h-7 w-px bg-[var(--app-border)]" />
-      <ToolButton label="Link" active={editor.isActive('link')} onClick={openLinkEditor}><LinkIcon className="size-5" /></ToolButton>
+      <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
+      <ToolButton label="Link" active={editor.isActive('link')} onClick={openLinkEditor}><LinkIcon className="size-4" /></ToolButton>
       <ToolButton label="Checklist" active={editor.isActive('taskList')} onClick={() => { restoreSelection(); editor.chain().focus().toggleTaskList().run() }}><span className="relative"><CheckIcon className="size-4" /><span aria-hidden="true" className="absolute -right-1 -top-0.5 size-3 border border-current" /></span></ToolButton>
-      <span aria-hidden="true" className="mx-1 h-7 w-px bg-[var(--app-border)]" />
+      <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
       <div className="relative">
-        <ToolButton label="More options" active={moreMenuOpen} onClick={() => { setMoreMenuOpen((open) => !open); setColorMenu(null); setBlockMenuOpen(false) }}><EllipsisHorizontalIcon className="size-5" /></ToolButton>
+        <ToolButton label="More options" active={moreMenuOpen} onClick={() => { setMoreMenuOpen((open) => !open); setColorMenu(null); setBlockMenuOpen(false) }}><EllipsisHorizontalIcon className="size-4" /></ToolButton>
         {moreMenuOpen ? (
-          <div data-command-menu-scroller="true" className="absolute right-0 top-full z-40 mt-2 max-h-[min(24rem,60dvh)] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 text-foreground shadow-[0_12px_28px_rgba(0,0,0,0.16)]">
+          <div
+            data-command-menu-scroller="true"
+            className={`absolute right-0 z-40 w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 text-foreground shadow-[0_12px_28px_rgba(0,0,0,0.16)] ${openMoreOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}
+            style={{ maxHeight: moreMaxHeight }}
+          >
             <BlockCommandMenu
               ariaLabel="More block options"
               commands={moreCommands}
               selectedIndex={moreSelectedIndex}
               onSelectIndex={setMoreSelectedIndex}
               onRun={runMoreCommand}
-              className="max-h-[inherit] overflow-y-auto"
             />
           </div>
         ) : null}
