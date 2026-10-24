@@ -204,7 +204,7 @@ describe('sync conflicts', () => {
     expect(stored?.syncConflict).toBeNull()
   })
 
-  describe('createConflictedCopyFile (Obsidian Option A Pattern)', () => {
+  describe('createConflictedCopyFile (Conflicted Copy Pattern)', () => {
     it('creates a companion file with remote content and conflicted copy naming', async () => {
       const copy = await createConflictedCopyFile('file-1', 'remote different edit', '2026-10-03T12:00:00.000Z')
       expect(copy).not.toBeNull()
