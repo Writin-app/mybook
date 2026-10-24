@@ -256,7 +256,7 @@ describe('Editor Syncing and Conflict Resolution Regression Suite', () => {
     })
   })
 
-  describe('Google Drive Vault Conflict Handling (Option A - Obsidian Pattern)', () => {
+  describe('Google Drive Vault Conflict Handling (Conflicted Copy Pattern)', () => {
     it('creates companion conflicted copy file and preserves active typing without interruption', async () => {
       const fileId = 'vault-conflict-test'
       const baseContent = createDocJson('Original baseline note content')

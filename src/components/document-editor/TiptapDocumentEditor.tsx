@@ -557,7 +557,7 @@ function cleanPastedHtml(html: string) {
     }
   })
 
-  // Normalize checklists / task items from Notion, GitHub, Google Docs, Apple Notes
+  // Normalize checklists / task items from external rich text and clipboard sources
   doc.body.querySelectorAll('li').forEach((li) => {
     const checkbox = li.querySelector('input[type="checkbox"]')
     const isChecked = checkbox

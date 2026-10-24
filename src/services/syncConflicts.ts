@@ -3,7 +3,7 @@ import { processPendingDriveSync } from '../database/repositories'
 import type { MyBookFile, SyncConflict } from '../types/files'
 import { areDocumentContentsEquivalent } from '../utils/documentMerge'
 
-// Creates a non-blocking companion file following the Obsidian pattern (Option A)
+// Creates a non-blocking companion file (conflicted copy pattern)
 // so genuine external Drive conflicts never lock the active editor or cause data loss.
 export async function createConflictedCopyFile(
   fileId: string,
