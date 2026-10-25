@@ -1,5 +1,7 @@
 import { defineConfig } from 'vitest/config'
 
+process.env.NODE_ENV = 'test'
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -11,6 +13,7 @@ export default defineConfig({
     fileParallelism: false,
     setupFiles: ['./src/test/setup.ts'],
     env: {
+      NODE_ENV: 'test',
       VITE_GOOGLE_CLIENT_ID: 'test-google-client-id.apps.googleusercontent.com',
       VITE_GOOGLE_AUTH_MODE: 'browser',
     },
