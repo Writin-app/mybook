@@ -38,7 +38,7 @@ describe('AppHeader', () => {
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
     expect(screen.getByRole('menu').hasAttribute('data-bottom-sheet')).toBe(width < 768)
     expect(!!document.querySelector('[data-slot="dropdown-menu-backdrop"]')).toBe(width < 768)
-    expect(screen.getByRole('menu').style.maxHeight).toBe(width < 768 ? '60vh' : '')
+    expect(screen.getByRole('menu').style.maxHeight).toBe(width < 768 ? '90vh' : '')
     fireEvent.click(screen.getByRole('menuitem', { name: 'Save now' }))
     expect(onMore).toHaveBeenCalledOnce()
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
@@ -184,6 +184,18 @@ describe('AppHeader', () => {
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Save now' }))
     expect(onMore).toHaveBeenCalledOnce()
+  })
+
+  it('renders lock action and calls onLockToggle', () => {
+    const onLockToggle = vi.fn()
+    const { rerender } = render(<AppHeader lockAction isLocked={false} onLockToggle={onLockToggle} />)
+    const lockBtn = screen.getByRole('button', { name: 'Lock page' })
+    expect(lockBtn).toBeInTheDocument()
+    fireEvent.click(lockBtn)
+    expect(onLockToggle).toHaveBeenCalledOnce()
+
+    rerender(<AppHeader lockAction isLocked={true} onLockToggle={onLockToggle} />)
+    expect(screen.getByRole('button', { name: 'Unlock page' })).toBeInTheDocument()
   })
 
   it('reflects favorite active state and accessibility attributes', () => {

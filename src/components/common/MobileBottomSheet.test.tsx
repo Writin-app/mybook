@@ -27,7 +27,7 @@ describe('MobileBottomSheet', () => {
     const container = bodyText.closest('div')
     expect(container).toHaveClass('overflow-y-auto')
     expect(container).toHaveClass('pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]')
-    expect(container).toHaveClass('max-h-[calc(85dvh-5rem)]')
+    expect(container).toHaveClass('max-h-[calc(90dvh-4rem)]')
   })
 
   it('renders footer with safe-area padding and reduces body bottom padding', () => {

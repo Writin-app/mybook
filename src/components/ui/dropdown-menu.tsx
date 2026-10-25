@@ -17,6 +17,85 @@ function DropdownMenuTrigger({ ...props }: MenuPrimitive.Trigger.Props) {
   return <MenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />
 }
 
+function useBottomSheetDragToDismiss(enabled: boolean) {
+  const popupRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    if (!enabled) return
+    const popup = popupRef.current
+    if (!popup) return
+
+    let startY: number | null = null
+    let currentDeltaY = 0
+    let isDragging = false
+
+    const onTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0]
+      if (!touch) return
+      const target = e.target as HTMLElement | null
+      const isHandle = Boolean(target?.closest('[data-drag-handle]'))
+      if (popup.scrollTop <= 0 || isHandle) {
+        startY = touch.clientY
+        currentDeltaY = 0
+        isDragging = true
+      }
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isDragging || startY === null) return
+      const touch = e.touches[0]
+      if (!touch) return
+      const deltaY = touch.clientY - startY
+      if (deltaY > 0 && popup.scrollTop <= 0) {
+        currentDeltaY = deltaY
+        popup.style.transform = `translateY(${deltaY}px)`
+        popup.style.transition = 'none'
+        if (e.cancelable) e.preventDefault()
+      } else if (deltaY < 0) {
+        isDragging = false
+        currentDeltaY = 0
+        popup.style.transform = ''
+      }
+    }
+
+    const onTouchEnd = () => {
+      if (!isDragging) return
+      isDragging = false
+      const deltaY = currentDeltaY
+      startY = null
+      currentDeltaY = 0
+
+      if (deltaY > 75) {
+        popup.style.transition = 'transform 150ms ease-out'
+        popup.style.transform = 'translateY(100%)'
+        setTimeout(() => {
+          popup.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+          popup.style.transform = ''
+          popup.style.transition = ''
+        }, 150)
+      } else {
+        popup.style.transition = 'transform 150ms ease-out'
+        popup.style.transform = ''
+        setTimeout(() => {
+          popup.style.transition = ''
+        }, 150)
+      }
+    }
+
+    popup.addEventListener('touchstart', onTouchStart, { passive: true })
+    popup.addEventListener('touchmove', onTouchMove, { passive: false })
+    popup.addEventListener('touchend', onTouchEnd, { passive: true })
+
+    return () => {
+      popup.removeEventListener('touchstart', onTouchStart)
+      popup.removeEventListener('touchmove', onTouchMove)
+      popup.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [enabled])
+
+  return popupRef
+}
+
 function DropdownMenuContent({
   bottomSheet = false,
   showBackdrop,
@@ -36,6 +115,8 @@ function DropdownMenuContent({
     "align" | "alignOffset" | "side" | "sideOffset"
   >) {
   const backdrop = showBackdrop ?? bottomSheet
+  const dragRef = useBottomSheetDragToDismiss(bottomSheet)
+
   return (
     <MenuPrimitive.Portal>
       {backdrop && <MenuPrimitive.Backdrop data-slot="dropdown-menu-backdrop" className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs transition-opacity data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />}
@@ -47,13 +128,16 @@ function DropdownMenuContent({
         sideOffset={sideOffset}
       >
         <MenuPrimitive.Popup
+          ref={dragRef}
           data-slot="dropdown-menu-content"
           data-bottom-sheet={bottomSheet || undefined}
-          className={cn("z-50 max-h-(--available-height) w-(--anchor-width) min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95", className, bottomSheet && "w-full max-h-[80dvh] overscroll-contain rounded-b-none rounded-t-2xl p-3 pb-[max(1rem,env(safe-area-inset-bottom))] origin-bottom data-open:slide-in-from-bottom-4 data-closed:slide-out-to-bottom-4 data-open:zoom-in-100 data-closed:zoom-out-100 shadow-2xl [&_[role=menuitem]]:min-h-11 [&_[role=menuitem]]:text-sm [&_[role=menuitem]]:px-3 [&_[role=menuitem]]:gap-2.5" )}
+          className={cn("z-50 max-h-(--available-height) w-(--anchor-width) min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95", className, bottomSheet && "w-full min-h-auto max-h-[90dvh] overscroll-contain rounded-b-none rounded-t-2xl p-3 pb-[max(1rem,env(safe-area-inset-bottom))] origin-bottom data-open:slide-in-from-bottom-4 data-closed:slide-out-to-bottom-4 data-open:zoom-in-100 data-closed:zoom-out-100 shadow-2xl [&_[role=menuitem]]:min-h-11 [&_[role=menuitem]]:text-sm [&_[role=menuitem]]:px-3 [&_[role=menuitem]]:gap-2.5" )}
           {...props}
         >
           {bottomSheet ? (
-            <div className="mx-auto mb-2 h-1.5 w-10 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden="true" />
+            <div data-drag-handle="true" className="mx-auto mb-2 flex h-4 w-full cursor-grab items-center justify-center touch-none select-none active:cursor-grabbing">
+              <div className="h-1.5 w-10 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden="true" />
+            </div>
           ) : null}
           {children}
         </MenuPrimitive.Popup>

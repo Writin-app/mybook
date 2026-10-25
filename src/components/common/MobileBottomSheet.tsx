@@ -20,6 +20,9 @@ interface MobileBottomSheetProps {
   footer?: ReactNode
   isOpen?: boolean
   onOpenChange?: (isOpen: boolean) => void
+  hasBackdrop?: boolean
+  height?: 'full' | 'half' | 'auto'
+  showCloseButton?: boolean
 }
 
 export function MobileBottomSheet({
@@ -31,7 +34,12 @@ export function MobileBottomSheet({
   footer,
   isOpen,
   onOpenChange,
+  hasBackdrop = true,
+  height = 'auto',
+  showCloseButton = true,
 }: MobileBottomSheetProps) {
+  const isHalf = height === 'half'
+
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
       <SheetTrigger
@@ -40,14 +48,24 @@ export function MobileBottomSheet({
       >
         {trigger}
       </SheetTrigger>
-      <SheetContent side="bottom" className="mybook-bottom-sheet min-h-0 max-h-[85dvh] rounded-t-3xl p-0">
+      <SheetContent
+        side="bottom"
+        hasOverlay={hasBackdrop}
+        showCloseButton={showCloseButton}
+        className={cn(
+          'mybook-bottom-sheet min-h-0 rounded-t-3xl p-0 shadow-2xl',
+          isHalf ? 'max-h-[50dvh] h-[50dvh]' : 'min-h-auto max-h-[90dvh]',
+          !hasBackdrop && 'border-t border-[var(--app-border)] bg-[var(--app-surface)] shadow-[0_-12px_32px_rgba(0,0,0,0.15)]'
+        )}
+      >
         <SheetHeader className="min-h-0 px-6 pb-0 pt-4">
           <SheetTitle className="sr-only">{title}</SheetTitle>
           <SheetDescription className="sr-only">{title}</SheetDescription>
         </SheetHeader>
         <div
           className={cn(
-            'max-h-[calc(85dvh-5rem)] overflow-y-auto overscroll-contain px-6 pt-0 text-base leading-7',
+            'overflow-y-auto overscroll-contain px-6 pt-0 text-base leading-7',
+            isHalf ? 'max-h-[calc(50dvh-4rem)]' : 'max-h-[calc(90dvh-4rem)]',
             footer ? 'pb-3' : 'pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]',
           )}
         >

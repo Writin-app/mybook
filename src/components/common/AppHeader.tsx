@@ -2,6 +2,8 @@ import {
   ArrowLeft01Icon,
   CloudCheckIcon,
   Loading03Icon,
+  LockIcon,
+  LockOpenIcon,
   MoreHorizontalIcon,
   PlusSignIcon,
   Share08Icon,
@@ -72,6 +74,10 @@ export interface AppHeaderProps {
   moreAction?: boolean
   isFavorite?: boolean
   onFavorite?: () => void
+  lockAction?: boolean
+  isLocked?: boolean
+  onLockToggle?: () => void
+  onMoreOpenChange?: (open: boolean) => void
   /** Dropdown menu items rendered by the More action. */
   moreContent?: ReactNode
   moreTriggerRef?: RefObject<HTMLButtonElement | null>
@@ -180,6 +186,10 @@ export function AppHeader({
   moreAction = false,
   isFavorite = false,
   onFavorite,
+  lockAction = false,
+  isLocked = false,
+  onLockToggle,
+  onMoreOpenChange,
   moreContent,
   moreTriggerRef,
   moreMenuClassName,
@@ -222,7 +232,7 @@ export function AppHeader({
         ? SidebarRight01Icon
         : SidebarLeft01Icon
 
-  const hasTrailingActions = addNewAction || shareAction || favoriteAction || moreAction || !!trailingActionsSlot
+  const hasTrailingActions = addNewAction || shareAction || lockAction || favoriteAction || moreAction || !!trailingActionsSlot
   const showRightSide = !!status || (showTrailingActions && hasTrailingActions)
 
   // Indentation for toolbar/segmentControl rows to align with the breadcrumb/title area.
@@ -439,6 +449,25 @@ export function AppHeader({
                   </Button>
                 ) : null}
 
+                {lockAction ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={isLocked ? 'Unlock page' : 'Lock page'}
+                    title={isLocked ? 'Unlock page' : 'Lock page'}
+                    aria-pressed={isLocked}
+                    onClick={onLockToggle}
+                    className={cn('rounded-lg', isLocked && 'bg-muted text-foreground')}
+                  >
+                    <HugeiconsIcon
+                      icon={isLocked ? LockIcon : LockOpenIcon}
+                      strokeWidth={2}
+                      className={cn('size-4', isLocked && 'text-amber-500 dark:text-amber-400')}
+                    />
+                  </Button>
+                ) : null}
+
                 {favoriteAction ? (
                   <Button
                     type="button"
@@ -459,7 +488,7 @@ export function AppHeader({
                 ) : null}
 
                 {moreAction ? (
-                  <DropdownMenu>
+                  <DropdownMenu onOpenChange={onMoreOpenChange}>
                     <DropdownMenuTrigger
                       ref={moreTriggerRef}
                       render={<Button type="button" variant="ghost" size="icon-sm" className="rounded-lg" />}
@@ -469,7 +498,7 @@ export function AppHeader({
                     >
                       <HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} className="size-4" />
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" bottomSheet={isMobile} showBackdrop={isMobile} style={isMobile ? { maxHeight: '60vh' } : undefined} className={cn('min-w-48', moreMenuClassName)}>
+                    <DropdownMenuContent align="end" bottomSheet={isMobile} showBackdrop={isMobile} style={isMobile ? { maxHeight: '90vh' } : undefined} className={cn('min-w-48', moreMenuClassName)}>
                       {moreContent}
                     </DropdownMenuContent>
                   </DropdownMenu>

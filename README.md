@@ -13,7 +13,7 @@ Read the [feature and module specifications](docs/README.md) for behavior, stora
 | Area | Implemented surface |
 | --- | --- |
 | Local vaults | Account-free onboarding; selected device folder where supported; named private vault with OPFS or IndexedDB fallback; storage persistence request |
-| Library | Documents and spreadsheets; folders nested up to three levels; favorites; filename search, filters and sorting; rename, duplicate, move, Trash, restore and permanent deletion |
+| Library | Documents and spreadsheets; nested folders; favorites; filename search, filters and sorting; rename, duplicate, move, Trash, restore and permanent deletion |
 | Document editing | Tiptap rich text; headings H1–H4; bold, italic, underline, strike and code; lists and checklists; quotes, links, tables, dividers; undo/redo and slash commands |
 | Advanced blocks | Callouts, toggles, images, video, audio, attachments, bookmark previews, website mentions, embeds, document links, table of contents and database-style blocks; contextual block/table controls |
 | Editor layout | Desktop menus and toolbar, page/full-width views and zoom; mobile bottom toolbar and contextual sheets |
