@@ -27,7 +27,7 @@ import { commandMenuTop, filterSlashCommands, groupSlashCommands, type SlashComm
 
 const DESKTOP_MENU_HEIGHT = 352
 const MOBILE_MENU_HEIGHT = 320
-const commandIcons = {
+export const commandIcons = {
   paragraph: DocumentTextIcon,
   h1: HashtagIcon,
   h2: HashtagIcon,

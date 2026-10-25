@@ -1,6 +1,6 @@
 import { pastedEmbed } from './embedClipboard'
 import { pastedBookmark } from './bookmarkClipboard'
-import { ArrowReloadHorizontalIcon, CopyLinkIcon, Edit02Icon, Tick02Icon, Unlink02Icon } from '@hugeicons/core-free-icons'
+import { ArrowLeft01Icon, ArrowReloadHorizontalIcon, ArrowRight01Icon, CopyLinkIcon, Edit02Icon, Tick02Icon, Unlink02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Dropdown } from '../ui/compat-dropdown'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '../ui/dropdown-menu'
@@ -82,7 +82,7 @@ import { matchesEditorMenuShortcut } from './editorMenuShortcuts'
 import { DocumentLinkProvider } from './DocumentLinkContext'
 import { documentLinkLocation, documentLinkTargets, pastedDocumentLink } from './documentLinkModel'
 import { clearTableSelection, isBlankEditorPoint, isEditorInteractiveTarget, keepEditorFocusedOnBlankClick } from './editorFocus'
-import { MobileSlashCommandMenu, SlashCommandMenu } from './SlashCommandMenu'
+import { SlashCommandMenu } from './SlashCommandMenu'
 import { analyzePastedUrl, type PasteUrlInfo } from './pasteUrlModel'
 import { filterMentionCommands, filterSlashCommands, getMentionMenuState, getSlashMenuState, runSlashCommand, type SlashMenuState } from './slashCommands'
 import { TableActionsMenu } from './TableActionsMenu'
@@ -1038,6 +1038,8 @@ function InlineLinkToolbar({
 export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const navigate = useNavigate()
   const isMobile = useIsMobile()
+  const isMobileRef = useRef(isMobile)
+  isMobileRef.current = isMobile
   const isHoverBlockControlsAvailable = useHoverBlockControlsAvailable()
   const isMacPlatform = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/u.test(navigator.platform)
   const duplicateShortcut = isMacPlatform ? '⌘⇧D' : 'Ctrl+Shift+D'
@@ -1527,6 +1529,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
   }, [])
   const updateSlashMenu = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
+    if (isMobileRef.current) {
+      slashMenuRef.current = null
+      setSlashMenu(null)
+      return
+    }
     if (slashMenuDismissedRef.current) {
       slashMenuRef.current = null
       setSlashMenu(null)
@@ -1651,6 +1658,26 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     inlineLinkToolbarRef.current = nextToolbar
     setInlineLinkToolbar(nextToolbar)
+  }, [])
+  const keepCaretVisibleAboveToolbar = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
+    try {
+      const { selection } = currentEditor.state
+      const coords = currentEditor.view.coordsAtPos(selection.to)
+      if (!coords || !Number.isFinite(coords.bottom)) return
+      const bounds = getVisualViewportBounds()
+      const toolbarHeight = 44
+      const visibleBottom = bounds.height - bounds.keyboardOffset
+      const dangerZoneTop = visibleBottom - toolbarHeight - 24
+      if (coords.bottom > dangerZoneTop) {
+        const scrollContainer = document.querySelector('main')
+        if (scrollContainer) {
+          const overlap = coords.bottom - dangerZoneTop
+          scrollContainer.scrollTop += overlap
+        }
+      }
+    } catch {
+      // Ignore coordinate lookup errors during rapid typing
+    }
   }, [])
   const editor = useEditor({
     extensions: [
@@ -2151,6 +2178,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       updateSlashMenu(currentEditor)
       updateMentionMenu(currentEditor)
       updatePasteAsMenu(currentEditor)
+      if (isMobileRef.current && currentEditor.isFocused) {
+        keepCaretVisibleAboveToolbar(currentEditor)
+      }
 
       // Remote patches are already reflected in editorContentRef and the local
       // save state by their caller. Treating them as user edits schedules a
@@ -2179,6 +2209,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       updateSlashMenu(currentEditor)
       updateMentionMenu(currentEditor)
       updatePasteAsMenu(currentEditor)
+      if (isMobileRef.current && currentEditor.isFocused) {
+        keepCaretVisibleAboveToolbar(currentEditor)
+      }
     },
   }, [collaboration.extension])
 
@@ -2198,6 +2231,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }, [zoom, file?.id])
 
   const isPageLocked = Boolean(file?.isLocked)
+  const [mobileMoreSubmenu, setMobileMoreSubmenu] = useState<'main' | 'export'>('main')
   useEffect(() => {
     if (!editor) return
     editor.setEditable(!isPageLocked)
@@ -3418,54 +3452,97 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         favoriteAction={true}
         isFavorite={file.isFavorite}
         onFavorite={() => void toggleDocumentFavorite()}
+        lockAction={true}
+        isLocked={isPageLocked}
+        onLockToggle={() => void setPageLocked(!file.isLocked)}
         moreAction={true}
         moreTriggerRef={moreTriggerRef}
         moreMenuClassName="min-w-64"
+        onMoreOpenChange={(open) => {
+          if (!open) setMobileMoreSubmenu('main')
+        }}
         moreContent={
-          <>
-            <DropdownMenuItem closeOnClick={false} onSelect={(event) => event.preventDefault()} onClick={() => void setPageLocked(!file.isLocked)} className="justify-between cursor-pointer">
-              <span>Lock page</span><Switch aria-label="Lock page" checked={Boolean(file.isLocked)} onClick={(e) => e.stopPropagation()} onCheckedChange={(checked) => void setPageLocked(checked)} />
-            </DropdownMenuItem>
-            <DropdownMenuItem closeOnClick={false} onSelect={(event) => event.preventDefault()} onClick={() => setDocumentViewMode(!isFullWidth)} className="justify-between cursor-pointer">
-              <span>Full width</span><Switch aria-label="Full width" checked={isFullWidth} onClick={(e) => e.stopPropagation()} onCheckedChange={setDocumentViewMode} />
-            </DropdownMenuItem>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>Zoom</DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                {[75, 100, 125, 150].map((level) => <DropdownMenuCheckboxItem key={level} checked={zoom === level} onCheckedChange={() => setZoom(level)}>{level}%</DropdownMenuCheckboxItem>)}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-            <DropdownMenuItem disabled={isPageLocked} onClick={() => setIsFindReplaceOpen(true)}>
-              <span>Find and replace</span>
-              <kbd className="ml-auto text-xs text-muted-foreground">{findShortcut}</kbd>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => void duplicateDocument()}><span>Duplicate</span><kbd className="ml-auto text-xs text-muted-foreground">{duplicateShortcut}</kbd></DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void copyDocumentContent()}>Copy content</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setIsMoveToOpen(true)}>
-              <span>Move…</span><kbd className="ml-auto text-xs text-muted-foreground">{moveShortcut}</kbd>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem disabled={isPageLocked || !editor.can().chain().focus().undo().run()} onClick={() => editor.chain().focus().undo().run()}><span>Undo</span><kbd className="ml-auto text-xs text-muted-foreground">{undoShortcut}</kbd></DropdownMenuItem>
-            <DropdownMenuItem disabled={isPageLocked || !editor.can().chain().focus().redo().run()} onClick={() => editor.chain().focus().redo().run()}><span>Redo</span><kbd className="ml-auto text-xs text-muted-foreground">{redoShortcut}</kbd></DropdownMenuItem>
-            <DropdownMenuItem disabled={isPageLocked} onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>Clear formatting</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem disabled={isPageLocked} onClick={() => importInputRef.current?.click()}>Import document</DropdownMenuItem>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>Export to</DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem onClick={() => void exportMarkdown(true)}>Markdown (.md)</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void exportDocx(true)}>Word (.docx)</DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>Delete</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {file.workspaceType === 'local' || file.syncStatus === 'local' ? <div className="px-2 py-1.5 text-xs text-muted-foreground">Local</div> : <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground"><span>{file.syncStatus === 'backing-up' ? 'Syncing…' : file.syncStatus === 'backed-up' ? 'Synced with cloud' : file.syncStatus === 'failed' ? 'Sync failed' : file.syncStatus === 'offline' ? 'Offline · saved locally' : 'Waiting to sync'}</span><button type="button" aria-label="Sync now" title="Sync now" disabled={file.syncStatus === 'backing-up'} onClick={() => void backupNow()} className="rounded p-1 text-foreground hover:bg-accent disabled:opacity-50"><ArrowPathIcon className={`size-4 ${file.syncStatus === 'backing-up' ? 'animate-spin' : ''}`} /></button></div>}
-            <div className="px-2 pb-1.5 text-xs text-muted-foreground">
-              <span>Created {new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(file.createdAt))}</span>
+          mobileMoreSubmenu === 'export' ? (
+            <div className="flex flex-col animate-in fade-in slide-in-from-right-4 duration-150">
+              <div className="mb-1 flex items-center gap-2 border-b border-[var(--app-border)] px-2 py-1.5">
+                <button
+                  type="button"
+                  aria-label="Back to more options"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setMobileMoreSubmenu('main')
+                  }}
+                  className="flex size-7 items-center justify-center rounded-lg text-foreground transition hover:bg-[var(--app-subtle)]"
+                >
+                  <HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={2} className="size-4" />
+                </button>
+                <span className="text-sm font-semibold text-foreground">Export to</span>
+              </div>
+              <DropdownMenuItem onClick={() => { void exportMarkdown(true); setMobileMoreSubmenu('main') }}>
+                Markdown (.md)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { void exportDocx(true); setMobileMoreSubmenu('main') }}>
+                Word (.docx)
+              </DropdownMenuItem>
             </div>
-          </>
+          ) : (
+            <>
+              <DropdownMenuItem closeOnClick={false} onSelect={(event) => event.preventDefault()} onClick={() => void setPageLocked(!file.isLocked)} className="hidden md:flex justify-between cursor-pointer">
+                <span>Lock page</span><Switch aria-label="Lock page" checked={Boolean(file.isLocked)} onClick={(e) => e.stopPropagation()} onCheckedChange={(checked) => void setPageLocked(checked)} />
+              </DropdownMenuItem>
+              <DropdownMenuItem closeOnClick={false} onSelect={(event) => event.preventDefault()} onClick={() => setDocumentViewMode(!isFullWidth)} className="hidden md:flex justify-between cursor-pointer">
+                <span>Full width</span><Switch aria-label="Full width" checked={isFullWidth} onClick={(e) => e.stopPropagation()} onCheckedChange={setDocumentViewMode} />
+              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="hidden md:flex">Zoom</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {[75, 100, 125, 150].map((level) => <DropdownMenuCheckboxItem key={level} checked={zoom === level} onCheckedChange={() => setZoom(level)}>{level}%</DropdownMenuCheckboxItem>)}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuItem disabled={isPageLocked} onClick={() => setIsFindReplaceOpen(true)}>
+                <span>Find and replace</span>
+                <kbd className="ml-auto hidden text-xs text-muted-foreground md:inline">{findShortcut}</kbd>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => void duplicateDocument()}><span>Duplicate</span><kbd className="ml-auto hidden text-xs text-muted-foreground md:inline">{duplicateShortcut}</kbd></DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void copyDocumentContent()}>Copy content</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setIsMoveToOpen(true)}>
+                <span>Move…</span><kbd className="ml-auto hidden text-xs text-muted-foreground md:inline">{moveShortcut}</kbd>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled={isPageLocked || !editor.can().chain().focus().undo().run()} onClick={() => editor.chain().focus().undo().run()}><span>Undo</span><kbd className="ml-auto hidden text-xs text-muted-foreground md:inline">{undoShortcut}</kbd></DropdownMenuItem>
+              <DropdownMenuItem disabled={isPageLocked || !editor.can().chain().focus().redo().run()} onClick={() => editor.chain().focus().redo().run()}><span>Redo</span><kbd className="ml-auto hidden text-xs text-muted-foreground md:inline">{redoShortcut}</kbd></DropdownMenuItem>
+              <DropdownMenuItem disabled={isPageLocked} onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>Clear formatting</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled={isPageLocked} onClick={() => importInputRef.current?.click()}>Import document</DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="hidden md:flex">Export to</DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={() => void exportMarkdown(true)}>Markdown (.md)</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void exportDocx(true)}>Word (.docx)</DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuItem
+                closeOnClick={false}
+                onSelect={(event) => {
+                  event.preventDefault()
+                  setMobileMoreSubmenu('export')
+                }}
+                onClick={() => setMobileMoreSubmenu('export')}
+                className="flex justify-between md:hidden cursor-pointer"
+              >
+                <span>Export to</span>
+                <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-4 text-muted-foreground" />
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>Delete</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {file.workspaceType === 'local' || file.syncStatus === 'local' ? <div className="px-2 py-1.5 text-xs text-muted-foreground">Local</div> : <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground"><span>{file.syncStatus === 'backing-up' ? 'Syncing…' : file.syncStatus === 'backed-up' ? 'Synced with cloud' : file.syncStatus === 'failed' ? 'Sync failed' : file.syncStatus === 'offline' ? 'Offline · saved locally' : 'Waiting to sync'}</span><button type="button" aria-label="Sync now" title="Sync now" disabled={file.syncStatus === 'backing-up'} onClick={() => void backupNow()} className="rounded p-1 text-foreground hover:bg-accent disabled:opacity-50"><ArrowPathIcon className={`size-4 ${file.syncStatus === 'backing-up' ? 'animate-spin' : ''}`} /></button></div>}
+              <div className="px-2 pb-1.5 text-xs text-muted-foreground">
+                <span>Created {new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(file.createdAt))}</span>
+              </div>
+            </>
+          )
         }
       />
       <div ref={findBarAnchorRef} className="sticky top-[57px] md:top-[65px] z-40 h-0 overflow-visible">
@@ -3794,30 +3871,17 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           </div>
         </div>
       </div>
-      {slashMenu ? (
-        isMobile ? (
-          <MobileSlashCommandMenu
-            editor={editor}
-            menu={slashMenu}
-            selectedIndex={slashSelectedIndex}
-            onSelectIndex={(index) => {
-              slashSelectedIndexRef.current = index
-              setSlashSelectedIndex(index)
-            }}
-            onRun={(command) => runSelectedSlashCommand(command.id, slashMenu)}
-          />
-        ) : (
-          <SlashCommandMenu
-            editor={editor}
-            menu={slashMenu}
-            selectedIndex={slashSelectedIndex}
-            onSelectIndex={(index) => {
-              slashSelectedIndexRef.current = index
-              setSlashSelectedIndex(index)
-            }}
-            onRun={(command) => runSelectedSlashCommand(command.id, slashMenu)}
-          />
-        )
+      {slashMenu && !isMobile ? (
+        <SlashCommandMenu
+          editor={editor}
+          menu={slashMenu}
+          selectedIndex={slashSelectedIndex}
+          onSelectIndex={(index) => {
+            slashSelectedIndexRef.current = index
+            setSlashSelectedIndex(index)
+          }}
+          onRun={(command) => runSelectedSlashCommand(command.id, slashMenu)}
+        />
       ) : null}
       {mentionMenu ? <MentionSuggestionMenu menu={mentionMenu} isMobile={isMobile} selectedIndex={mentionSelectedIndex} onSelectedIndexChange={(index) => {
         mentionSelectedIndexRef.current = index

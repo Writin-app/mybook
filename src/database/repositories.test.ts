@@ -100,6 +100,25 @@ describe('IndexedDB repositories', () => {
     expect((await db.syncQueue.toArray())[0]?.status).toBe('pending')
   })
 
+  it('allows infinite nested folder creation beyond four levels without depth restriction', async () => {
+    const l1 = await folderRepository.create('Level 1')
+    const l2 = await folderRepository.create('Level 2', l1.data!.id)
+    const l3 = await folderRepository.create('Level 3', l2.data!.id)
+    const l4 = await folderRepository.create('Level 4', l3.data!.id)
+    const l5 = await folderRepository.create('Level 5', l4.data!.id)
+    const l6 = await folderRepository.create('Level 6', l5.data!.id)
+
+    expect(l4.success).toBe(true)
+    expect(l5.success).toBe(true)
+    expect(l6.success).toBe(true)
+    expect(l6.data?.parentId).toBe(l5.data?.id)
+
+    // Verify moving deeply nested folders succeeds
+    const anotherRoot = await folderRepository.create('Another Root')
+    const moveResult = await folderRepository.update(l1.data!.id, { parentId: anotherRoot.data!.id })
+    expect(moveResult.success).toBe(true)
+  })
+
   it('does not queue Drive work for a local workspace', async () => {
     useWorkspaceStore.setState({ mode: 'local' })
 

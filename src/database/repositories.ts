@@ -747,16 +747,6 @@ export const folderRepository = {
       if (!(await folderIsInActiveWorkspace(parentId))) return { success: false, error: 'Parent folder could not be found in this workspace.' }
       const siblings = await db.folders.filter((folder) => folderBelongsToActiveWorkspace(folder) && !folder.isDeleted && folder.parentId === parentId).toArray()
       if (siblings.some((folder) => folder.name.toLocaleLowerCase() === normalized.toLocaleLowerCase())) return { success: false, error: `"${normalized}" already exists. Use a different name.` }
-      let depth = 1
-      let ancestorId = parentId
-      const visited = new Set<string>()
-      while (ancestorId) {
-        if (visited.has(ancestorId)) break
-        visited.add(ancestorId)
-        depth += 1
-        ancestorId = (await db.folders.get(ancestorId))?.parentId ?? null
-      }
-      if (depth > 3) return { success: false, error: 'Folders can be nested up to three levels.' }
       const now = new Date().toISOString()
       const folder: MyBookFolder = { id: crypto.randomUUID(), driveFolderId: null, workspaceType: activeWorkspaceType(), name: normalized, parentId, createdAt: now, updatedAt: now, isDeleted: false }
       await db.folders.add(folder)
@@ -787,30 +777,6 @@ export const folderRepository = {
           }
         }
         if (targetParentId && descendants.has(targetParentId)) return { success: false, error: 'A folder cannot be moved into one of its subfolders.' }
-
-        let targetDepth = 0
-        let ancestorId = targetParentId
-        const visitedAncestors = new Set<string>()
-        while (ancestorId) {
-          if (visitedAncestors.has(ancestorId)) break
-          visitedAncestors.add(ancestorId)
-          targetDepth += 1
-          ancestorId = (await db.folders.get(ancestorId))?.parentId ?? null
-        }
-        let subtreeDepth = 1
-        for (const descendant of descendants) {
-          let depth = 1
-          let current = (await db.folders.get(descendant))?.parentId ?? null
-          const visitedCurrent = new Set<string>()
-          while (current && current !== id) {
-            if (visitedCurrent.has(current)) break
-            visitedCurrent.add(current)
-            depth += 1
-            current = (await db.folders.get(current))?.parentId ?? null
-          }
-          subtreeDepth = Math.max(subtreeDepth, depth + 1)
-        }
-        if (targetDepth + subtreeDepth > 3) return { success: false, error: 'Folders can be nested up to three levels.' }
       }
       if (changes.name !== undefined) { const name = cleanName(changes.name); if (!name) return { success: false, error: 'Folder name cannot be empty.' }; changes = { ...changes, name } }
       const nextName = changes.name ?? folder.name
