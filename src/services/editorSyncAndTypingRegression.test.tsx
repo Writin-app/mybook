@@ -98,8 +98,11 @@ describe('Editor Syncing and Conflict Resolution Regression Suite', () => {
     await db.syncQueue.clear()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks()
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50))
+    })
   })
 
   describe('Typing Performance & Character Stability', () => {

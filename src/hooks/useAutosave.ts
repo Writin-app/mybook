@@ -21,7 +21,15 @@ export function useAutosave(file: MyBookFile | undefined) {
   const inFlightPromiseRef = useRef<Promise<boolean> | null>(null)
   const replaceEpochRef = useRef(0)
   const saveTimeoutRef = useRef<number | null>(null)
+  const statusResetTimeoutRef = useRef<number | null>(null)
   const staleBaselineRef = useRef<{ updatedAt?: string; content?: string } | null>(null)
+  const isMountedRef = useRef(true)
+
+  const safeSetStatus = useCallback((next: EditorSaveStatus | ((prev: EditorSaveStatus) => EditorSaveStatus)) => {
+    if (isMountedRef.current && typeof window !== 'undefined') {
+      setStatus(next)
+    }
+  }, [])
 
   useEffect(() => { fileRef.current = file }, [file])
   useEffect(() => {
@@ -77,7 +85,8 @@ export function useAutosave(file: MyBookFile | undefined) {
     const expectedUpdatedAt = currentFile.updatedAt
     const expectedContent = lastSaved.current
     inFlightContentRef.current = savingContent
-    setStatus('saving-locally')
+    if (!isMountedRef.current || typeof window === 'undefined') return true
+    safeSetStatus('saving-locally')
 
     const flight = (async () => {
       const result = await fileRepository.update(
@@ -89,10 +98,15 @@ export function useAutosave(file: MyBookFile | undefined) {
         { expectedUpdatedAt, expectedContent }
       )
 
+      if (!isMountedRef.current || typeof window === 'undefined') {
+        inFlightContentRef.current = null
+        return result.success
+      }
+
       if (replaceEpochRef.current !== epoch || result.stale) {
         inFlightContentRef.current = null
-        if (replaceEpochRef.current === epoch) {
-          setStatus(isLocalWorkspace() ? 'local' : (fileRef.current?.syncStatus ?? (navigator.onLine ? 'pending' : 'offline')))
+        if (replaceEpochRef.current === epoch && isMountedRef.current && typeof window !== 'undefined') {
+          safeSetStatus(isLocalWorkspace() ? 'local' : (fileRef.current?.syncStatus ?? (navigator.onLine ? 'pending' : 'offline')))
           if (result.stale) {
             const currentFileRef = fileRef.current
             const alreadyRefreshed =
@@ -121,16 +135,20 @@ export function useAutosave(file: MyBookFile | undefined) {
 
       if (!result.success) {
         inFlightContentRef.current = null
-        setStatus('failed')
+        safeSetStatus('failed')
         return false
       }
 
       lastSaved.current = savingContent
       inFlightContentRef.current = null
-      setStatus('saved-locally')
-      window.setTimeout(() => {
-        if (replaceEpochRef.current === epoch) {
-          setStatus(isLocalWorkspace() ? 'local' : (fileRef.current?.syncStatus ?? (navigator.onLine ? 'pending' : 'offline')))
+      safeSetStatus('saved-locally')
+      if (statusResetTimeoutRef.current !== null) {
+        window.clearTimeout(statusResetTimeoutRef.current)
+      }
+      statusResetTimeoutRef.current = window.setTimeout(() => {
+        statusResetTimeoutRef.current = null
+        if (isMountedRef.current && replaceEpochRef.current === epoch && typeof window !== 'undefined') {
+          safeSetStatus(isLocalWorkspace() ? 'local' : (fileRef.current?.syncStatus ?? (navigator.onLine ? 'pending' : 'offline')))
         }
       }, 700)
 
@@ -152,7 +170,7 @@ export function useAutosave(file: MyBookFile | undefined) {
 
     inFlightPromiseRef.current = flight
     return flight
-  }, [])
+  }, [safeSetStatus])
 
   useEffect(() => {
     if (!file) return
@@ -186,19 +204,38 @@ export function useAutosave(file: MyBookFile | undefined) {
   }, [content, file, save])
 
   useEffect(() => {
+    isMountedRef.current = true
     const flush = () => { void save() }
     const visibility = () => { if (document.visibilityState === 'hidden') flush() }
-    const online = () => setStatus('pending')
-    const offline = () => { setStatus('offline'); flush() }
+    const online = () => safeSetStatus('pending')
+    const offline = () => { safeSetStatus('offline'); flush() }
     window.addEventListener('pagehide', flush)
     window.addEventListener('online', online)
     window.addEventListener('offline', offline)
     document.addEventListener('visibilitychange', visibility)
-    return () => { flush(); window.removeEventListener('pagehide', flush); window.removeEventListener('online', online); window.removeEventListener('offline', offline); document.removeEventListener('visibilitychange', visibility) }
-  }, [save])
+    return () => {
+      isMountedRef.current = false
+      if (statusResetTimeoutRef.current !== null) {
+        window.clearTimeout(statusResetTimeoutRef.current)
+        statusResetTimeoutRef.current = null
+      }
+      if (saveTimeoutRef.current !== null) {
+        window.clearTimeout(saveTimeoutRef.current)
+        saveTimeoutRef.current = null
+      }
+      flush()
+      window.removeEventListener('pagehide', flush)
+      window.removeEventListener('online', online)
+      window.removeEventListener('offline', offline)
+      document.removeEventListener('visibilitychange', visibility)
+    }
+  }, [save, safeSetStatus])
 
   const changeContent = (value: string) => {
-    setContent(value); contentRef.current = value; setStatus('editing')
+    if (!isMountedRef.current || typeof window === 'undefined') return
+    setContent(value)
+    contentRef.current = value
+    safeSetStatus('editing')
   }
 
   const replaceContent = useCallback((value: string, nextStatus: EditorSaveStatus = 'saved-locally') => {
@@ -212,8 +249,8 @@ export function useAutosave(file: MyBookFile | undefined) {
     setContent(value)
     contentRef.current = value
     lastSaved.current = value
-    setStatus(nextStatus)
-  }, [])
+    safeSetStatus(nextStatus)
+  }, [safeSetStatus])
 
   const waitForPendingSave = useCallback(async () => {
     if (inFlightPromiseRef.current) {
