@@ -57,6 +57,7 @@ describe('Drive bootstrap migration', () => {
     expect(mocks.queue).not.toHaveBeenCalled()
     expect(mocks.files).not.toHaveBeenCalled()
     expect(result.current.isPreparing).toBe(false)
+    expect(result.current.isFetchingFiles).toBe(false)
     await act(async () => { window.dispatchEvent(new Event('online')) })
     await waitFor(() => expect(mocks.queue).toHaveBeenCalledOnce())
     expect(result.current.folderId).toBe('same-root')
