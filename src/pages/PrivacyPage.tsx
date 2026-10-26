@@ -15,7 +15,7 @@ export function PrivacyPage() {
   const { theme, toggleTheme } = useAppStore()
 
   return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-[var(--accent)] selection:text-white">
+    <div className="h-full w-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-background text-foreground selection:bg-[var(--accent)] selection:text-white">
       {/* Sticky Navigation Bar */}
       <header className="sticky top-0 z-40 border-b border-[var(--app-border)] bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
