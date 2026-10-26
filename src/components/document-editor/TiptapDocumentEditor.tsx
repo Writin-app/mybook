@@ -1683,6 +1683,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     extensions: [
       StarterKit.configure({
         codeBlock: false,
+        underline: false,
         undoRedo: collaboration.enabled ? false : undefined,
         link: {
           openOnClick: true,
