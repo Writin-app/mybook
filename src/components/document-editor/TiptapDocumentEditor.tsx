@@ -1732,7 +1732,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       attributes: {
         class: 'tiptap min-h-[65vh] outline-none',
         'aria-label': 'Document content',
-        role: 'textbox',
+        autocorrect: 'off',
+        autocapitalize: 'off',
+        spellcheck: 'false',
       },
       transformPastedHTML: cleanPastedHtml,
       transformPastedText: cleanPastedText,
@@ -3407,6 +3409,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
 
     const { from, to } = editor.state.selection
     runSlashCommand(editor, commandId, { from, to })
+    if (isMobile) {
+      window.requestAnimationFrame(() => {
+        editor.commands.scrollIntoView()
+      })
+    }
   }
 
   const pageScale = zoom / 100

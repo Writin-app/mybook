@@ -119,8 +119,9 @@
   }
 
   @media (max-width: 768px) {
-    main {
-      scroll-padding-bottom: calc(4.5rem + var(--mybook-keyboard-offset, 0px) + env(safe-area-inset-bottom, 0px));
+    main,
+    .mybook-document-canvas {
+      scroll-padding-bottom: calc(5.5rem + var(--mybook-keyboard-offset, 0px) + env(safe-area-inset-bottom, 0px));
     }
   }
 
@@ -219,6 +220,12 @@
     opacity: 0.6;
     pointer-events: none;
     white-space: nowrap;
+  }
+
+  @media (max-width: 767px) {
+    .tiptap .mybook-empty-block-placeholder::before {
+      content: "Tap ⊕ to insert a block, or start typing";
+    }
   }
 
   .mybook-document-editor:has([data-document-link-picker="true"]) .tiptap .mybook-empty-block-placeholder::before {
