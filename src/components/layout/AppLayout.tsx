@@ -442,6 +442,10 @@ export function AppLayout() {
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate('/about')}>
+                  <HugeiconsIcon icon={HelpCircleIcon} strokeWidth={2} className="size-4" />
+                  About Writin
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/settings')}>
                   <HugeiconsIcon icon={Settings01Icon} strokeWidth={2} className="size-4" />
                   Preferences

@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 
 import { LoadingOverlay } from '../components/common/LoadingOverlay'
+import { AboutPage } from '../pages/AboutPage'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 
@@ -35,4 +36,20 @@ export function RedirectAuthenticated() {
   return ((isAuthenticated && workspaceMode === 'drive' && !isGoogleSetupReturn) || workspaceMode === 'local')
     ? <Navigate to="/home" replace />
     : <Outlet />
+}
+
+export function RootGate() {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const isLoading = useAuthStore((state) => state.isLoading)
+  const workspaceMode = useWorkspaceStore((state) => state.mode)
+
+  if (isLoading) {
+    return <LoadingOverlay message="Checking your session…" />
+  }
+
+  const isUserLoggedIn = (isAuthenticated && workspaceMode === 'drive') || workspaceMode === 'local'
+
+  return isUserLoggedIn
+    ? <Navigate to="/home" replace />
+    : <AboutPage />
 }
