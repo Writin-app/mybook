@@ -250,4 +250,37 @@ describe('Editor Keyboard Accessibility & Shortcuts', () => {
 
     cleanup()
   })
+
+  it('deletes empty paragraph after exiting list on Backspace without removing list formatting', () => {
+    const { editor, cleanup } = createEditor('<ul><li><p>Item 1</p></li></ul>')
+    editor.commands.focus('end')
+    // Split and lift to simulate double enter
+    editor.commands.splitListItem('listItem')
+    editor.commands.liftEmptyBlock()
+
+    // Trigger Backspace keydown
+    const handled = editor.view.someProp('handleKeyDown', (f) => f(editor.view, new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true })))
+
+    expect(handled).toBe(true)
+    expect(editor.isActive('bulletList')).toBe(true)
+    expect(editor.getHTML()).toContain('Item 1')
+
+    cleanup()
+  })
+
+  it('preserves taskList formatting when backspacing on empty paragraph following task list', () => {
+    const { editor, cleanup } = createEditor('<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Task 1</p></li></ul><p></p>')
+    editor.commands.focus('end')
+    expect(editor.getHTML()).toContain('data-type="taskList"')
+
+    const handled = editor.view.someProp('handleKeyDown', (f) => f(editor.view, new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true })))
+    expect(handled).toBe(true)
+
+    // Task list remains intact
+    expect(editor.getHTML()).toContain('data-type="taskList"')
+    expect(editor.getHTML()).toContain('Task 1')
+    expect(editor.isActive('taskList')).toBe(true)
+
+    cleanup()
+  })
 })

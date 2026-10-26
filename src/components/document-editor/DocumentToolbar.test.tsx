@@ -22,14 +22,14 @@ describe('DocumentToolbar', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders main toolbar by default with format toggle, block style, lists, undo, redo, add block and hide keyboard', () => {
+  it('renders main toolbar by default with format toggle, block style, lists, undo, redo, add block and hide keyboard when focused', () => {
     editor = new Editor({
       element: document.body.appendChild(document.createElement('div')),
       extensions: [StarterKit, Underline, TaskList, TaskItem, TableKit],
       content: '<p>Hello world</p>',
     })
 
-    render(<DocumentToolbar editor={editor} variant="mobile" />)
+    const { rerender } = render(<DocumentToolbar editor={editor} variant="mobile" />)
 
     expect(screen.getByRole('toolbar', { name: 'Document formatting' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Format text' })).toBeTruthy()
@@ -39,6 +39,11 @@ describe('DocumentToolbar', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Redo' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Add block' })).toBeTruthy()
+    // When keyboard is down and editor is not focused, hide keyboard icon is hidden
+    expect(screen.queryByRole('button', { name: 'Hide keyboard' })).toBeNull()
+
+    // When keyboard is active (keyboardOffset > 0), hide keyboard icon appears
+    rerender(<DocumentToolbar editor={editor} variant="mobile" keyboardOffset={300} />)
     expect(screen.getByRole('button', { name: 'Hide keyboard' })).toBeTruthy()
   })
 
@@ -95,16 +100,14 @@ describe('DocumentToolbar', () => {
     expect(editor.isActive('heading', { level: 1 })).toBe(true)
   })
 
-  it('delegates to onEditLink when text is selected in format toolbar', async () => {
+  it('opens link submenu pill with input and submit button in mobile format toolbar', async () => {
     editor = new Editor({
       element: document.body.appendChild(document.createElement('div')),
       extensions: [StarterKit, Underline, TaskList, TaskItem, TableKit],
       content: '<p>Selected link text</p>',
     })
-    const onEditLink = vi.fn()
-    const promptSpy = vi.spyOn(window, 'prompt')
 
-    render(<DocumentToolbar editor={editor} onEditLink={onEditLink} variant="mobile" />)
+    render(<DocumentToolbar editor={editor} variant="mobile" />)
 
     act(() => {
       editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 1, 9)))
@@ -114,8 +117,40 @@ describe('DocumentToolbar', () => {
     const linkButton = screen.getByRole('button', { name: 'Link' })
     fireEvent.click(linkButton)
 
+    // Opens inline link submenu pill
+    const input = screen.getByPlaceholderText('Paste link or URL…')
+    expect(input).toBeTruthy()
+    const applyButton = screen.getByRole('button', { name: 'Apply link' })
+    expect(applyButton).toBeTruthy()
+
+    // Inline code button is also present
+    expect(screen.getByRole('button', { name: 'Inline code' })).toBeTruthy()
+
+    // Enter a URL and submit
+    fireEvent.change(input, { target: { value: 'https://example.com' } })
+    fireEvent.click(applyButton)
+
+    expect(editor.isActive('link')).toBe(true)
+  })
+
+  it('delegates to onEditLink on desktop toolbar when text is selected', async () => {
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit, Underline, TaskList, TaskItem, TableKit],
+      content: '<p>Selected link text</p>',
+    })
+    const onEditLink = vi.fn()
+
+    render(<DocumentToolbar editor={editor} onEditLink={onEditLink} variant="desktop" />)
+
+    act(() => {
+      editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 1, 9)))
+    })
+
+    const linkButton = screen.getByRole('button', { name: 'Link' })
+    fireEvent.click(linkButton)
+
     expect(onEditLink).toHaveBeenCalledTimes(1)
-    expect(promptSpy).not.toHaveBeenCalled()
   })
 
   it('opens Add block tray below toolbar on + click and toggles/dismisses correctly', async () => {
@@ -126,7 +161,7 @@ describe('DocumentToolbar', () => {
     })
     const onInsertBlock = vi.fn()
 
-    render(<DocumentToolbar editor={editor} onInsertBlock={onInsertBlock} variant="mobile" />)
+    render(<DocumentToolbar editor={editor} onInsertBlock={onInsertBlock} variant="mobile" keyboardOffset={300} />)
 
     const addBlockButton = screen.getByRole('button', { name: 'Add block' })
     expect(addBlockButton).toBeTruthy()
@@ -134,7 +169,13 @@ describe('DocumentToolbar', () => {
     // 1. Click + to open tray below toolbar
     fireEvent.click(addBlockButton)
     expect(screen.getByRole('dialog', { name: 'Insert blocks' })).toBeTruthy()
-    expect(screen.getByRole('group', { name: 'Insert blocks' })).toBeTruthy()
+    expect(screen.getByRole('group', { name: 'Basic Blocks' })).toBeTruthy()
+
+    // Search bar is present and filters
+    const searchInput = screen.getByPlaceholderText('Search blocks…')
+    expect(searchInput).toBeTruthy()
+    fireEvent.change(searchInput, { target: { value: 'Heading' } })
+    expect(screen.getByRole('button', { name: 'Heading 1' })).toBeTruthy()
 
     // 2. Click + again to toggle close
     fireEvent.click(addBlockButton)
@@ -147,6 +188,52 @@ describe('DocumentToolbar', () => {
     const hideKeyboardButton = screen.getByRole('button', { name: 'Hide keyboard' })
     fireEvent.click(hideKeyboardButton)
     expect(screen.queryByRole('dialog', { name: 'Insert blocks' })).toBeNull()
+  })
+
+  it('opens replace block sheet from format toolbar', async () => {
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit, Underline, TaskList, TaskItem, TableKit],
+      content: '<p>Existing block content</p>',
+    })
+
+    render(<DocumentToolbar editor={editor} variant="mobile" />)
+
+    // Click Aa to enter format toolbar
+    fireEvent.click(screen.getByRole('button', { name: 'Format text' }))
+
+    const replaceButton = screen.getByRole('button', { name: 'Replace block' })
+    expect(replaceButton).toBeTruthy()
+
+    fireEvent.click(replaceButton)
+    expect(screen.getByRole('dialog', { name: 'Replace block' })).toBeTruthy()
+    expect(screen.getByPlaceholderText('Search replacement blocks…')).toBeTruthy()
+  })
+
+  it('allows toggling between bulleted list and checklist without either being disabled', async () => {
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit, Underline, TaskList, TaskItem, TableKit],
+      content: '<p>Test item</p>',
+    })
+
+    render(<DocumentToolbar editor={editor} variant="mobile" />)
+
+    const bulletBtn = screen.getByRole('button', { name: 'Bulleted list' })
+    const taskBtn = screen.getByRole('button', { name: 'Checklist' })
+
+    expect((bulletBtn as HTMLButtonElement).disabled).toBe(false)
+    expect((taskBtn as HTMLButtonElement).disabled).toBe(false)
+
+    // Activate bullet list
+    fireEvent.click(bulletBtn)
+    expect(editor.isActive('bulletList')).toBe(true)
+
+    // Checklist button is still not disabled, and clicking it converts to checklist
+    expect((taskBtn as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(taskBtn)
+    expect(editor.isActive('taskList')).toBe(true)
+    expect(editor.isActive('bulletList')).toBe(false)
   })
 
   it('toggles text color and highlight palettes with close X buttons', async () => {

@@ -1,13 +1,15 @@
 import {
-  BoldIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  EllipsisHorizontalIcon,
-  ItalicIcon,
-  LinkIcon,
-  StrikethroughIcon,
-  UnderlineIcon,
-} from '@heroicons/react/24/outline'
+  ArrowDown01Icon,
+  CheckListIcon,
+  Link02Icon,
+  MoreHorizontalIcon,
+  TextBoldIcon,
+  TextItalicIcon,
+  TextStrikethroughIcon,
+  TextUnderlineIcon,
+} from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { CheckIcon } from '@heroicons/react/24/outline'
 import type { Editor } from '@tiptap/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { TextSelection } from '@tiptap/pm/state'
@@ -222,7 +224,7 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
     >
       <div className="relative">
         <button type="button" aria-label="Block style" aria-expanded={blockMenuOpen} onClick={() => { setBlockMenuOpen((open) => !open); setColorMenu(null) }} className="flex h-7 min-w-20 items-center justify-center gap-1.5 rounded-[6px] bg-[var(--app-subtle)] px-2 text-xs font-medium hover:bg-[var(--app-subtle)]/80">
-          {blockStyle}<ChevronDownIcon aria-hidden="true" className="size-4" />
+          {blockStyle}<HugeiconsIcon icon={ArrowDown01Icon} size={14} className="text-muted-foreground" />
         </button>
         {blockMenuOpen ? (
           <div role="menu" aria-label="Block style" className={`absolute left-0 z-40 w-56 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openBlockOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
@@ -235,10 +237,10 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
         ) : null}
       </div>
       <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
-      <ToolButton label="Bold" active={editor.isActive('bold')} onClick={() => { restoreSelection(); editor.chain().focus().toggleBold().run() }}><BoldIcon className="size-4" /></ToolButton>
-      <ToolButton label="Underline" active={editor.isActive('underline')} onClick={() => { restoreSelection(); editor.chain().focus().toggleUnderline().run() }}><UnderlineIcon className="size-4" /></ToolButton>
-      <ToolButton label="Italic" active={editor.isActive('italic')} onClick={() => { restoreSelection(); editor.chain().focus().toggleItalic().run() }}><ItalicIcon className="size-4" /></ToolButton>
-      <ToolButton label="Strikethrough" active={editor.isActive('strike')} onClick={() => { restoreSelection(); editor.chain().focus().toggleStrike().run() }}><StrikethroughIcon className="size-4" /></ToolButton>
+      <ToolButton label="Bold" active={editor.isActive('bold')} onClick={() => { restoreSelection(); editor.chain().focus().toggleBold().run() }}><HugeiconsIcon icon={TextBoldIcon} size={16} /></ToolButton>
+      <ToolButton label="Underline" active={editor.isActive('underline')} onClick={() => { restoreSelection(); editor.chain().focus().toggleUnderline().run() }}><HugeiconsIcon icon={TextUnderlineIcon} size={16} /></ToolButton>
+      <ToolButton label="Italic" active={editor.isActive('italic')} onClick={() => { restoreSelection(); editor.chain().focus().toggleItalic().run() }}><HugeiconsIcon icon={TextItalicIcon} size={16} /></ToolButton>
+      <ToolButton label="Strikethrough" active={editor.isActive('strike')} onClick={() => { restoreSelection(); editor.chain().focus().toggleStrike().run() }}><HugeiconsIcon icon={TextStrikethroughIcon} size={16} /></ToolButton>
       <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
       <div className="relative">
         <ToolButton label="Text color" active={editor.isActive('textColor')} onClick={() => { setColorMenu((current) => current === 'text' ? null : 'text'); setBlockMenuOpen(false) }}>
@@ -262,11 +264,11 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
         ) : null}
       </div>
       <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
-      <ToolButton label="Link" active={editor.isActive('link')} onClick={openLinkEditor}><LinkIcon className="size-4" /></ToolButton>
-      <ToolButton label="Checklist" active={editor.isActive('taskList')} onClick={() => { restoreSelection(); editor.chain().focus().toggleTaskList().run() }}><span className="relative"><CheckIcon className="size-4" /><span aria-hidden="true" className="absolute -right-1 -top-0.5 size-3 border border-current" /></span></ToolButton>
+      <ToolButton label="Link" active={editor.isActive('link')} onClick={openLinkEditor}><HugeiconsIcon icon={Link02Icon} size={16} /></ToolButton>
+      <ToolButton label="Checklist" active={editor.isActive('taskList')} onClick={() => { restoreSelection(); editor.chain().focus().toggleTaskList().run() }}><HugeiconsIcon icon={CheckListIcon} size={16} /></ToolButton>
       <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
       <div className="relative">
-        <ToolButton label="More options" active={moreMenuOpen} onClick={() => { setMoreMenuOpen((open) => !open); setColorMenu(null); setBlockMenuOpen(false) }}><EllipsisHorizontalIcon className="size-4" /></ToolButton>
+        <ToolButton label="More options" active={moreMenuOpen} onClick={() => { setMoreMenuOpen((open) => !open); setColorMenu(null); setBlockMenuOpen(false) }}><HugeiconsIcon icon={MoreHorizontalIcon} size={16} /></ToolButton>
         {moreMenuOpen ? (
           <div
             data-command-menu-scroller="true"

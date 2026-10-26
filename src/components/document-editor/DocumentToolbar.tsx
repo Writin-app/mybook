@@ -2,6 +2,7 @@ import {
   AddCircleIcon,
   ArrowDown01Icon,
   ArrowLeft02Icon,
+  ArrowReloadHorizontalIcon,
   Attachment01Icon,
   CancelCircleIcon,
   CheckListIcon,
@@ -19,6 +20,7 @@ import {
   MusicNote01Icon,
   QuoteDownIcon,
   Redo03Icon,
+  Search01Icon,
   TableIcon,
   TextBoldIcon,
   TextColorIcon,
@@ -26,7 +28,9 @@ import {
   TextItalicIcon,
   TextStrikethroughIcon,
   TextUnderlineIcon,
+  Tick02Icon,
   Undo03Icon,
+  Unlink02Icon,
   Video01Icon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react'
@@ -54,13 +58,14 @@ import {
   UnderlineIcon,
 } from '@heroicons/react/24/outline'
 import type { Editor } from '@tiptap/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useKeyboardOffset } from '../../hooks/useVisualViewport'
 import { MobileBottomSheet } from '../common/MobileBottomSheet'
+import { convertSelectedBlocks } from './blockConversion'
 import { calloutNode } from './extensions/Callout'
 import { toggleBlockNode } from './extensions/ToggleBlock'
-import { isInsideColumns, runSlashCommand, slashCommands } from './slashCommands'
+import { filterSlashCommands, groupSlashCommands, isInsideColumns, runSlashCommand, slashCommands } from './slashCommands'
 
 function KeyboardHideIcon({ className }: { className?: string }) {
   return (
@@ -311,11 +316,26 @@ function ToolbarControls({
   ]
 
   const [isManualFormatMode, setIsManualFormatMode] = useState(false)
-  const [activeSubmenu, setActiveSubmenu] = useState<'block-type' | 'text-color' | 'bg-color' | null>(null)
+  const [isFormatDismissed, setIsFormatDismissed] = useState(false)
+  const [activeSubmenu, setActiveSubmenu] = useState<'block-type' | 'text-color' | 'bg-color' | 'link' | null>(null)
   const [isAddBlockOpen, setIsAddBlockOpen] = useState(false)
+  const [isReplacingBlock, setIsReplacingBlock] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [linkUrlInput, setLinkUrlInput] = useState('')
+  const lastFromPosRef = useRef(editor.state.selection.from)
 
   const hasSelection = !editor.state.selection.empty
-  const isFormatMode = hasSelection || isManualFormatMode
+  const parentNode = editor.state.selection.$from.parent
+  const isBlockWritten = Boolean(parentNode && parentNode.isTextblock && parentNode.textContent.trim().length > 0)
+
+  useEffect(() => {
+    if (Math.abs(editor.state.selection.from - lastFromPosRef.current) > 1) {
+      setIsFormatDismissed(false)
+    }
+    lastFromPosRef.current = editor.state.selection.from
+  }, [editor.state.selection.from])
+
+  const isFormatMode = hasSelection || isManualFormatMode || (editor.isFocused && isBlockWritten && !isFormatDismissed)
   const currentBlockLabel = getBlockTriggerLabel(editor)
 
   useEffect(() => {
@@ -335,6 +355,7 @@ function ToolbarControls({
       const target = event.target as HTMLElement | null
       if (target?.closest('.mybook-mobile-document-toolbar')) return
       setIsAddBlockOpen(false)
+      setIsReplacingBlock(false)
     }
     document.addEventListener('pointerdown', handlePointerDown)
     return () => document.removeEventListener('pointerdown', handlePointerDown)
@@ -343,11 +364,28 @@ function ToolbarControls({
   const dismissKeyboard = () => {
     if (isAddBlockOpen) {
       setIsAddBlockOpen(false)
+      setIsReplacingBlock(false)
     }
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur()
     }
     editor.commands.blur()
+  }
+
+  const toggleBullet = () => {
+    if (editor.isActive('bulletList')) {
+      editor.chain().focus().toggleBulletList().run()
+    } else {
+      convertSelectedBlocks(editor, 'bullet')
+    }
+  }
+
+  const toggleTask = () => {
+    if (editor.isActive('taskList')) {
+      editor.chain().focus().toggleTaskList().run()
+    } else {
+      convertSelectedBlocks(editor, 'task')
+    }
   }
 
   const applyBlockOption = (id: string) => {
@@ -404,29 +442,38 @@ function ToolbarControls({
   }
 
   if (variant === 'mobile') {
-    const insertCommands = (isInsideColumns(editor)
+    const allAvailableCommands = isInsideColumns(editor)
       ? slashCommands.filter((command) => !command.id.startsWith('columns-'))
       : slashCommands
-    ).filter((command) => !command.hidden)
+    const filteredCommands = filterSlashCommands(searchQuery, editor).filter((command) =>
+      allAvailableCommands.some((c) => c.id === command.id)
+    )
+    const groupedInsertCommands = groupSlashCommands(filteredCommands)
 
     const toolbarPillClass =
       'flex h-[42px] w-full items-center justify-between rounded-full border border-[var(--app-border)]/80 bg-[var(--app-surface)]/95 px-2.5 py-1 shadow-[0_8px_24px_rgba(0,0,0,0.14),0_2px_6px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur-2xl'
     const subtoolbarPillClass =
       'flex h-[34px] w-full items-center justify-between rounded-full border border-[var(--app-border)]/80 bg-[var(--app-surface)]/95 px-2.5 py-1 shadow-[0_8px_24px_rgba(0,0,0,0.14),0_2px_6px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur-2xl animate-in fade-in slide-in-from-bottom-2 duration-150'
 
+    const showKeyboardDismiss = keyboardOffset > 0 || editor.isFocused
+
     return (
       <div
         role="toolbar"
         aria-label="Document formatting"
         className={`mybook-mobile-document-toolbar pointer-events-none fixed inset-x-0 bottom-0 z-20 transition-[bottom] duration-150 md:hidden ${
-          isAddBlockOpen ? 'pb-0' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
+          isAddBlockOpen
+            ? 'pb-0'
+            : keyboardOffset > 0
+              ? 'pb-2'
+              : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
         }`}
         style={{ bottom: isAddBlockOpen ? 0 : keyboardOffset }}
       >
         <div className="flex w-full flex-col items-center pointer-events-auto">
           {/* Sub-toolbar and Main / Format Toolbar Row */}
           <div className={`flex w-full flex-col items-center gap-1.5 px-4 ${isAddBlockOpen ? 'mb-2' : ''}`}>
-            {/* Sub-toolbar pill: Text Block Toolbar / Text Color / Highlight */}
+            {/* Sub-toolbar pill: Text Block Toolbar / Text Color / Highlight / Link */}
             {activeSubmenu ? (
               <div className={subtoolbarPillClass}>
                 {activeSubmenu === 'block-type' ? (
@@ -563,6 +610,68 @@ function ToolbarControls({
                     </div>
                   </>
                 ) : null}
+
+                {activeSubmenu === 'link' ? (
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      const trimmed = linkUrlInput.trim()
+                      if (!trimmed) {
+                        editor.chain().focus().extendMarkRange('link').unsetLink().run()
+                      } else {
+                        const normalized = /^https?:\/\//i.test(trimmed) || trimmed.startsWith('/') || trimmed.startsWith('#')
+                          ? trimmed
+                          : `https://${trimmed}`
+                        editor.chain().focus().extendMarkRange('link').setLink({ href: normalized }).run()
+                      }
+                      setActiveSubmenu(null)
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-1.5"
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-1 rounded-full bg-[var(--app-subtle)] px-2.5 py-0.5">
+                      <HugeiconsIcon icon={Link02Icon} size={14} className="shrink-0 text-muted-foreground" />
+                      <input
+                        type="url"
+                        value={linkUrlInput}
+                        onChange={(e) => setLinkUrlInput(e.target.value)}
+                        placeholder="Paste link or URL…"
+                        autoFocus
+                        className="w-full min-w-0 border-0 bg-transparent text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      aria-label="Apply link"
+                      className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:opacity-90"
+                    >
+                      <HugeiconsIcon icon={Tick02Icon} size={14} />
+                    </button>
+                    {editor.isActive('link') ? (
+                      <button
+                        type="button"
+                        aria-label="Remove link"
+                        title="Remove link"
+                        onClick={() => {
+                          editor.chain().focus().extendMarkRange('link').unsetLink().run()
+                          setActiveSubmenu(null)
+                        }}
+                        className="flex size-6 shrink-0 items-center justify-center rounded-full text-destructive transition hover:bg-[var(--app-subtle)]"
+                      >
+                        <HugeiconsIcon icon={Unlink02Icon} size={14} />
+                      </button>
+                    ) : null}
+                    <div className="flex flex-none items-center pl-0.5">
+                      <button
+                        type="button"
+                        aria-label="Close link toolbar"
+                        onClick={() => setActiveSubmenu(null)}
+                        className="flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground"
+                      >
+                        <HugeiconsIcon icon={CancelCircleIcon} size={16} />
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
               </div>
             ) : null}
 
@@ -576,8 +685,10 @@ function ToolbarControls({
                     hugeIcon={ArrowLeft02Icon}
                     onPress={() => {
                       setIsManualFormatMode(false)
+                      setIsFormatDismissed(true)
                       setActiveSubmenu(null)
                       setIsAddBlockOpen(false)
+                      setIsReplacingBlock(false)
                       if (hasSelection) {
                         const { to } = editor.state.selection
                         editor.commands.setTextSelection(to)
@@ -585,6 +696,20 @@ function ToolbarControls({
                     }}
                     isMobile
                   />
+                  <ToolButton
+                    label="Replace block"
+                    hugeIcon={ArrowReloadHorizontalIcon}
+                    active={isAddBlockOpen && isReplacingBlock}
+                    onPress={() => {
+                      setActiveSubmenu(null)
+                      setIsReplacingBlock(true)
+                      setIsAddBlockOpen(true)
+                    }}
+                    isMobile
+                  />
+
+                  <span aria-hidden="true" className="mx-0.5 h-3.5 w-px flex-none bg-[var(--app-border)]" />
+
                   <ToolButton label="Bold" hugeIcon={TextBoldIcon} active={editor.isActive('bold')} disabled={!editor.can().chain().focus().toggleBold().run()} onPress={() => editor.chain().focus().toggleBold().run()} isMobile />
                   <ToolButton label="Underline" hugeIcon={TextUnderlineIcon} active={editor.isActive('underline')} disabled={!editor.can().chain().focus().toggleUnderline().run()} onPress={() => editor.chain().focus().toggleUnderline().run()} isMobile />
                   <ToolButton label="Italic" hugeIcon={TextItalicIcon} active={editor.isActive('italic')} disabled={!editor.can().chain().focus().toggleItalic().run()} onPress={() => editor.chain().focus().toggleItalic().run()} isMobile />
@@ -597,6 +722,7 @@ function ToolbarControls({
                     active={activeSubmenu === 'text-color' || Boolean(editor.isActive('textColor'))}
                     onPress={() => {
                       setIsAddBlockOpen(false)
+                      setIsReplacingBlock(false)
                       setActiveSubmenu((prev) => (prev === 'text-color' ? null : 'text-color'))
                     }}
                     isMobile
@@ -615,6 +741,7 @@ function ToolbarControls({
                     active={activeSubmenu === 'bg-color' || Boolean(editor.isActive('highlight'))}
                     onPress={() => {
                       setIsAddBlockOpen(false)
+                      setIsReplacingBlock(false)
                       setActiveSubmenu((prev) => (prev === 'bg-color' ? null : 'bg-color'))
                     }}
                     isMobile
@@ -631,23 +758,49 @@ function ToolbarControls({
 
                   <span aria-hidden="true" className="mx-0.5 h-3.5 w-px flex-none bg-[var(--app-border)]" />
 
-                  <ToolButton label="Link" hugeIcon={Link02Icon} active={editor.isActive('link')} onPress={setLink} isMobile />
+                  <ToolButton
+                    label="Link"
+                    hugeIcon={Link02Icon}
+                    active={activeSubmenu === 'link' || Boolean(editor.isActive('link'))}
+                    onPress={() => {
+                      setIsAddBlockOpen(false)
+                      setIsReplacingBlock(false)
+                      if (activeSubmenu === 'link') {
+                        setActiveSubmenu(null)
+                      } else {
+                        const current = (editor.getAttributes('link').href as string | undefined) ?? ''
+                        setLinkUrlInput(current)
+                        setActiveSubmenu('link')
+                      }
+                    }}
+                    isMobile
+                  />
+                  <ToolButton
+                    label="Inline code"
+                    hugeIcon={CodeIcon}
+                    active={editor.isActive('code')}
+                    disabled={!editor.can().chain().focus().toggleCode().run()}
+                    onPress={() => editor.chain().focus().toggleCode().run()}
+                    isMobile
+                  />
                 </div>
 
                 {/* Right fixed area: Keyboard dismiss */}
-                <div className="flex flex-none items-center pl-1" role="group" aria-label="Keyboard control">
-                  <span aria-hidden="true" className="mx-0.5 h-3.5 w-px flex-none bg-[var(--app-border)]" />
-                  <button
-                    type="button"
-                    title="Hide keyboard"
-                    aria-label="Hide keyboard"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={dismissKeyboard}
-                    className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-                  >
-                    <KeyboardHideIcon className="size-4.5" />
-                  </button>
-                </div>
+                {showKeyboardDismiss ? (
+                  <div className="flex flex-none items-center pl-1" role="group" aria-label="Keyboard control">
+                    <span aria-hidden="true" className="mx-0.5 h-3.5 w-px flex-none bg-[var(--app-border)]" />
+                    <button
+                      type="button"
+                      title="Hide keyboard"
+                      aria-label="Hide keyboard"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={dismissKeyboard}
+                      className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                    >
+                      <KeyboardHideIcon className="size-4.5" />
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className={toolbarPillClass}>
@@ -659,8 +812,10 @@ function ToolbarControls({
                     active={isFormatMode}
                     onPress={() => {
                       setIsManualFormatMode(true)
+                      setIsFormatDismissed(false)
                       setActiveSubmenu(null)
                       setIsAddBlockOpen(false)
+                      setIsReplacingBlock(false)
                     }}
                     isMobile
                   />
@@ -674,6 +829,7 @@ function ToolbarControls({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       setIsAddBlockOpen(false)
+                      setIsReplacingBlock(false)
                       setActiveSubmenu((prev) => (prev === 'block-type' ? null : 'block-type'))
                     }}
                     className={`flex h-8 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition ${
@@ -688,13 +844,13 @@ function ToolbarControls({
 
                   <span aria-hidden="true" className="mx-0.5 h-3.5 w-px flex-none bg-[var(--app-border)]" />
 
-                  <ToolButton label="Bulleted list" hugeIcon={LeftToRightListBulletIcon} active={editor.isActive('bulletList')} disabled={!editor.can().chain().focus().toggleBulletList().run()} onPress={() => editor.chain().focus().toggleBulletList().run()} isMobile />
+                  <ToolButton label="Bulleted list" hugeIcon={LeftToRightListBulletIcon} active={editor.isActive('bulletList')} disabled={false} onPress={toggleBullet} isMobile />
                   <ToolButton
                     label="Checklist"
                     hugeIcon={CheckListIcon}
                     active={editor.isActive('taskList')}
-                    disabled={!editor.can().chain().focus().toggleTaskList().run()}
-                    onPress={() => editor.chain().focus().toggleTaskList().run()}
+                    disabled={false}
+                    onPress={toggleTask}
                     isMobile
                   />
                   <ToolButton label="Undo" hugeIcon={Undo03Icon} disabled={!editor.can().chain().focus().undo().run()} onPress={() => editor.chain().focus().undo().run()} isMobile />
@@ -705,9 +861,10 @@ function ToolbarControls({
                   <ToolButton
                     label="Add block"
                     hugeIcon={AddCircleIcon}
-                    active={isAddBlockOpen}
+                    active={isAddBlockOpen && !isReplacingBlock}
                     onPress={() => {
                       setActiveSubmenu(null)
+                      setIsReplacingBlock(false)
                       if (!isAddBlockOpen) {
                         if (document.activeElement instanceof HTMLElement) {
                           document.activeElement.blur()
@@ -721,52 +878,97 @@ function ToolbarControls({
                 </div>
 
                 {/* Right fixed area: Keyboard dismiss */}
-                <div className="flex flex-none items-center pl-1" role="group" aria-label="Keyboard control">
-                  <span aria-hidden="true" className="mx-0.5 h-3.5 w-px flex-none bg-[var(--app-border)]" />
-                  <button
-                    type="button"
-                    title="Hide keyboard"
-                    aria-label="Hide keyboard"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={dismissKeyboard}
-                    className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-                  >
-                    <KeyboardHideIcon className="size-4.5" />
-                  </button>
-                </div>
+                {showKeyboardDismiss ? (
+                  <div className="flex flex-none items-center pl-1" role="group" aria-label="Keyboard control">
+                    <span aria-hidden="true" className="mx-0.5 h-3.5 w-px flex-none bg-[var(--app-border)]" />
+                    <button
+                      type="button"
+                      title="Hide keyboard"
+                      aria-label="Hide keyboard"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={dismissKeyboard}
+                      className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                    >
+                      <KeyboardHideIcon className="size-4.5" />
+                    </button>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
 
-          {/* Add Block Tray Directly Below Toolbar */}
+          {/* Add / Replace Block Tray Directly Below Toolbar */}
           {isAddBlockOpen ? (
             <div
               role="dialog"
-              aria-label="Insert blocks"
-              className="w-full h-[360px] max-h-[45vh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-[var(--app-border)] bg-[var(--app-surface)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-8px_30px_rgba(0,0,0,0.12)] animate-in slide-in-from-bottom duration-200"
+              aria-label={isReplacingBlock ? 'Replace block' : 'Insert blocks'}
+              className="flex w-full flex-col h-[520px] max-h-[75vh] rounded-t-2xl border-t border-[var(--app-border)] bg-[var(--app-surface)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-8px_30px_rgba(0,0,0,0.12)] animate-in slide-in-from-bottom duration-200"
             >
-              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Insert blocks">
-                {insertCommands.map((command) => {
-                  const HugeIcon = mobileBlockHugeicons[command.id] || File01Icon
-                  return (
-                    <button
-                      key={command.id}
-                      type="button"
-                      onClick={() => {
-                        if (onInsertBlock) {
-                          onInsertBlock(command.id)
-                        } else {
-                          runSlashCommand(editor, command.id, editor.state.selection)
-                        }
-                        setIsAddBlockOpen(false)
-                      }}
-                      className="flex h-11 items-center gap-2.5 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 text-left transition hover:bg-[var(--app-subtle)] active:scale-[0.98]"
-                    >
-                      <HugeiconsIcon icon={HugeIcon} size={18} className="shrink-0 text-muted-foreground" />
-                      <span className="truncate text-xs font-semibold text-foreground">{command.title}</span>
-                    </button>
-                  )
-                })}
+              {/* Sheet handler */}
+              <div className="mx-auto mb-3 h-1.5 w-10 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden="true" />
+
+              {/* Search Bar */}
+              <div className="relative mb-3 flex items-center shrink-0">
+                <HugeiconsIcon icon={Search01Icon} size={16} className="absolute left-3 text-muted-foreground pointer-events-none" />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={isReplacingBlock ? 'Search replacement blocks…' : 'Search blocks…'}
+                  className="h-9 w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-subtle)] pl-9 pr-8 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    aria-label="Clear search"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 flex size-5 items-center justify-center text-muted-foreground hover:text-foreground"
+                  >
+                    <HugeiconsIcon icon={CancelCircleIcon} size={15} />
+                  </button>
+                ) : null}
+              </div>
+
+              {/* Grouped Commands List */}
+              <div className="flex-1 overflow-y-auto overscroll-contain pr-0.5 space-y-4">
+                {groupedInsertCommands.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-muted-foreground">No matching blocks found</div>
+                ) : (
+                  groupedInsertCommands.map((group) => (
+                    <div key={group.category}>
+                      <div className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        {group.category}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2" role="group" aria-label={group.category}>
+                        {group.commands.map((command) => {
+                          const HugeIcon = mobileBlockHugeicons[command.id] || File01Icon
+                          return (
+                            <button
+                              key={command.id}
+                              type="button"
+                              onClick={() => {
+                                if (isReplacingBlock) {
+                                  convertSelectedBlocks(editor, command.id)
+                                } else if (onInsertBlock) {
+                                  onInsertBlock(command.id)
+                                } else {
+                                  runSlashCommand(editor, command.id, editor.state.selection)
+                                }
+                                setIsAddBlockOpen(false)
+                                setIsReplacingBlock(false)
+                                setSearchQuery('')
+                              }}
+                              className="flex h-11 items-center gap-2.5 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 text-left transition hover:bg-[var(--app-subtle)] active:scale-[0.98]"
+                            >
+                              <HugeiconsIcon icon={HugeIcon} size={18} className="shrink-0 text-muted-foreground" />
+                              <span className="truncate text-xs font-semibold text-foreground">{command.title}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           ) : null}
@@ -847,6 +1049,7 @@ export function DocumentToolbar({
   onInsertBlock,
   onEditLink,
   variant = 'mobile',
+  keyboardOffset: propKeyboardOffset,
 }: {
   editor: Editor
   onInsertFile?: () => void
@@ -854,17 +1057,23 @@ export function DocumentToolbar({
   onInsertBlock?: (commandId: string) => void
   onEditLink?: () => void
   variant?: 'desktop' | 'mobile'
+  keyboardOffset?: number
 }) {
   const [, setVersion] = useState(0)
-  const keyboardOffset = useKeyboardOffset(variant === 'mobile')
+  const hookKeyboardOffset = useKeyboardOffset(variant === 'mobile')
+  const keyboardOffset = propKeyboardOffset ?? hookKeyboardOffset
 
   useEffect(() => {
     const update = () => setVersion((version) => version + 1)
     editor.on('transaction', update)
     editor.on('selectionUpdate', update)
+    editor.on('focus', update)
+    editor.on('blur', update)
     return () => {
       editor.off('transaction', update)
       editor.off('selectionUpdate', update)
+      editor.off('focus', update)
+      editor.off('blur', update)
     }
   }, [editor])
 

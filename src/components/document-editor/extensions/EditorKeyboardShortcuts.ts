@@ -1,5 +1,5 @@
 import { Extension, type Editor } from '@tiptap/core'
-import { TextSelection } from '@tiptap/pm/state'
+import { Selection, TextSelection } from '@tiptap/pm/state'
 import type { ResolvedPos } from '@tiptap/pm/model'
 
 const isInsideTableCell = (pos: ResolvedPos) => {
@@ -46,6 +46,36 @@ export const EditorKeyboardShortcuts = Extension.create({
     return {
       'Mod-Shift-ArrowRight': () => extendSelectionWithinCell(this.editor, 'end'),
       'Mod-Shift-ArrowLeft': () => extendSelectionWithinCell(this.editor, 'start'),
+
+      // When pressing Backspace on an empty paragraph immediately after a list,
+      // delete the empty paragraph and place cursor at the end of the list without removing list formatting.
+      Backspace: () => {
+        const { state, view } = this.editor
+        const { selection } = state
+        if (!selection.empty) return false
+
+        const { $from } = selection
+        if ($from.parent.type.name === 'paragraph' && $from.parent.content.size === 0) {
+          const depth = $from.depth
+          const parentIndex = $from.index(depth - 1)
+          if (parentIndex > 0) {
+            const container = $from.node(depth - 1)
+            const prevSibling = container.child(parentIndex - 1)
+            if (['bulletList', 'orderedList', 'taskList'].includes(prevSibling.type.name)) {
+              const paragraphStart = $from.before(depth)
+              const paragraphEnd = $from.after(depth)
+              const tr = state.tr.delete(paragraphStart, paragraphEnd)
+              const safePos = Math.max(1, paragraphStart - 1)
+              const $resolved = tr.doc.resolve(Math.min(safePos, tr.doc.content.size))
+              const newSelection = Selection.near($resolved, -1)
+              tr.setSelection(newSelection)
+              view.dispatch(tr)
+              return true
+            }
+          }
+        }
+        return false
+      },
 
       // Formatting marks
       'Mod-b': () => this.editor.commands.toggleBold(),
