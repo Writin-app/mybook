@@ -120,7 +120,12 @@ export function useDriveBootstrap() {
               : 'Writin Drive folder connected.'
             : result.error)
         }
-        if (!result.success) return
+        if (!result.success) {
+          if (!cancelled) {
+            setIsFetchingFiles(false)
+          }
+          return
+        }
         if (shouldShowInitialFetch && !cancelled) {
           setFetchProgress((prev) => Math.max(prev, 15))
         }
@@ -146,7 +151,10 @@ export function useDriveBootstrap() {
           }
           if (!cancelled) setStatusMessage('Synced across devices.')
         } catch (error) {
-          if (!cancelled) setStatusMessage(error instanceof Error ? error.message : 'Sync paused.')
+          if (!cancelled) {
+            setIsFetchingFiles(false)
+            setStatusMessage(error instanceof Error ? error.message : 'Sync paused.')
+          }
         }
         const backfillFlag = (await settingsRepository.get(DRIVE_BACKFILL_KEY)).data?.value
         if (backfillFlag !== true) {

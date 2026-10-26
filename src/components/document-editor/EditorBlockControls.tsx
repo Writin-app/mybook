@@ -1,5 +1,5 @@
-import { ArrowDownIcon, ClipboardDocumentIcon, DocumentDuplicateIcon, ViewColumnsIcon } from '@heroicons/react/24/outline'
-import { AddCircleIcon, Delete02Icon } from '@hugeicons/core-free-icons'
+import { ArrowDownIcon, ClipboardDocumentIcon, DocumentDuplicateIcon, PlusIcon, ViewColumnsIcon } from '@heroicons/react/24/outline'
+import { Delete02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
@@ -600,7 +600,7 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
           }}
           className="flex size-7 items-center justify-center rounded-[7px] text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
         >
-          <HugeiconsIcon icon={AddCircleIcon} size={16} aria-hidden="true" />
+          <PlusIcon aria-hidden="true" className="size-4" />
         </Button>
         <Button
           type="button"
