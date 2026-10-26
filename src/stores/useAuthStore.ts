@@ -9,7 +9,7 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? ''
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive'
 export const isBackendAuthEnabled = import.meta.env.VITE_GOOGLE_AUTH_MODE === 'server'
 const AUTH_API_BASE = (import.meta.env.VITE_AUTH_API_BASE?.trim() || '/api/auth').replace(/\/$/u, '')
-const AUTH_API_EXTENSION = import.meta.env.VITE_AUTH_API_EXTENSION ?? '.php'
+const AUTH_API_EXTENSION = import.meta.env.VITE_AUTH_API_EXTENSION ?? ''
 
 export function authApiUrl(path: string) {
   return `${AUTH_API_BASE}${path}${AUTH_API_EXTENSION}`

@@ -1086,8 +1086,9 @@ describe('Phase 7: Cross-Device Sync Latency and Safe Live Updates', () => {
       })
       expect(screen.getByText(/Preserved Local Edit/i)).toBeInTheDocument()
 
-      // Mock update to fail once
+      // Mock update to fail once and silence expected warning in test logs
       const originalUpdate = fileRepository.update
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const updateSpy = vi.spyOn(fileRepository, 'update').mockRejectedValueOnce(new Error('Simulated IndexedDB failure'))
 
       const remoteDoc = createMultiBlockDocJson('Section 1 - Base', 'Section 2 - Remote Content')
@@ -1111,6 +1112,7 @@ describe('Phase 7: Cross-Device Sync Latency and Safe Live Updates', () => {
       })
 
       updateSpy.mockRestore()
+      warnSpy.mockRestore()
       fileRepository.update = originalUpdate
       unmount()
     })
