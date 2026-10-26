@@ -222,7 +222,7 @@ export function AboutPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary">
+    <div className="relative h-full w-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary">
       {/* Dynamic Background: Line Grid + Ambient Radial Glow */}
       <div
         aria-hidden="true"
