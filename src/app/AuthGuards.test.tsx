@@ -4,7 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { RedirectAuthenticated, RequireAuth } from './AuthGuards'
+import { RedirectAuthenticated, RequireAuth, RootGate } from './AuthGuards'
 import { LegacyGoogleAuthStartRedirect } from './LegacyGoogleAuthStartRedirect'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
@@ -78,5 +78,61 @@ describe('route protection', () => {
   it('preserves legacy Google auth return paths', () => {
     render(<MemoryRouter initialEntries={['/api/auth/google/start?returnTo=%2Fsettings']}><Routes><Route path="/api/auth/google/start" element={<LegacyGoogleAuthStartRedirect />} /><Route path="/login" element={<LoginState />} /></Routes></MemoryRouter>)
     expect(screen.getByText('Login from /settings')).toBeInTheDocument()
+  })
+
+  it('renders landing page for unauthenticated users at root as a single page', () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<RootGate />} />
+          <Route path="/home" element={<p>Home Page</p>} />
+        </Routes>
+      </MemoryRouter>
+    )
+    expect(screen.getAllByText('Writin').length).toBeGreaterThan(0)
+    expect(screen.getByText(/Where thoughts/)).toBeInTheDocument()
+  })
+
+  it('redirects authenticated drive users at root to /home', () => {
+    useAuthStore.setState({ isAuthenticated: true })
+    useWorkspaceStore.setState({ mode: 'drive' })
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<RootGate />} />
+          <Route path="/about" element={<p>About Page</p>} />
+          <Route path="/home" element={<p>Home Page</p>} />
+        </Routes>
+      </MemoryRouter>
+    )
+    expect(screen.getByText('Home Page')).toBeInTheDocument()
+  })
+
+  it('redirects local workspace users at root to /home', () => {
+    useWorkspaceStore.setState({ mode: 'local' })
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<RootGate />} />
+          <Route path="/about" element={<p>About Page</p>} />
+          <Route path="/home" element={<p>Home Page</p>} />
+        </Routes>
+      </MemoryRouter>
+    )
+    expect(screen.getByText('Home Page')).toBeInTheDocument()
+  })
+
+  it('renders centered session checking overlay when RootGate is loading', () => {
+    useAuthStore.setState({ isLoading: true })
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<RootGate />} />
+          <Route path="/about" element={<p>About Page</p>} />
+        </Routes>
+      </MemoryRouter>
+    )
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    expect(screen.getByText('Checking your session…')).toBeInTheDocument()
   })
 })

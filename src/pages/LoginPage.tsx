@@ -5,7 +5,7 @@ import {
   ShieldCheckIcon,
 } from '@heroicons/react/24/outline'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { authApiUrl, getAuthConfigError, isBackendAuthEnabled, useAuthStore } from '../stores/useAuthStore'
 import {
@@ -332,6 +332,28 @@ export function LoginPage() {
             Local workspaces stay on this device. Google workspaces use your own Drive and only
             request access needed to manage files you create here.
           </p>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center">
+          <Link
+            to="/about"
+            className="text-xs font-medium text-muted-foreground transition hover:text-foreground hover:underline"
+          >
+            Learn more
+          </Link>
+          <span className="text-xs text-muted-foreground/40">•</span>
+          <Link
+            to="/privacy"
+            className="text-xs font-medium text-muted-foreground transition hover:text-foreground hover:underline"
+          >
+            Privacy
+          </Link>
+          <span className="text-xs text-muted-foreground/40">•</span>
+          <Link
+            to="/terms"
+            className="text-xs font-medium text-muted-foreground transition hover:text-foreground hover:underline"
+          >
+            Terms
+          </Link>
         </div>
         {configError ? (
           <p role="alert" className="mt-4 rounded-xl border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm text-yellow-700">
