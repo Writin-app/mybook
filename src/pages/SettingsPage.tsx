@@ -317,7 +317,10 @@ export function SettingsPage() {
         <h2 id="privacy-heading" className="text-base font-semibold leading-6">Privacy and personal use</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">Writin keeps editable files locally in this browser. Google Drive stores your backups in the Writin folder and syncs them across connected devices. Access tokens are never included in links or logs.</p>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">This application is provided for personal use. Keep independent copies of important information and review Google permissions before connecting an account.</p>
-        <p className="mt-4 text-sm text-muted-foreground">Writin version {APP_VERSION}</p>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--app-border)] pt-4">
+          <p className="text-sm text-muted-foreground">Writin version {APP_VERSION}</p>
+          <AppButton variant="secondary" onPress={() => navigate('/about')}>About Writin & Features</AppButton>
+        </div>
       </section>
       <section aria-labelledby="diagnostics-heading" className="rounded-2xl bg-muted/70 p-4">
         <h2 id="diagnostics-heading" className="text-base font-semibold leading-6">Sync diagnostics</h2>

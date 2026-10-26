@@ -1,6 +1,9 @@
-import { Navigate, createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter } from 'react-router-dom'
 
 import { AppLayout } from '../components/layout/AppLayout'
+import { AboutPage } from '../pages/AboutPage'
+import { PrivacyPage } from '../pages/PrivacyPage'
+import { TermsPage } from '../pages/TermsPage'
 import { DocumentEditorPage } from '../pages/DocumentEditorPage'
 import { DesignSystemPage } from '../pages/DesignSystemPage'
 import { FolderPage } from '../pages/FolderPage'
@@ -11,10 +14,14 @@ import { NotFoundPage } from '../pages/NotFoundPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { SearchPage } from '../pages/SearchPage'
 import { TrashPage } from '../pages/TrashPage'
-import { RedirectAuthenticated, RequireAuth } from './AuthGuards'
+import { RedirectAuthenticated, RequireAuth, RootGate } from './AuthGuards'
 import { LegacyGoogleAuthStartRedirect } from './LegacyGoogleAuthStartRedirect'
 
 export const router = createBrowserRouter([
+  { path: '/', element: <RootGate /> },
+  { path: '/about', element: <AboutPage /> },
+  { path: '/privacy', element: <PrivacyPage /> },
+  { path: '/terms', element: <TermsPage /> },
   { path: '/api/auth/google/start', element: <LegacyGoogleAuthStartRedirect /> },
   {
     element: <RedirectAuthenticated />,
@@ -26,7 +33,6 @@ export const router = createBrowserRouter([
       {
         element: <AppLayout />,
         children: [
-          { index: true, element: <Navigate to="/home" replace /> },
           { path: '/home', element: <HomePage /> },
           { path: '/favorites', element: <HomePage initialTab="favorites" /> },
           { path: '/folders', element: <FoldersPage /> },
