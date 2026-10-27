@@ -591,4 +591,59 @@ describe('localWorkspace service', () => {
       unregister()
     }
   })
+
+  it('preserves IndexedDB notes and does not overwrite with stale disk content when local updatedAt is newer than disk lastModified without active probe', async () => {
+    const fileId = 'newer-local-doc'
+    const newerTime = new Date().toISOString()
+    const olderDiskTime = Date.now() - 30_000
+
+    const activeFile = {
+      id: fileId,
+      driveFileId: null,
+      workspaceType: 'local' as const,
+      name: 'Recent Local Note',
+      type: 'document' as const,
+      folderId: null,
+      content: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'newer local content' }] }] }),
+      mimeType: 'application/x-mybook-document',
+      createdAt: newerTime,
+      updatedAt: newerTime,
+      lastSyncedAt: null,
+      syncStatus: 'local' as const,
+      isDeleted: false,
+    }
+    await db.files.add(activeFile)
+
+    const fileEntries = new Map<string, FileSystemHandle>([
+      [
+        'Recent Local Note.md',
+        {
+          kind: 'file',
+          name: 'Recent Local Note.md',
+          getFile: async () => ({
+            text: async () => '---\nmybook_version: 1\ntype: document\ndocument_id: "newer-local-doc"\n---\n\nstale content on disk',
+            lastModified: olderDiskTime,
+          }),
+        } as unknown as FileSystemHandle,
+      ],
+    ])
+
+    const mockRootHandle = {
+      kind: 'directory',
+      name: 'MockRoot',
+      getDirectoryHandle: vi.fn().mockRejectedValue(new Error('No Writin folder')),
+      entries: async function* () {
+        for (const entry of fileEntries.entries()) {
+          yield entry
+        }
+      },
+    } as unknown as FileSystemDirectoryHandle
+
+    // No probe is registered (simulating app reload/boot)
+    await scanAndHydrateLocalWorkspace(mockRootHandle, { targetWorkspaceType: 'local' })
+
+    const saved = await db.files.get(fileId)
+    expect(saved?.content).toContain('newer local content')
+    expect(saved?.content).not.toContain('stale content on disk')
+  })
 })

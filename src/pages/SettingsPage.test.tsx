@@ -93,4 +93,17 @@ describe('SettingsPage', () => {
 
     expect(screen.queryByRole('heading', { name: /Mirror Drive files to folder/i })).not.toBeInTheDocument()
   })
+
+  it('renders app updates section and handles checking for updates', async () => {
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>)
+
+    expect(screen.getByRole('heading', { name: /App version & updates/i })).toBeInTheDocument()
+    const checkBtn = screen.getByRole('button', { name: /Check for updates/i })
+    expect(checkBtn).toBeInTheDocument()
+
+    fireEvent.click(checkBtn)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /App version & updates/i })).toBeInTheDocument()
+    })
+  })
 })

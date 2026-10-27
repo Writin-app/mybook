@@ -12,7 +12,7 @@ import { fileRepository } from '../../database/repositories'
 import { useAutosave } from '../../hooks/useAutosave'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { backupSpreadsheetToDrive, copyDriveFileLink, openDriveFileInBrowser } from '../../services/googleDrive'
-import { registerUnsavedEditsProbe } from '../../services/localEditState'
+import { registerUnsavedEditsFlush, registerUnsavedEditsProbe } from '../../services/localEditState'
 import type { UniverWorkbookSnapshot, XlsxResult } from '../../utils/xlsx'
 import { AppButton } from '../common/AppButton'
 import { EmptyState } from '../common/EmptyState'
@@ -41,8 +41,15 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
 
   useEffect(() => {
     if (!file?.id) return
-    return registerUnsavedEditsProbe(file.id, () => hasUnsavedChanges())
-  }, [file?.id, hasUnsavedChanges])
+    const unregisterProbe = registerUnsavedEditsProbe(file.id, () => hasUnsavedChanges())
+    const unregisterFlush = registerUnsavedEditsFlush(file.id, async () => {
+      await save()
+    })
+    return () => {
+      unregisterProbe()
+      unregisterFlush()
+    }
+  }, [file?.id, hasUnsavedChanges, save])
   const [editorHeight, setEditorHeight] = useState(() => Math.max(320, (window.visualViewport?.height ?? window.innerHeight) - 72))
   const [workbookRevision, setWorkbookRevision] = useState(0)
   const [xlsxBlob, setXlsxBlob] = useState<Blob | null>(null)

@@ -185,4 +185,24 @@ describe('useAutosave external updates', () => {
     expect(updateMock).toHaveBeenCalledTimes(2)
     expect(updateMock).toHaveBeenLastCalledWith('file-1', expect.objectContaining({ content: 'second edit' }), expect.anything())
   })
+
+  it('persists pending edits on unmount and does not drop them', async () => {
+    const updateMock = vi.mocked(fileRepository.update)
+    updateMock.mockClear()
+
+    const initial = file('before typing')
+    const { result, unmount } = renderHook(() => useAutosave(initial))
+
+    act(() => result.current.setContent('unsaved typing on unmount'))
+    expect(result.current.hasUnsavedChanges()).toBe(true)
+
+    // Unmount before the 250ms debounce timer fires
+    unmount()
+
+    expect(updateMock).toHaveBeenCalledWith(
+      'file-1',
+      expect.objectContaining({ content: 'unsaved typing on unmount' }),
+      expect.anything()
+    )
+  })
 })

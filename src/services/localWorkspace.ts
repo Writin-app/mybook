@@ -887,6 +887,17 @@ export async function scanAndHydrateLocalWorkspace(
               await db.files.update(existingFile.id, fileUpdates)
               existingFile = { ...existingFile, ...fileUpdates }
             } else if (!isIdentical) {
+              const diskTime = new Date(metaUpdated || now).getTime()
+              const existingTime = new Date(existingFile.updatedAt).getTime()
+              const isLocalNewer = existingTime > diskTime + 1000 || existingFile.syncStatus === 'pending'
+
+              if (isLocalNewer) {
+                // Local copy in IndexedDB is newer than the file on disk (or holds pending edits).
+                // Do not overwrite local edits with stale disk content; persist local to disk instead.
+                await writeLocalWorkspaceFile(existingFile)
+                continue
+              }
+
               const nextUpdatedAt = metaUpdated && metaUpdated !== existingFile.updatedAt ? metaUpdated : now
               const fileUpdates: Partial<MyBookFile> = {
                 name: docName,
@@ -957,6 +968,15 @@ export async function scanAndHydrateLocalWorkspace(
               continue
             }
             if (text !== existingFile.content) {
+              const diskTime = new Date(now).getTime()
+              const existingTime = new Date(existingFile.updatedAt).getTime()
+              const isLocalNewer = existingTime > diskTime + 1000 || existingFile.syncStatus === 'pending'
+
+              if (isLocalNewer) {
+                await writeLocalWorkspaceFile(existingFile)
+                continue
+              }
+
               await db.files.update(existingFile.id, {
                 content: text,
                 updatedAt: now,

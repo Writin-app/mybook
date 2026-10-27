@@ -1,9 +1,11 @@
-import { ArrowDownTrayIcon, ArrowRightStartOnRectangleIcon, ArrowUpTrayIcon, CloudArrowUpIcon, FolderOpenIcon, MoonIcon, ShieldCheckIcon, SunIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { ArrowDownTrayIcon, ArrowPathIcon, ArrowRightStartOnRectangleIcon, ArrowUpTrayIcon, CloudArrowUpIcon, FolderOpenIcon, MoonIcon, ShieldCheckIcon, SunIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { AppButton } from '../components/common/AppButton'
+import { Progress } from '../components/ui/progress'
+import { usePwaStore } from '../stores/usePwaStore'
 import { useDriveBootstrap } from '../hooks/useDriveBootstrap'
 import { getDriveFolderStatus, openMyBookFolderInDrive } from '../services/googleDrive'
 import { exportLocalWorkspaceBackup, importLocalWorkspaceBackup } from '../services/localBackup'
@@ -39,6 +41,13 @@ export function SettingsPage() {
   const [backupAction, setBackupAction] = useState<'export' | 'import' | 'persist' | null>(null)
   const [mirroredFolder, setMirroredFolder] = useState<string | null>(null)
   const [isMirroring, setIsMirroring] = useState(false)
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
+  const needRefresh = usePwaStore((state) => state.needRefresh)
+  const isUpdating = usePwaStore((state) => state.isUpdating)
+  const updateProgress = usePwaStore((state) => state.updateProgress)
+  const updateStatusMessage = usePwaStore((state) => state.updateStatusMessage)
+  const startUpdate = usePwaStore((state) => state.startUpdate)
+  const checkForUpdates = usePwaStore((state) => state.checkForUpdates)
   const supportsDeviceFolder = canPickDeviceDirectory()
   const files = useLiveQuery(() => db.files.filter((file) => {
     const belongsToLocal = file.workspaceType === 'local' || (!file.workspaceType && file.syncStatus === 'local' && !file.driveFileId)
@@ -91,6 +100,28 @@ export function SettingsPage() {
     await logout()
     clearWorkspace()
     navigate('/login', { replace: true, state: null })
+  }
+
+  const handleCheckForUpdates = async () => {
+    setIsCheckingUpdates(true)
+    try {
+      const hasUpdate = await checkForUpdates()
+      if (hasUpdate) {
+        toast.add({
+          title: 'Update ready',
+          description: 'A new version of Writin is ready to install.',
+          type: 'info',
+        })
+      } else {
+        toast.add({
+          title: 'Up to date',
+          description: `Writin version ${APP_VERSION} is the latest version.`,
+          type: 'info',
+        })
+      }
+    } finally {
+      setIsCheckingUpdates(false)
+    }
   }
 
   const isLocalMode = workspaceMode === 'local'
@@ -312,6 +343,48 @@ export function SettingsPage() {
       <section aria-labelledby="files-heading" className="rounded-2xl bg-muted/70 p-4">
         <h2 id="files-heading" className="text-base font-semibold leading-6">Files</h2>
         <AppButton className="mt-4" variant="secondary" onPress={() => navigate('/trash')}><TrashIcon aria-hidden="true" className="size-5" />Open Trash</AppButton>
+      </section>
+      <section aria-labelledby="updates-heading" className="rounded-2xl bg-muted/70 p-4">
+        <h2 id="updates-heading" className="text-base font-semibold leading-6">App version & updates</h2>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium">Writin version {APP_VERSION}</p>
+            <p className="text-sm text-muted-foreground">
+              {needRefresh
+                ? 'A newer version of Writin is ready to install.'
+                : 'You are using the latest version of Writin.'}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {needRefresh ? (
+              <AppButton
+                variant="primary"
+                isLoading={isUpdating}
+                loadingLabel="Updating…"
+                onPress={() => void startUpdate()}
+              >
+                <ArrowPathIcon aria-hidden="true" className="size-4" />
+                Update now
+              </AppButton>
+            ) : (
+              <AppButton
+                variant="secondary"
+                isLoading={isCheckingUpdates}
+                loadingLabel="Checking…"
+                onPress={() => void handleCheckForUpdates()}
+              >
+                <ArrowPathIcon aria-hidden="true" className="size-4" />
+                Check for updates
+              </AppButton>
+            )}
+          </div>
+        </div>
+        {isUpdating ? (
+          <div className="mt-3 space-y-1.5">
+            <p className="text-xs text-muted-foreground font-medium">{updateStatusMessage ?? 'Updating…'}</p>
+            <Progress value={updateProgress} className="w-full" />
+          </div>
+        ) : null}
       </section>
       <section aria-labelledby="privacy-heading" className="rounded-2xl bg-muted/70 p-4">
         <h2 id="privacy-heading" className="text-base font-semibold leading-6">Privacy and personal use</h2>
