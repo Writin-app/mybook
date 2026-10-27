@@ -85,7 +85,7 @@ export function useAutosave(file: MyBookFile | undefined) {
     const expectedUpdatedAt = currentFile.updatedAt
     const expectedContent = lastSaved.current
     inFlightContentRef.current = savingContent
-    if (!isMountedRef.current || typeof window === 'undefined') return true
+    if (typeof window === 'undefined') return true
     safeSetStatus('saving-locally')
 
     const flight = (async () => {
@@ -100,6 +100,9 @@ export function useAutosave(file: MyBookFile | undefined) {
 
       if (!isMountedRef.current || typeof window === 'undefined') {
         inFlightContentRef.current = null
+        if (result.success) {
+          lastSaved.current = savingContent
+        }
         return result.success
       }
 
@@ -210,6 +213,7 @@ export function useAutosave(file: MyBookFile | undefined) {
     const online = () => safeSetStatus('pending')
     const offline = () => { safeSetStatus('offline'); flush() }
     window.addEventListener('pagehide', flush)
+    window.addEventListener('beforeunload', flush)
     window.addEventListener('online', online)
     window.addEventListener('offline', offline)
     document.addEventListener('visibilitychange', visibility)
@@ -225,6 +229,7 @@ export function useAutosave(file: MyBookFile | undefined) {
       }
       flush()
       window.removeEventListener('pagehide', flush)
+      window.removeEventListener('beforeunload', flush)
       window.removeEventListener('online', online)
       window.removeEventListener('offline', offline)
       document.removeEventListener('visibilitychange', visibility)

@@ -1664,7 +1664,13 @@ export async function importDriveFilesToLocal(
       const driveModifiedTime = driveFile.modifiedTime ?? now
       let content = ''
       let portableDocumentId: string | undefined
-      const hasLocalIntent = existing ? unresolvedSync.has('file', existing.id) : false
+      const isRemoteNewer = new Date(driveModifiedTime).getTime() > new Date(existing?.updatedAt ?? 0).getTime()
+      const hasLocalIntent = existing
+        ? (
+            unresolvedSync.has('file', existing.id) ||
+            ((existing.syncStatus === 'pending' || existing.syncStatus === 'backing-up') && !isRemoteNewer)
+          )
+        : false
       const shouldReadContent = !existing || (!hasLocalIntent && driveModifiedAfterLastSync(driveModifiedTime, existing.lastSyncedAt))
       if (shouldReadContent) {
         try {
@@ -1684,7 +1690,7 @@ export async function importDriveFilesToLocal(
         const name = localFileName(driveFile.name, fileType)
         const type = existing.type ?? fileType
         const mimeType = driveFile.mimeType || existing.mimeType
-        const driveIsNewer = shouldReadContent
+        const driveIsNewer = shouldReadContent && isRemoteNewer
         const nextContent = !hasLocalIntent && driveIsNewer && content && content !== existing.content ? content : existing.content
         if (nextContent !== existing.content) await saveVersionBeforeDriveUpdate(existing.id, driveModifiedTime)
         const finalFolderId = effectiveFolderId ?? (parentDriveId === bootstrap.folderId ? null : existing.folderId)

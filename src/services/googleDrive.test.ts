@@ -713,6 +713,37 @@ describe('googleDrive helpers', () => {
     expect(db.transaction).not.toHaveBeenCalled()
   })
 
+  it('keeps newer local content when Drive file modifiedTime is older during importDriveFilesToLocal even without queue item', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'mybook-root', updatedAt: '2026-07-24T00:00:00.000Z' })
+    mockedFolders.toArray.mockResolvedValue([])
+    mockedFiles.toArray.mockResolvedValue([{
+      id: 'file-newer-local',
+      driveFileId: 'drive-doc',
+      workspaceType: 'drive',
+      name: 'Recent Local Edits',
+      type: 'document',
+      folderId: null,
+      content: '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"New local text"}]}]}',
+      mimeType: 'text/markdown',
+      createdAt: '2026-08-20T00:00:00.000Z',
+      updatedAt: '2026-08-22T15:00:00.000Z', // Local is newer
+      lastSyncedAt: '2026-08-22T09:00:00.000Z',
+      syncStatus: 'pending',
+      isDeleted: false,
+    }])
+    mockUnresolvedSyncQueue([]) // No sync queue item yet (e.g. pending debounce flush)
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-doc', name: 'Recent Local Edits.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T10:00:00.000Z' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
+
+    await importDriveFilesToLocal()
+
+    expect(mockedFiles.update).not.toHaveBeenCalledWith('file-newer-local', expect.objectContaining({
+      content: expect.anything(),
+      syncStatus: 'backed-up',
+    }))
+  })
+
   it('keeps pending local folder move and rename when Drive folder import is stale', async () => {
     mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'mybook-root', updatedAt: '2026-07-24T00:00:00.000Z' })
     mockedFolders.toArray.mockResolvedValue([{

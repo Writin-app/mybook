@@ -27,7 +27,7 @@ import { Switch } from '../ui/switch'
 import { useAutosave } from '../../hooks/useAutosave'
 import { SyncConflictBanner } from './SyncConflictBanner'
 import { applyRemoteVersion, keepLocalVersion, mergeConflictVersions, recordRemoteConflict } from '../../services/syncConflicts'
-import { registerUnsavedEditsProbe } from '../../services/localEditState'
+import { registerUnsavedEditsFlush, registerUnsavedEditsProbe } from '../../services/localEditState'
 import { broadcastDocUpdate, subscribeToTabDocUpdates } from '../../services/tabSyncChannel'
 import { areDocumentContentsEquivalent, isDocumentPrefix, mergeDocuments, parseJsonDoc } from '../../utils/documentMerge'
 import { applyRemoteDocumentPatch } from './remoteEditorPatch'
@@ -1377,12 +1377,23 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
 
   useEffect(() => {
     if (!file?.id) return
-    return registerUnsavedEditsProbe(file.id, () =>
+    const unregisterProbe = registerUnsavedEditsProbe(file.id, () =>
       hasUnsavedTyping() ||
       file?.syncStatus === 'pending' ||
       file?.syncStatus === 'backing-up'
     )
-  }, [file?.id, file?.syncStatus, hasUnsavedTyping])
+    const unregisterFlush = registerUnsavedEditsFlush(file.id, async () => {
+      flushContentSync()
+      if (hasUnsavedTitleEdits()) {
+        await saveTitleRef.current()
+      }
+      await save()
+    })
+    return () => {
+      unregisterProbe()
+      unregisterFlush()
+    }
+  }, [file?.id, file?.syncStatus, flushContentSync, hasUnsavedTitleEdits, hasUnsavedTyping, save])
 
   const restoreLastActiveSelection = useCallback(() => {
     const currentEditor = editorRef.current
