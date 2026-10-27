@@ -6,14 +6,23 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol";
+  --font-editor: "Figtree Variable", system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-heading: var(--font-editor);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
   --radius-control: 10px;
   --radius-surface: 12px;
   --radius-dialog: 14px;
 }
 
 :root {
+  --font-interface: var(--font-sans);
+  --font-editor: "Figtree Variable", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   --focus-ring: #2563eb;
   --app-border: #e5e7eb;
   --app-surface: #ffffff;
@@ -188,6 +197,12 @@
     }
   }
 
+  .mybook-document-page,
+  .tiptap,
+  #page-document-title {
+    font-family: var(--font-editor);
+  }
+
   .tiptap {
     color: var(--foreground);
     font-size: 1rem;
@@ -309,8 +324,8 @@
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
   }
-  .tiptap code { border-radius: 6px; background: var(--app-subtle); padding: 0.125rem 0.35rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 0.9em; }
-  .tiptap pre { overflow-x: auto; border-radius: 8px; background: var(--app-subtle); padding: 1rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; line-height: 1.6; }
+  .tiptap code { border-radius: 6px; background: var(--app-subtle); padding: 0.125rem 0.35rem; font-family: var(--font-mono); font-size: 0.9em; }
+  .tiptap pre { overflow-x: auto; border-radius: 8px; background: var(--app-subtle); padding: 1rem; font-family: var(--font-mono); line-height: 1.6; }
   .tiptap pre code { display: block; background: transparent; padding: 0; font-size: 0.9rem; }
   .tiptap pre.mybook-code-block { position: relative; min-height: 5.25rem; overflow-x: auto; border: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent); background: color-mix(in srgb, var(--app-subtle) 78%, var(--app-surface)); padding: 1rem; }
   .tiptap pre.mybook-code-block code { min-height: 1.5rem; outline: none; tab-size: 2; }
@@ -1030,8 +1045,14 @@
 }
 
 @theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: 'Figtree Variable', sans-serif;
+  --font-heading: var(--font-editor);
+  --font-editor: "Figtree Variable", system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol";
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
