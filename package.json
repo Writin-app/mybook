@@ -83,7 +83,7 @@
     "fake-indexeddb": "^6.2.5",
     "globals": "^16.0.0",
     "jsdom": "^29.1.1",
-    "storybook": "^10.6.0",
+    "storybook": "^10.6.4",
     "tailwindcss": "^4.1.0",
     "typescript": "~5.8.0",
     "typescript-eslint": "^8.30.0",
