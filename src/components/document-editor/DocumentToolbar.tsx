@@ -455,13 +455,15 @@ function ToolbarControls({
     const subtoolbarPillClass =
       'flex h-[34px] w-full items-center justify-between rounded-full border border-[var(--app-border)]/80 bg-[var(--app-surface)]/95 px-2.5 py-1 shadow-[0_8px_24px_rgba(0,0,0,0.14),0_2px_6px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur-2xl animate-in fade-in slide-in-from-bottom-2 duration-150'
 
-    const showKeyboardDismiss = keyboardOffset > 0 || editor.isFocused
+    const showKeyboardDismiss = keyboardOffset > 50
 
     return (
       <div
         role="toolbar"
         aria-label="Document formatting"
-        className={`mybook-mobile-document-toolbar pointer-events-none fixed inset-x-0 bottom-0 z-20 transition-[bottom] duration-150 md:hidden ${
+        className={`mybook-mobile-document-toolbar pointer-events-none fixed inset-x-0 bottom-0 z-20 ${
+          keyboardOffset > 0 ? '' : 'transition-[bottom] duration-150'
+        } md:hidden ${
           isAddBlockOpen
             ? 'pb-0'
             : keyboardOffset > 0
@@ -702,6 +704,10 @@ function ToolbarControls({
                     active={isAddBlockOpen && isReplacingBlock}
                     onPress={() => {
                       setActiveSubmenu(null)
+                      if (document.activeElement instanceof HTMLElement) {
+                        document.activeElement.blur()
+                      }
+                      editor.commands.blur()
                       setIsReplacingBlock(true)
                       setIsAddBlockOpen(true)
                     }}
@@ -902,7 +908,7 @@ function ToolbarControls({
             <div
               role="dialog"
               aria-label={isReplacingBlock ? 'Replace block' : 'Insert blocks'}
-              className="flex w-full flex-col h-[520px] max-h-[75vh] rounded-t-2xl border-t border-[var(--app-border)] bg-[var(--app-surface)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-8px_30px_rgba(0,0,0,0.12)] animate-in slide-in-from-bottom duration-200"
+              className="flex w-full flex-col h-[360px] max-h-[50vh] rounded-t-2xl border-t border-[var(--app-border)] bg-[var(--app-surface)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-8px_30px_rgba(0,0,0,0.12)] animate-in slide-in-from-bottom duration-200"
             >
               {/* Sheet handler */}
               <div className="mx-auto mb-3 h-1.5 w-10 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden="true" />
@@ -957,6 +963,24 @@ function ToolbarControls({
                                 setIsAddBlockOpen(false)
                                 setIsReplacingBlock(false)
                                 setSearchQuery('')
+                                window.requestAnimationFrame(() => {
+                                  if (!editor.isDestroyed) {
+                                    editor.commands.focus()
+                                    try {
+                                      const coords = editor.view.coordsAtPos(editor.state.selection.from)
+                                      const toolbarEl = document.querySelector('.mybook-mobile-document-toolbar')
+                                      const toolbarTop = toolbarEl instanceof HTMLElement
+                                        ? toolbarEl.getBoundingClientRect().top
+                                        : (window.innerHeight - 70)
+                                      const overlap = coords.bottom - (toolbarTop - 24)
+                                      if (overlap > 0) {
+                                        window.scrollBy({ top: overlap, behavior: 'smooth' })
+                                      }
+                                    } catch {
+                                      editor.commands.scrollIntoView()
+                                    }
+                                  }
+                                })
                               }}
                               className="flex h-11 items-center gap-2.5 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 text-left transition hover:bg-[var(--app-subtle)] active:scale-[0.98]"
                             >

@@ -205,8 +205,13 @@ describe('DocumentToolbar', () => {
     const replaceButton = screen.getByRole('button', { name: 'Replace block' })
     expect(replaceButton).toBeTruthy()
 
+    const blurSpy = vi.spyOn(HTMLElement.prototype, 'blur')
     fireEvent.click(replaceButton)
-    expect(screen.getByRole('dialog', { name: 'Replace block' })).toBeTruthy()
+    expect(blurSpy).toHaveBeenCalled()
+    blurSpy.mockRestore()
+    const dialog = screen.getByRole('dialog', { name: 'Replace block' })
+    expect(dialog).toBeTruthy()
+    expect(dialog.className).toContain('max-h-[50vh]')
     expect(screen.getByPlaceholderText('Search replacement blocks…')).toBeTruthy()
   })
 
@@ -269,5 +274,19 @@ describe('DocumentToolbar', () => {
     // Close highlight menu
     fireEvent.click(screen.getByRole('button', { name: 'Close highlight colors' }))
     expect(screen.queryByRole('menu', { name: 'Highlight color' })).toBeNull()
+  })
+
+  it('hides the keyboard icon when editor is focused with a physical keyboard (keyboardOffset = 0)', () => {
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit, Underline, TaskList, TaskItem, TableKit],
+      content: '<p>Physical keyboard focus</p>',
+    })
+    vi.spyOn(editor, 'isFocused', 'get').mockReturnValue(true)
+
+    render(<DocumentToolbar editor={editor} variant="mobile" keyboardOffset={0} />)
+
+    // With physical keyboard, keyboardOffset is 0 even when focused, so hide button should NOT appear
+    expect(screen.queryByRole('button', { name: 'Hide keyboard' })).toBeNull()
   })
 })

@@ -169,4 +169,41 @@ describe('TableActionsMenu touch controls & boundaries', () => {
     // Column 2 is outside wrapperRect (left 350 > right 300) -> not rendered
     expect(screen.queryByRole('button', { name: 'Column 2 actions' })).toBeNull()
   })
+
+  it('keeps add-row and add-column buttons outside the scrolling area for fixed tables', () => {
+    isTouchMock = false
+    editor = createTableEditor()
+    editor.commands.setTextSelection(4)
+
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (this.classList.contains('tableWrapper')) {
+        return { left: 100, right: 500, top: 100, bottom: 250, width: 400, height: 150, x: 100, y: 100, toJSON: () => {} }
+      }
+      if (this.tagName.toLowerCase() === 'table') {
+        return { left: 100, right: 500, top: 100, bottom: 700, width: 400, height: 600, x: 100, y: 100, toJSON: () => {} }
+      }
+      if (this.tagName.toLowerCase() === 'th') {
+        return { left: 100, right: 300, top: 100, bottom: 150, width: 200, height: 50, x: 100, y: 100, toJSON: () => {} }
+      }
+      if (this.tagName.toLowerCase() === 'tr') {
+        return { left: 100, right: 500, top: 100, bottom: 150, width: 400, height: 50, x: 100, y: 100, toJSON: () => {} }
+      }
+      return { left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => {} }
+    })
+
+    const wrapper = editor.view.dom.querySelector('.tableWrapper') as HTMLElement
+    wrapper?.setAttribute('data-fixed-rows', 'true')
+
+    render(<TableActionsMenu editor={editor} />)
+
+    const addRow = screen.getByRole('button', { name: 'Add row' })
+    const addCol = screen.getByRole('button', { name: 'Add column' })
+
+    expect(addRow).toBeTruthy()
+    expect(addRow.style.top).toBe('258px')
+
+    expect(addCol).toBeTruthy()
+    expect(addCol.style.height).toBe('150px')
+    expect(addCol.style.top).toBe('100px')
+  })
 })

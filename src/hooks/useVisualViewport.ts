@@ -37,7 +37,9 @@ export function getVisualViewportBounds(): VisualViewportBounds {
   const offsetLeft = Math.max(0, Math.round(viewport.offsetLeft))
   const height = Math.round(viewport.height)
   const width = Math.round(viewport.width)
-  const keyboardOffset = Math.max(0, Math.round(window.innerHeight - height - offsetTop))
+  const rawKeyboard = window.innerHeight - height - offsetTop
+  const heightDelta = window.innerHeight - height
+  const keyboardOffset = Math.max(0, Math.round(rawKeyboard > 0 ? rawKeyboard : (heightDelta > 100 ? heightDelta : 0)))
   const visibleBottom = offsetTop + height
 
   return {
@@ -102,6 +104,9 @@ function subscribeViewport(listener: ViewportListener): () => void {
     attachedViewport?.addEventListener('scroll', handleViewportChange)
     window.addEventListener('resize', handleViewportChange)
     window.addEventListener('orientationchange', handleViewportChange)
+    window.addEventListener('scroll', handleViewportChange, { passive: true })
+    window.addEventListener('focusin', handleViewportChange)
+    window.addEventListener('focusout', handleViewportChange)
 
     const initialBounds = getVisualViewportBounds()
     cachedBounds = initialBounds
@@ -117,6 +122,9 @@ function subscribeViewport(listener: ViewportListener): () => void {
       attachedViewport?.removeEventListener('scroll', handleViewportChange)
       window.removeEventListener('resize', handleViewportChange)
       window.removeEventListener('orientationchange', handleViewportChange)
+      window.removeEventListener('scroll', handleViewportChange)
+      window.removeEventListener('focusin', handleViewportChange)
+      window.removeEventListener('focusout', handleViewportChange)
       document.documentElement.style.removeProperty('--mybook-keyboard-offset')
       attachedViewport = null
       cachedBounds = null
@@ -130,6 +138,9 @@ export function _resetViewportSubscribersForTesting() {
     attachedViewport?.removeEventListener('scroll', handleViewportChange)
     window.removeEventListener('resize', handleViewportChange)
     window.removeEventListener('orientationchange', handleViewportChange)
+    window.removeEventListener('scroll', handleViewportChange)
+    window.removeEventListener('focusin', handleViewportChange)
+    window.removeEventListener('focusout', handleViewportChange)
     document.documentElement.style.removeProperty('--mybook-keyboard-offset')
   }
   subscribers.clear()

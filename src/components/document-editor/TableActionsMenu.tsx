@@ -842,6 +842,14 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
   const visibleTableRight = Math.min(geometry.tableRect.left + activeTableWidth, wrapperRect.right)
   const visibleTableWidth = Math.max(0, visibleTableRight - visibleTableLeft)
   const tableControlsBottom = geometry.tableRect.bottom
+  const isFixed = isFixedRowsEnabled(editor, geometry) || geometry.wrapper.dataset.fixedRows === 'true'
+  const effectiveRowBottom = isFixed ? wrapperRect.bottom : tableControlsBottom
+  const isColumnButtonVisible = isFixed
+    ? (wrapperRect.bottom >= wrapperRect.top && visibleTableWidth > 0)
+    : (geometry.tableRect.right <= wrapperRect.right + 4 && geometry.tableRect.right >= wrapperRect.left)
+  const isRowButtonVisible = isFixed
+    ? (wrapperRect.bottom >= wrapperRect.top && visibleTableWidth > 0)
+    : (tableControlsBottom <= wrapperRect.bottom + 4 && tableControlsBottom >= wrapperRect.top && visibleTableWidth > 0)
 
   return (
     <>
@@ -947,42 +955,42 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
         )
       })}
 
-      {geometry.tableRect.right <= wrapperRect.right + 4 && geometry.tableRect.right >= wrapperRect.left ? (
+      {isColumnButtonVisible ? (
         <Button
           variant="ghost"
           size="icon-xs"
           type="button"
           aria-label="Add column"
           className={`mybook-table-add-column ${isTableHovering ? 'is-visible' : ''}`}
-          style={{ top: geometry.tableRect.top, left: visibleTableRight + 4, height: geometry.tableRect.height }}
+          style={{ top: isFixed ? wrapperRect.top : geometry.tableRect.top, left: visibleTableRight + 4, height: isFixed ? wrapperRect.height : geometry.tableRect.height }}
           onMouseDown={(event) => event.preventDefault()}
           onClick={addRightColumn}
         >
           <HugeiconsIcon icon={PlusSignIcon} aria-hidden="true" className="size-3" />
         </Button>
       ) : null}
-      {tableControlsBottom <= wrapperRect.bottom + 4 && tableControlsBottom >= wrapperRect.top && visibleTableWidth > 0 ? (
+      {isRowButtonVisible ? (
         <Button
           variant="ghost"
           size="icon-xs"
           type="button"
           aria-label="Add row"
           className={`mybook-table-add-row ${isTableHovering ? 'is-visible' : ''}`}
-          style={{ top: tableControlsBottom + 8, left: visibleTableLeft, width: visibleTableWidth }}
+          style={{ top: effectiveRowBottom + 8, left: visibleTableLeft, width: visibleTableWidth }}
           onMouseDown={(event) => event.preventDefault()}
           onClick={addBottomRow}
         >
           <HugeiconsIcon icon={PlusSignIcon} aria-hidden="true" className="size-3" />
         </Button>
       ) : null}
-      {geometry.tableRect.right <= wrapperRect.right + 4 && geometry.tableRect.right >= wrapperRect.left && tableControlsBottom <= wrapperRect.bottom + 4 && tableControlsBottom >= wrapperRect.top && visibleTableWidth > 0 ? (
+      {isColumnButtonVisible && isRowButtonVisible ? (
         <Button
           variant="ghost"
           size="icon-xs"
           type="button"
           aria-label="Add row and column"
           className={`mybook-table-add-corner ${isTableHovering ? 'is-visible' : ''}`}
-          style={{ top: tableControlsBottom + 8, left: visibleTableRight + 4 }}
+          style={{ top: effectiveRowBottom + 8, left: visibleTableRight + 4 }}
           onMouseDown={(event) => event.preventDefault()}
           onClick={addBottomRowAndRightColumn}
         >
