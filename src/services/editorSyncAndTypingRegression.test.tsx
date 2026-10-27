@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest'
 import 'fake-indexeddb/auto'
 import { Editor } from '@tiptap/core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, act } from '@testing-library/react'
+import { render, screen, waitFor, act, cleanup } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 import { db } from '../database/db'
@@ -99,6 +99,7 @@ describe('Editor Syncing and Conflict Resolution Regression Suite', () => {
   })
 
   afterEach(async () => {
+    cleanup()
     vi.restoreAllMocks()
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50))
@@ -252,6 +253,124 @@ describe('Editor Syncing and Conflict Resolution Regression Suite', () => {
       await waitFor(() => {
         expect(editor.getText()).toContain('Section 1 - Tab 1 Area [Edited Locally]')
         expect(editor.getText()).toContain('Section 2 - Tab 2 Area [Edited in Tab 2]')
+      })
+
+      expect(screen.queryByText(/conflict/i)).not.toBeInTheDocument()
+      unmount()
+    })
+
+    it('updates live immediately in a focused-but-idle editor when sibling tab types', async () => {
+      const fileId = 'split-idle-focus-sync-test'
+      const baseContent = createDocJson('Paragraph 1')
+      const fileDoc: MyBookFile = {
+        id: fileId,
+        driveFileId: 'drive-split-idle',
+        name: 'Idle Focus Document',
+        type: 'document',
+        folderId: null,
+        content: baseContent,
+        baseContent,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString(),
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+      currentMockLiveFile = fileDoc
+      await db.files.put(fileDoc)
+
+      const { unmount } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileId} />
+        </MemoryRouter>
+      )
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Page title/i)).toBeInTheDocument()
+      })
+
+      const pmEl = document.querySelector('.ProseMirror') as (HTMLElement & { editor?: Editor }) | null
+      const editor = pmEl?.editor
+      expect(editor).toBeTruthy()
+      if (!editor) throw new Error('Editor not found')
+
+      // Editor is focused (e.g. user clicked inside), but idle (no typing in progress)
+      act(() => {
+        Object.defineProperty(editor, 'isFocused', { value: true, configurable: true })
+      })
+      expect(editor.isFocused).toBe(true)
+
+      // Incoming broadcast arrives from Tab 2 typing in this document
+      const remoteTabDoc = createDocJson('Paragraph 1 - typed from Pane B')
+      act(() => {
+        broadcastDocUpdate(fileId, remoteTabDoc, 'Idle Focus Document', 'other-tab-instance')
+      })
+
+      // The focused editor MUST reflect Pane B's update live without navigating away or reopening
+      await waitFor(() => {
+        expect(editor.getText()).toBe('Paragraph 1 - typed from Pane B')
+      })
+
+      expect(screen.queryByText(/conflict/i)).not.toBeInTheDocument()
+      unmount()
+    })
+
+    it('defers remote patch during active typing burst and applies cleanly after typing pause', async () => {
+      const fileId = 'split-active-typing-defer-test'
+      const baseContent = createMultiBlockDocJson('Section 1 - Area', 'Section 2 - Area')
+      const fileDoc: MyBookFile = {
+        id: fileId,
+        driveFileId: 'drive-split-defer',
+        name: 'Defer Test Document',
+        type: 'document',
+        folderId: null,
+        content: baseContent,
+        baseContent,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString(),
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+      currentMockLiveFile = fileDoc
+      await db.files.put(fileDoc)
+
+      const { unmount } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileId} />
+        </MemoryRouter>
+      )
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Page title/i)).toBeInTheDocument()
+      })
+
+      const pmEl = document.querySelector('.ProseMirror') as (HTMLElement & { editor?: Editor }) | null
+      const editor = pmEl?.editor
+      expect(editor).toBeTruthy()
+      if (!editor) throw new Error('Editor not found')
+
+      // User in this tab is actively typing in Section 1
+      act(() => {
+        Object.defineProperty(editor, 'isFocused', { value: true, configurable: true })
+        editor.commands.insertContentAt(17, ' [typing active]')
+      })
+
+      // In the middle of typing, a remote broadcast from Tab 2 arrives for Section 2
+      const remoteTabDoc = createMultiBlockDocJson('Section 1 - Area', 'Section 2 - Area [remote Tab 2]')
+      act(() => {
+        broadcastDocUpdate(fileId, remoteTabDoc, 'Defer Test Document', 'other-tab-instance')
+      })
+
+      // The active editor must NOT lose local keystrokes immediately
+      expect(editor.getText()).toContain('[typing active]')
+
+      // Both local and remote updates merge cleanly without conflicts
+      await waitFor(() => {
+        expect(editor.getText()).toContain('Section 1 - Area [typing active]')
+        expect(editor.getText()).toContain('Section 2 - Area [remote Tab 2]')
       })
 
       expect(screen.queryByText(/conflict/i)).not.toBeInTheDocument()

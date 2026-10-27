@@ -128,9 +128,14 @@ export interface ApplyRemotePatchResult {
  * 3. Only the changed top-level nodes are replaced, leaving unaffected blocks untouched.
  * 4. Custom block attributes (callouts, databases, toggles, tables) are retained with 100% fidelity.
  */
+export interface ApplyRemotePatchOptions {
+  ignoreCaretCollision?: boolean
+}
+
 export function applyRemoteDocumentPatch(
   editor: Editor,
-  nextContent: string | JSONContent
+  nextContent: string | JSONContent,
+  options: ApplyRemotePatchOptions = {}
 ): ApplyRemotePatchResult {
   if (editor.isDestroyed || !editor.view) {
     return { applied: false, changed: false, error: 'Editor is destroyed or unavailable' }
@@ -241,6 +246,7 @@ export function applyRemoteDocumentPatch(
             // If the user has a highlighted range overlapping with the replacement,
             // OR if the editor is focused and the caret is within the replaced range:
             const collision =
+              !options.ignoreCaretCollision &&
               isDeletingOrReplacing &&
               ((!selection.empty && selFrom < replaceTo && selTo > replaceFrom) ||
                 (editor.isFocused && selFrom <= replaceTo && selTo >= replaceFrom))
@@ -268,7 +274,7 @@ export function applyRemoteDocumentPatch(
 
       // For whole-block deletions or structural replacements:
       // If the block currently contains the active selection/cursor in a focused editor, reject:
-      if (selection && editor.isFocused && toPos > fromPos) {
+      if (!options.ignoreCaretCollision && selection && editor.isFocused && toPos > fromPos) {
         if (selection.from < toPos && selection.to > fromPos) {
           return {
             applied: false,
