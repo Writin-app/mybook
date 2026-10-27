@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import http from 'node:http'
 import { pathToFileURL } from 'node:url'
 
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive'
 const IDENTITY_SCOPES = 'openid email profile'
 const SESSION_COOKIE = 'mybook_session'
 const STATE_COOKIE = 'mybook_oauth_state'
