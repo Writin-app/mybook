@@ -3379,9 +3379,31 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }
 
   const insertBlock = (commandId: string, blockTarget?: BlockTarget | null) => {
+    const focusAndScrollActiveBlock = () => {
+      window.requestAnimationFrame(() => {
+        if (!editor.isDestroyed) {
+          editor.commands.focus()
+          try {
+            const coords = editor.view.coordsAtPos(editor.state.selection.from)
+            const toolbarEl = document.querySelector('.mybook-mobile-document-toolbar')
+            const toolbarTop = toolbarEl instanceof HTMLElement
+              ? toolbarEl.getBoundingClientRect().top
+              : (window.innerHeight - 70)
+            const overlap = coords.bottom - (toolbarTop - 24)
+            if (overlap > 0) {
+              window.scrollBy({ top: overlap, behavior: 'smooth' })
+            }
+          } catch {
+            editor.commands.scrollIntoView()
+          }
+        }
+      })
+    }
+
     const activeSlashMenu = slashMenuRef.current
     if (activeSlashMenu) {
       runSelectedSlashCommand(commandId, activeSlashMenu)
+      focusAndScrollActiveBlock()
       return
     }
 
@@ -3396,13 +3418,16 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (isFormatCommand(commandId)) {
       if (hasSelection) {
         convertSelectedBlocks(editor, commandId)
+        focusAndScrollActiveBlock()
         return
       }
       if (blockTarget) {
         convertSelectedBlocks(editor, commandId, blockTarget)
+        focusAndScrollActiveBlock()
         return
       }
       convertSelectedBlocks(editor, commandId)
+      focusAndScrollActiveBlock()
       return
     }
 
@@ -3419,6 +3444,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         editor.view.focus()
         editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, insertPos)))
         runSlashCommand(editor, commandId, { from: insertPos, to: insertPos })
+        focusAndScrollActiveBlock()
         return
       }
 
@@ -3426,22 +3452,20 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         const nodeEnd = targetPos + targetNode.nodeSize
         editor.chain().focus().deleteRange({ from: targetPos, to: nodeEnd }).run()
         runSlashCommand(editor, commandId, { from: targetPos, to: targetPos })
+        focusAndScrollActiveBlock()
         return
       }
 
       const insertPos = targetPos + targetNode.nodeSize
       editor.chain().focus().setTextSelection(Math.min(insertPos, editor.state.doc.content.size)).run()
       runSlashCommand(editor, commandId, { from: insertPos, to: insertPos })
+      focusAndScrollActiveBlock()
       return
     }
 
     const { from, to } = editor.state.selection
     runSlashCommand(editor, commandId, { from, to })
-    if (isMobile) {
-      window.requestAnimationFrame(() => {
-        editor.commands.scrollIntoView()
-      })
-    }
+    focusAndScrollActiveBlock()
   }
 
   const pageScale = zoom / 100

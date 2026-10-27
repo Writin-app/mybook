@@ -34,7 +34,7 @@ const textColors = [
 
 function selectionPosition(editor: Editor): ToolbarPosition | null {
   const { selection } = editor.state
-  if (!(selection instanceof TextSelection) || selection.empty || !editor.isFocused || editor.isActive('codeBlock') || editor.isActive('table')) return null
+  if (!(selection instanceof TextSelection) || selection.empty || !editor.isFocused || editor.isActive('codeBlock')) return null
   const { from, to } = selection
   const start = editor.view.coordsAtPos(from)
   const end = editor.view.coordsAtPos(to)

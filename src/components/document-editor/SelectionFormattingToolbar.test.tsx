@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
+import { TableKit } from '@tiptap/extension-table'
 import { TextSelection } from '@tiptap/pm/state'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -154,5 +155,23 @@ describe('SelectionFormattingToolbar', () => {
     expect(outerScroller?.className).toContain('overflow-y-auto')
     expect(innerListbox.className).not.toContain('overflow-y-auto')
     expect(innerListbox.className).not.toContain('max-h-[inherit]')
+  })
+
+  it('appears when selecting text inside a table cell', () => {
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit, TableKit],
+      content: '<table><tbody><tr><td><p>Cell text</p></td></tr></tbody></table>',
+    })
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({ left: 10, right: 20, top: 100, bottom: 120 })
+    vi.spyOn(editor, 'isFocused', 'get').mockReturnValue(true)
+
+    render(<SelectionFormattingToolbar editor={editor} onInsertBlock={() => undefined} onEditLink={() => undefined} />)
+    act(() => {
+      editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 4, 8)))
+    })
+
+    expect(editor.isActive('table')).toBe(true)
+    expect(screen.getByRole('toolbar', { name: 'Selected text formatting' })).toBeTruthy()
   })
 })

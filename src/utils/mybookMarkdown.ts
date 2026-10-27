@@ -151,7 +151,7 @@ function blockMarkdown(node: JSONContent, depth = 0): string {
           ? blockMarkdown(child, depth + 1)
           : indentMarkdown(blockMarkdown(child), depth + 1)
       )).filter(Boolean)
-      return [`${'  '.repeat(depth)}${marker} ${firstText}`, ...nested].join('\n')
+      return [`${'  '.repeat(depth)}${marker}${firstText ? ` ${firstText}` : ''}`, ...nested].join('\n')
     }).join('\n')
   }
   if (node.type === 'table') {
@@ -898,7 +898,7 @@ type ListLine = {
 }
 
 function parseListLine(line: string): ListLine | null {
-  const task = /^(\s*)[-*]\s+\[([ xX])\]\s+(.+)$/u.exec(line)
+  const task = /^(\s*)[-*]\s+\[([ xX]?)\](?:\s+(.*)|\s*)$/u.exec(line)
   if (task) {
     return {
       checked: task[2]?.toLowerCase() === 'x',
@@ -908,10 +908,12 @@ function parseListLine(line: string): ListLine | null {
     }
   }
 
-  const unordered = /^(\s*)[-*]\s+(.+)$/u.exec(line)
-  if (unordered) return { indent: unordered[1]?.length ?? 0, text: unordered[2] ?? '', type: 'bulletList' }
+  const unordered = /^(\s*)[-*](?:\s+(.*)|\s*)$/u.exec(line)
+  if (unordered && line.trim() !== '---' && line.trim() !== '***') {
+    return { indent: unordered[1]?.length ?? 0, text: unordered[2] ?? '', type: 'bulletList' }
+  }
 
-  const ordered = /^(\s*)(\d+)\.\s+(.+)$/u.exec(line)
+  const ordered = /^(\s*)(\d+)\.(?:\s+(.*)|\s*)$/u.exec(line)
   if (ordered) return { indent: ordered[1]?.length ?? 0, orderNumber: Number(ordered[2] ?? 1), text: ordered[3] ?? '', type: 'orderedList' }
 
   return null
@@ -1320,12 +1322,12 @@ export function parseMyBookMarkdown(markdown: string, isRoot = true): MyBookMark
       content.push({ type: 'blockquote', content: parsed.content?.length ? parsed.content : [paragraph('')] })
       continue
     }
-    const heading = /^(#{1,6})\s+(.+)$/u.exec(line)
-    if (heading) {
+    const heading = /^(#{1,6})(?:\s+(.*)|\s*)$/u.exec(line)
+    if (heading && (line.trim() === heading[1] || line.includes(' '))) {
       flushParagraph()
       const marker = heading[1] ?? '#'
-      const text = heading[2] ?? ''
-      content.push({ type: 'heading', attrs: { level: Math.min(marker.length, 4) }, content: parseInline(text) })
+      const text = (heading[2] ?? '').trim()
+      content.push({ type: 'heading', attrs: { level: Math.min(marker.length, 4) }, ...(text ? { content: parseInline(text) } : {}) })
       continue
     }
     const pipeTable = parsePipeTable(lines, lineIndex)

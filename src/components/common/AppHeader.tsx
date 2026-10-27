@@ -458,7 +458,7 @@ export function AppHeader({
                     title={isLocked ? 'Unlock page' : 'Lock page'}
                     aria-pressed={isLocked}
                     onClick={onLockToggle}
-                    className={cn('rounded-lg', isLocked && 'bg-muted text-foreground')}
+                    className={cn('rounded-lg md:hidden', isLocked && 'bg-muted text-foreground')}
                   >
                     <HugeiconsIcon
                       icon={isLocked ? LockIcon : LockOpenIcon}

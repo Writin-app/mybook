@@ -1368,12 +1368,31 @@ describe('MyBook Markdown round trips', () => {
 
   it('round trips empty documents, empty blocks, Unicode, emoji, Arabic, and Hindi text', () => {
     expectRoundTrip(doc(paragraph()))
+    expectRoundTrip(doc({ type: 'taskList', content: [taskItem(false, paragraph())] }))
+    expectRoundTrip(doc({ type: 'taskList', content: [taskItem(true, paragraph())] }))
+    expectRoundTrip(doc({ type: 'bulletList', content: [{ type: 'listItem', content: [paragraph()] }] }))
+    expectRoundTrip(doc({ type: 'orderedList', content: [{ type: 'listItem', content: [paragraph()] }] }))
     expectRoundTrip(doc(
       paragraph(text('Unicode café Привет')),
       paragraph(text('Emoji 😀')),
       paragraph(text('Arabic مرحبا')),
       paragraph(text('Hindi नमस्ते')),
     ))
+  })
+
+  it('correctly parses empty task items, shortcuts, and list lines without fallback to bullet text', () => {
+    const parsedEmptyTask = myBookMarkdownToDocument('- [ ]')
+    expect(parsedEmptyTask.content?.[0]?.type).toBe('taskList')
+    expect(parsedEmptyTask.content?.[0]?.content?.[0]?.type).toBe('taskItem')
+    expect(parsedEmptyTask.content?.[0]?.content?.[0]?.attrs?.checked).toBe(false)
+
+    const parsedEmptyBracket = myBookMarkdownToDocument('- []')
+    expect(parsedEmptyBracket.content?.[0]?.type).toBe('taskList')
+    expect(parsedEmptyBracket.content?.[0]?.content?.[0]?.type).toBe('taskItem')
+
+    const parsedCheckedEmpty = myBookMarkdownToDocument('- [x]')
+    expect(parsedCheckedEmpty.content?.[0]?.type).toBe('taskList')
+    expect(parsedCheckedEmpty.content?.[0]?.content?.[0]?.attrs?.checked).toBe(true)
   })
 
   it('round trips Markdown special characters as literal user text', () => {
