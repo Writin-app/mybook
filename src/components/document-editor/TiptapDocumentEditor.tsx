@@ -73,6 +73,8 @@ import { ToggleBlock, toggleBlockNode } from './extensions/ToggleBlock'
 import { FixedTable } from './extensions/FixedTable'
 import { TableInteraction } from './extensions/TableInteraction'
 import { StyledTableCell, StyledTableHeader } from './extensions/TableCellStyles'
+import { CellSelection, deleteCellSelection } from 'prosemirror-tables'
+import { getTableSelectionPlainText, isSingleTableCellSelection, unwrapTableCellFragment } from './tableClipboard'
 import { InlineHighlight, InlineTextColor } from './extensions/InlineTextColor'
 import { EditorKeyboardShortcuts } from './extensions/EditorKeyboardShortcuts'
 import { BlockMarkdownShortcuts } from './extensions/BlockMarkdownShortcuts'
@@ -1905,14 +1907,32 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       handleDOMEvents: {
         copy: (_view, event) => {
           const currentEditor = editorRef.current
-          if (!currentEditor || currentEditor.state.selection.empty) return false
-          const slice = currentEditor.state.selection.content()
+          if (!currentEditor || currentEditor.state.selection.empty || !event.clipboardData) return false
+          const { state } = currentEditor
+          const { selection } = state
+
+          const tableText = getTableSelectionPlainText(selection, state.doc)
+          if (tableText !== null) {
+            const slice = selection.content()
+            const fragment = isSingleTableCellSelection(selection)
+              ? unwrapTableCellFragment(slice)
+              : slice.content
+            const div = document.createElement('div')
+            const dom = DOMSerializer.fromSchema(state.schema).serializeFragment(fragment)
+            div.appendChild(dom)
+            event.clipboardData.setData('text/html', div.innerHTML)
+            event.clipboardData.setData('text/plain', tableText)
+            event.preventDefault()
+            return true
+          }
+
+          const slice = selection.content()
           const jsonSlice = slice.content.toJSON() as ProseMirrorNode['content'] extends infer T ? T extends { toJSON(): infer R } ? R : unknown : unknown
           const markdown = contentToMarkdown(jsonSlice as never)
-          if (!markdown || !event.clipboardData) return false
+          if (!markdown) return false
 
           const div = document.createElement('div')
-          const dom = DOMSerializer.fromSchema(currentEditor.state.schema).serializeFragment(slice.content)
+          const dom = DOMSerializer.fromSchema(state.schema).serializeFragment(slice.content)
           div.appendChild(dom)
           event.clipboardData.setData('text/html', div.innerHTML)
           event.clipboardData.setData('text/plain', markdown)
@@ -1921,14 +1941,37 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         },
         cut: (_view, event) => {
           const currentEditor = editorRef.current
-          if (!currentEditor || currentEditor.state.selection.empty) return false
-          const slice = currentEditor.state.selection.content()
+          if (!currentEditor || currentEditor.state.selection.empty || !event.clipboardData) return false
+          const { state } = currentEditor
+          const { selection } = state
+
+          const tableText = getTableSelectionPlainText(selection, state.doc)
+          if (tableText !== null) {
+            const slice = selection.content()
+            const fragment = isSingleTableCellSelection(selection)
+              ? unwrapTableCellFragment(slice)
+              : slice.content
+            const div = document.createElement('div')
+            const dom = DOMSerializer.fromSchema(state.schema).serializeFragment(fragment)
+            div.appendChild(dom)
+            event.clipboardData.setData('text/html', div.innerHTML)
+            event.clipboardData.setData('text/plain', tableText)
+            if (selection instanceof CellSelection) {
+              deleteCellSelection(state, (tr) => currentEditor.view.dispatch(tr.scrollIntoView()))
+            } else {
+              currentEditor.commands.deleteSelection()
+            }
+            event.preventDefault()
+            return true
+          }
+
+          const slice = selection.content()
           const jsonSlice = slice.content.toJSON() as ProseMirrorNode['content'] extends infer T ? T extends { toJSON(): infer R } ? R : unknown : unknown
           const markdown = contentToMarkdown(jsonSlice as never)
-          if (!markdown || !event.clipboardData) return false
+          if (!markdown) return false
 
           const div = document.createElement('div')
-          const dom = DOMSerializer.fromSchema(currentEditor.state.schema).serializeFragment(slice.content)
+          const dom = DOMSerializer.fromSchema(state.schema).serializeFragment(slice.content)
           div.appendChild(dom)
           event.clipboardData.setData('text/html', div.innerHTML)
           event.clipboardData.setData('text/plain', markdown)
