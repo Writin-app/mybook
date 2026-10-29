@@ -203,14 +203,46 @@ describe('FileBlockNodeView', () => {
     expect(updateAttributes).toHaveBeenLastCalledWith({ pdfPreview: false })
   })
 
-  it('does not offer inline PDF preview for external PDF URLs', () => {
+  it('offers inline PDF preview in More menu for external PDF URLs', () => {
     render(<FileBlockNodeView {...createProps()} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'More file options' }))
 
-    expect(screen.queryByRole('menuitem', { name: 'Embed PDF' })).not.toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Embed PDF' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Open' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Copy link' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Embed PDF' }))
+    expect(updateAttributes).toHaveBeenCalledWith({ pdfPreview: true })
+  })
+
+  it('offers Embed as table in More menu for external CSV URLs and converts into table', async () => {
+    const externalCsvNode = {
+      ...mockNode,
+      attrs: {
+        src: 'https://example.com/data.csv',
+        name: 'data.csv',
+        mimeType: 'text/csv',
+        size: 1024,
+      },
+    }
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      text: async () => 'ColA,ColB\n1,2',
+    } as Response)
+
+    render(<FileBlockNodeView {...createProps(externalCsvNode)} />)
+    fireEvent.click(screen.getByRole('button', { name: 'More file options' }))
+
+    const embedItem = screen.getByRole('menuitem', { name: 'Embed as table' })
+    expect(embedItem).toBeInTheDocument()
+
+    fireEvent.click(embedItem)
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith('https://example.com/data.csv')
+      expect((mockEditor as { chain: unknown }).chain).toHaveBeenCalled()
+    })
+    fetchSpy.mockRestore()
   })
 
   it('opens Replace file popover when Replace action is clicked', () => {

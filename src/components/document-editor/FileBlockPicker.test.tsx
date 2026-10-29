@@ -118,7 +118,7 @@ describe('FileBlockPicker', () => {
 
     // Enter valid URL
     fireEvent.change(urlInput, { target: { value: 'https://example.com/documents/financial-report-2024.docx' } })
-    const submitBtn = screen.getByRole('button', { name: 'Add file' })
+    const submitBtn = screen.getByRole('button', { name: 'Attach link' })
     fireEvent.click(submitBtn)
 
     await waitFor(() => {
@@ -126,7 +126,8 @@ describe('FileBlockPicker', () => {
         'https://example.com/documents/financial-report-2024.docx',
         'financial-report-2024.docx',
         '',
-        0
+        0,
+        false
       )
     })
   })
@@ -223,5 +224,25 @@ describe('FileBlockPicker', () => {
     await waitFor(() => {
       expect(onEmbedContent).toHaveBeenCalledWith(expect.stringContaining('<table><tbody>'))
     })
+  })
+
+  it('renders only a single Attach link button when a file link is entered', () => {
+    render(
+      <FileBlockPicker
+        position={defaultPosition}
+        onClose={vi.fn()}
+        onInsert={vi.fn()}
+      />
+    )
+
+    const embedTab = screen.getByRole('tab', { name: 'Embed link' })
+    fireEvent.click(embedTab)
+
+    const urlInput = screen.getByLabelText('File link')
+    fireEvent.change(urlInput, { target: { value: 'https://example.com/sheet.csv' } })
+
+    expect(screen.getByRole('button', { name: 'Attach link' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Embed as table' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Embed PDF' })).not.toBeInTheDocument()
   })
 })

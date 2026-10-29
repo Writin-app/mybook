@@ -34,11 +34,18 @@ const textColors = [
 ] as const
 
 function selectionPosition(editor: Editor): ToolbarPosition | null {
-  const { selection } = editor.state
+  const { selection, doc } = editor.state
   if (!(selection instanceof TextSelection) || selection.empty || !editor.isFocused || editor.isActive('codeBlock')) return null
   const { from, to } = selection
-  const start = editor.view.coordsAtPos(from)
-  const end = editor.view.coordsAtPos(to)
+  if (from < 0 || to > doc.content.size) return null
+  let start: { left: number; top: number; bottom: number; right: number }
+  let end: { left: number; top: number; bottom: number; right: number }
+  try {
+    start = editor.view.coordsAtPos(from)
+    end = editor.view.coordsAtPos(to)
+  } catch {
+    return null
+  }
   if (!Number.isFinite(start.left) || !Number.isFinite(end.right)) return null
 
   const viewportHeight = typeof window !== 'undefined'
@@ -56,7 +63,9 @@ function selectionPosition(editor: Editor): ToolbarPosition | null {
     top = Math.max(start.bottom, end.bottom) + 8
   }
   top = Math.max(minTop, Math.min(top, maxTop))
-  const left = Math.max(8, Math.min(Math.min(start.left, end.left), (typeof window !== 'undefined' ? window.innerWidth : 1024) - 380))
+  const toolbarWidth = 436
+  const maxLeft = (typeof window !== 'undefined' ? window.innerWidth : 1024) - toolbarWidth - 8
+  const left = Math.max(8, Math.min(Math.min(start.left, end.left), maxLeft))
   return { left, top }
 }
 

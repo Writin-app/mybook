@@ -41,6 +41,7 @@ const extendSelectionWithinCell = (editor: Editor, direction: 'start' | 'end') =
 
 export const EditorKeyboardShortcuts = Extension.create({
   name: 'editorKeyboardShortcuts',
+  priority: 200,
 
   addKeyboardShortcuts() {
     return {
@@ -120,6 +121,56 @@ export const EditorKeyboardShortcuts = Extension.create({
       'Mod-Shift-C': () => this.editor.commands.toggleCodeBlock(),
       'Mod-Alt-c': () => this.editor.commands.toggleCodeBlock(),
       'Mod-Alt-C': () => this.editor.commands.toggleCodeBlock(),
+
+      // Safe undo / redo handlers to prevent RangeError: Position out of range crashes
+      'Mod-z': () => {
+        try {
+          return this.editor.commands.undo()
+        } catch (err) {
+          console.warn('[Editor] Intercepted invalid undo position error:', err)
+          return false
+        }
+      },
+      'Mod-Z': () => {
+        try {
+          return this.editor.commands.redo()
+        } catch (err) {
+          console.warn('[Editor] Intercepted invalid redo position error:', err)
+          return false
+        }
+      },
+      'Mod-Shift-z': () => {
+        try {
+          return this.editor.commands.redo()
+        } catch (err) {
+          console.warn('[Editor] Intercepted invalid redo position error:', err)
+          return false
+        }
+      },
+      'Mod-Shift-Z': () => {
+        try {
+          return this.editor.commands.redo()
+        } catch (err) {
+          console.warn('[Editor] Intercepted invalid redo position error:', err)
+          return false
+        }
+      },
+      'Mod-y': () => {
+        try {
+          return this.editor.commands.redo()
+        } catch (err) {
+          console.warn('[Editor] Intercepted invalid redo position error:', err)
+          return false
+        }
+      },
+      'Mod-Y': () => {
+        try {
+          return this.editor.commands.redo()
+        } catch (err) {
+          console.warn('[Editor] Intercepted invalid redo position error:', err)
+          return false
+        }
+      },
 
       // Exit inline code formatting when pressing Enter in an empty paragraph (e.g. second Enter)
       Enter: () => {

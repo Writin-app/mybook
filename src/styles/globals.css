@@ -243,30 +243,16 @@
     }
   }
 
-  .mybook-document-editor:has([data-document-link-picker="true"]) .tiptap .mybook-empty-block-placeholder::before {
-    content: "Enter page name";
+  .tiptap .mybook-picker-placeholder::before {
+    content: attr(data-placeholder) !important;
   }
 
-  .mybook-document-editor:has([data-image-picker="true"]) .tiptap .mybook-empty-block-placeholder::before {
-    content: "Add an image";
-  }
+  .tiptap .mybook-heading-placeholder::before { content: attr(data-placeholder) !important; font-weight: inherit; }
+  .tiptap .mybook-column-placeholder::before { content: attr(data-placeholder) !important; font-weight: inherit; }
+  .tiptap .mybook-quote-empty-placeholder::before { content: attr(data-placeholder) !important; font-weight: inherit; }
 
-  .mybook-document-editor:has([data-video-picker="true"]) .tiptap .mybook-empty-block-placeholder::before {
-    content: "Add a video";
-  }
-
-  .mybook-document-editor:has([data-audio-picker="true"]) .tiptap .mybook-empty-block-placeholder::before {
-    content: "Add an audio";
-  }
-
-  .mybook-document-editor:has([data-file-picker="true"]) .tiptap .mybook-empty-block-placeholder::before {
-    content: "Add a file";
-  }
-
-  .tiptap .mybook-heading-placeholder::before { content: attr(data-placeholder); font-weight: inherit; }
-  .tiptap .mybook-column-placeholder::before { content: attr(data-placeholder); font-weight: inherit; }
-
-  .tiptap .mybook-empty-block-placeholder {
+  .tiptap .mybook-empty-block-placeholder,
+  .tiptap .mybook-quote-empty-placeholder {
     position: relative;
   }
 

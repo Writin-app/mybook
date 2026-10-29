@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
+import { TableKit } from '@tiptap/extension-table'
+import { FixedTable } from './extensions/FixedTable'
+import { StyledTableCell, StyledTableHeader } from './extensions/TableCellStyles'
 import { ToggleBlock } from './extensions/ToggleBlock'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -84,7 +87,14 @@ describe('EditorBlockControls', () => {
       const container = document.body.appendChild(document.createElement('div'))
       const ed = new Editor({
         element: container,
-        extensions: [StarterKit, ToggleBlock],
+        extensions: [
+          StarterKit,
+          ToggleBlock,
+          TableKit.configure({ table: false, tableCell: false, tableHeader: false }),
+          FixedTable.configure({ resizable: false }),
+          StyledTableCell,
+          StyledTableHeader,
+        ],
         content,
       })
       vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
@@ -252,6 +262,7 @@ describe('EditorBlockControls', () => {
       const insertContainer = insertMenu.closest('[data-block-insert-menu="true"]')
       expect(insertContainer).not.toBeNull()
       expect(insertContainer?.getAttribute('data-editor-popover')).toBe('true')
+      expect(parseFloat((insertContainer as HTMLElement)?.style.maxHeight || '0')).toBeLessThanOrEqual(352)
       expect(insertContainer?.className).toContain('z-50')
 
       const controls = document.querySelector('.mybook-editor-block-controls')
@@ -534,6 +545,90 @@ describe('EditorBlockControls', () => {
       expect(toggle.type.name).toBe('toggleBlock')
       expect(toggle.childCount).toBe(1)
       expect(toggle.child(0).type.name).toBe('paragraph')
+    })
+
+    it('supports dragging a table into an open toggle block without throwing NodeSelection error', () => {
+      isMobileMock = false
+      editor = createTestEditor(
+        '<table class="mybook-table"><tbody><tr><td><p>Table Cell Content</p></td></tr></tbody></table><details data-type="toggle"><summary>Toggle</summary><div class="mybook-toggle-content"><p>Toggle text</p></div></details>',
+      )
+
+      const toggleContent = editor.view.dom.querySelector('.mybook-toggle-content')!
+      vi.spyOn(toggleContent, 'getBoundingClientRect').mockReturnValue({
+        left: 120,
+        right: 600,
+        top: 200,
+        bottom: 280,
+        width: 480,
+        height: 80,
+        x: 120,
+        y: 200,
+        toJSON: () => {},
+      })
+      const tableSize = editor.state.doc.child(0).nodeSize
+      const childParagraphPos = tableSize + 1
+      vi.spyOn(editor.view, 'posAtCoords').mockReturnValue({
+        pos: childParagraphPos + 1,
+        inside: childParagraphPos + 1,
+      })
+
+      render(<EditorBlockControls editor={editor} onInsertBlock={vi.fn()} />)
+
+      const gutters = document.querySelectorAll('.mybook-editor-block-gutter')
+      // Target table (first gutter)
+      act(() => {
+        fireEvent.pointerEnter(gutters[0]!, { pointerType: 'mouse' })
+      })
+
+      const gripButton = screen.getByRole('button', { name: 'Open block actions' })
+      act(() => {
+        fireEvent.pointerDown(gripButton, { clientX: 20, clientY: 20, pointerType: 'mouse' })
+      })
+
+      act(() => {
+        const moveEvent = new PointerEvent('pointermove', {
+          bubbles: true,
+          clientX: 200,
+          clientY: 220,
+          pointerType: 'mouse',
+        })
+        document.dispatchEvent(moveEvent)
+      })
+
+      // Drop table into toggle - this must not throw RangeError or NodeSelection error
+      act(() => {
+        const upEvent = new PointerEvent('pointerup', { bubbles: true })
+        document.dispatchEvent(upEvent)
+      })
+
+      const toggle = editor.state.doc.child(0)
+      expect(toggle.type.name).toBe('toggleBlock')
+      expect(toggle.textContent).toContain('Table Cell Content')
+    })
+
+    it('safely handles target invalidation when document is shortened or cleared without throwing out of range errors', () => {
+      isMobileMock = false
+      editor = createTestEditor(
+        '<p>First paragraph</p><p>' + 'Second paragraph with long content '.repeat(20) + '</p>',
+      )
+
+      render(<EditorBlockControls editor={editor} onInsertBlock={vi.fn()} />)
+
+      const gutters = document.querySelectorAll('.mybook-editor-block-gutter')
+      expect(gutters.length).toBeGreaterThanOrEqual(2)
+
+      // Target the second block which is at a high position
+      act(() => {
+        fireEvent.pointerEnter(gutters[1]!, { pointerType: 'mouse' })
+      })
+
+      // Replace doc with a much shorter doc (simulate delete/clear all)
+      act(() => {
+        editor!.commands.setContent('<p>Short</p>')
+      })
+
+      // Must not throw RangeError: Position out of range
+      expect(editor!.state.doc.content.size).toBeLessThan(10)
     })
   })
 })

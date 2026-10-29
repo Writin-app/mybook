@@ -4,14 +4,13 @@ import {
   LinkIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
-import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
 
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import { parseFileUrl } from './fileClipboard'
 import { formatFileSize } from './fileIcons'
-import { getVisualViewportBounds } from '../../hooks/useVisualViewport'
 import {
   convertDocxToHtml,
   csvToHtmlTable,
@@ -22,7 +21,13 @@ import {
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024 // 50 MB
 
 export interface FileBlockPickerProps {
-  position?: { left: number; top: number } | null
+  position?: {
+    left: number
+    top: number
+    placement?: 'below' | 'above'
+    anchorTop?: number
+    anchorBottom?: number
+  } | null
   onClose: () => void
   onInsert: (src: string, name: string, mimeType?: string, size?: number, pdfPreview?: boolean) => void
   onEmbedContent?: (content: string) => void
@@ -197,11 +202,7 @@ export function FileBlockPicker({
 
     const isPdfUrl = /\.pdf(?:$|\?)/i.test(parsed.src) || /\.pdf$/i.test(parsed.name)
     setIsEmbedding(true)
-    if (isPdfUrl) {
-      onInsert(parsed.src, parsed.name, 'application/pdf', 0, true)
-    } else {
-      onInsert(parsed.src, parsed.name, '', 0)
-    }
+    onInsert(parsed.src, parsed.name, isPdfUrl ? 'application/pdf' : '', 0, false)
   }
 
   const clearSelectedFile = () => {
@@ -210,13 +211,27 @@ export function FileBlockPicker({
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  const [actualHeight, setActualHeight] = useState<number | null>(null)
+
+  useLayoutEffect(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect()
+      if (rect.height > 0) {
+        setActualHeight(rect.height)
+      }
+    }
+  }, [activeTab, selectedFile, uploadError, embedError])
+
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640
   const isCentered = !isInline && (isMobile || !position || (position.left === 0 && position.top === 0))
 
   const popoverWidth = 384 // 24rem
-  const popoverHeight = 340
   const left = position ? Math.max(8, Math.min(position.left, window.innerWidth - popoverWidth - 16)) : undefined
-  const top = position ? Math.max(8, Math.min(position.top, (typeof window !== 'undefined' ? getVisualViewportBounds().visibleBottom : 768) - popoverHeight - 16)) : undefined
+  const top = position
+    ? position.placement === 'above' && position.anchorTop != null && actualHeight != null
+      ? Math.max(8, position.anchorTop - 8 - actualHeight)
+      : Math.max(8, position.top)
+    : undefined
 
   const pickerDialog = (
     <div
@@ -434,7 +449,7 @@ export function FileBlockPicker({
                 disabled={!embedUrl.trim() || isEmbedding}
                 className="rounded-lg text-xs"
               >
-                {isEmbedding ? 'Saving…' : submitLabel}
+                {isEmbedding ? 'Saving…' : 'Attach link'}
               </Button>
             </div>
           </form>

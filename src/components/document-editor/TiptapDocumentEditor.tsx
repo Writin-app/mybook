@@ -98,12 +98,10 @@ import { Input } from '../ui/input'
 import { FindReplaceDialog } from './FindReplaceDialog'
 import { normalizeLinkUrl } from './linkUrl'
 import { ArrowPathIcon } from '@heroicons/react/24/outline'
+import { EmptyBlockPlaceholder, emptyBlockPlaceholderKey } from './emptyBlockPlaceholder'
 const emptyDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
 const emptyDocumentJson = JSON.stringify(emptyDocument)
 const documentViewModeStorageKey = 'mybook-document-view-mode'
-const emptyBlockPlaceholderClass = 'mybook-empty-block-placeholder'
-const quoteEmptyPlaceholderClass = 'mybook-quote-empty-placeholder'
-const emptyBlockPlaceholderKey = new PluginKey<{ focused: boolean; pickerActive?: boolean }>('emptyBlockPlaceholder')
 const listMarkerDepthKey = new PluginKey('listMarkerDepth')
 const blankBlockSelectionKey = new PluginKey<{ anchor: number | null; head: number | null }>('blankBlockSelection')
 const blankSelectableBlockSelector = ':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > blockquote, :scope > pre, :scope > .mybook-toggle, :scope > ul > li, :scope > ol > li, :scope > [data-type="taskItem"]'
@@ -143,7 +141,7 @@ const MarkdownLinkShortcut = Extension.create({
 interface PasteAsMenuState {
   urlInfo: PasteUrlInfo
   range: { from: number; to: number }
-  position: { left: number; top: number }
+  position: PickerPosition
   documentTarget?: { id: string; name: string }
 }
 interface InlineLinkToolbarState {
@@ -160,24 +158,31 @@ interface InlineLinkToolbarState {
 interface DocumentLinkPickerState {
   query: string
   range: { from: number; to: number }
-  position: { left: number; top: number }
+  position: PickerPosition
   rect?: DOMRect
+}
+export interface PickerPosition {
+  left: number
+  top: number
+  placement?: 'below' | 'above'
+  anchorTop?: number
+  anchorBottom?: number
 }
 interface ImagePickerState {
   range: { from: number; to: number }
-  position: { left: number; top: number }
+  position: PickerPosition
 }
 interface VideoPickerState {
   range: { from: number; to: number }
-  position: { left: number; top: number }
+  position: PickerPosition
 }
 interface AudioPickerState {
   range: { from: number; to: number }
-  position: { left: number; top: number }
+  position: PickerPosition
 }
 interface FilePickerState {
   range: { from: number; to: number }
-  position: { left: number; top: number }
+  position: PickerPosition
 }
 
 function blockPosAtPoint(view: EditorView, x: number, y: number) {
@@ -422,106 +427,6 @@ const BlankBlockSelection = Extension.create({
     })]
   },
 })
-const EmptyBlockPlaceholder = Extension.create({
-  name: 'emptyBlockPlaceholder',
-  addProseMirrorPlugins() {
-    return [new Plugin({
-      key: emptyBlockPlaceholderKey,
-      state: {
-        init: () => ({ focused: false, pickerActive: false }),
-        apply(transaction, value) {
-          const focused = transaction.getMeta(emptyBlockPlaceholderKey)?.focused
-          const pickerActive = transaction.getMeta(emptyBlockPlaceholderKey)?.pickerActive
-          return {
-            focused: focused !== undefined ? focused : value.focused,
-            pickerActive: pickerActive !== undefined ? pickerActive : value.pickerActive,
-          }
-        },
-      },
-      props: {
-        decorations(state) {
-          const decorations: Decoration[] = []
-          const pluginState = emptyBlockPlaceholderKey.getState(state)
-          const isEditorFocused = pluginState?.focused === true || pluginState?.pickerActive === true
-          const activeTextblockPos = isEditorFocused && state.selection.empty && state.selection.$from.parent.isTextblock && state.selection.$from.parent.content.size === 0
-            ? state.selection.$from.before(state.selection.$from.depth)
-            : null
-
-          state.doc.descendants((node, pos, parent) => {
-            if (!node.isTextblock || node.content.size !== 0) return
-            if (parent?.type.name === 'tableCell' || parent?.type.name === 'tableHeader') return
-            if (parent?.type.name === 'blockquote') {
-              decorations.push(Decoration.node(pos, pos + node.nodeSize, {
-                class: quoteEmptyPlaceholderClass,
-                'data-placeholder': 'Quote',
-              }))
-              return
-            }
-            if (parent?.type.name === 'taskItem') {
-              decorations.push(Decoration.node(pos, pos + node.nodeSize, {
-                class: emptyBlockPlaceholderClass,
-              }))
-              return
-            }
-            if (parent?.type.name === 'column') {
-              const isFocusedInThisBlock = pos === activeTextblockPos
-              if (!isFocusedInThisBlock) {
-                // Determine column index (1-based)
-                // pos is inside parent (column), which is inside grandparent (columns)
-                const $pos = state.doc.resolve(pos)
-                let colIndex = 1
-                for (let d = $pos.depth; d > 0; d -= 1) {
-                  if ($pos.node(d).type.name === 'column') {
-                    const colNodePos = $pos.before(d)
-                    const $colPos = state.doc.resolve(colNodePos)
-                    if ($colPos.parent.type.name === 'columns') {
-                      colIndex = $colPos.index() + 1
-                    }
-                    break
-                  }
-                }
-                decorations.push(Decoration.node(pos, pos + node.nodeSize, {
-                  class: `${emptyBlockPlaceholderClass} mybook-column-placeholder`,
-                  'data-placeholder': `Column ${colIndex}`,
-                }))
-                return
-              }
-              // If focused in this block, allow the normal emptyBlockPlaceholder decoration below
-              return
-            }
-            if (node.type.name === 'heading' || (node.type.name !== 'paragraph' && pos === activeTextblockPos)) {
-              const isHeading = node.type.name === 'heading'
-              decorations.push(Decoration.node(pos, pos + node.nodeSize, {
-                class: isHeading ? `${emptyBlockPlaceholderClass} mybook-heading-placeholder` : emptyBlockPlaceholderClass,
-                ...(isHeading ? { 'data-placeholder': `Heading ${node.attrs.level}` } : {}),
-              }))
-            }
-          })
-
-          if (isEditorFocused && state.selection.empty) {
-            const { $from } = state.selection
-            const grandparent = $from.depth > 1 ? $from.node($from.depth - 1) : null
-            if ($from.parent.type.name === 'paragraph' && $from.parent.content.size === 0 && !['tableCell', 'tableHeader'].includes(grandparent?.type.name ?? '')) {
-              const pos = $from.before($from.depth)
-              decorations.push(Decoration.node(pos, $from.after($from.depth), { class: emptyBlockPlaceholderClass }))
-            }
-          }
-          return DecorationSet.create(state.doc, decorations)
-        },
-        handleDOMEvents: {
-          focus(view) {
-            view.dispatch(view.state.tr.setMeta(emptyBlockPlaceholderKey, { focused: true }))
-            return false
-          },
-          blur(view) {
-            view.dispatch(view.state.tr.setMeta(emptyBlockPlaceholderKey, { focused: false }))
-            return false
-          },
-        },
-      },
-    })]
-  },
-})
 
 function parseContent(content: string) {
   if (!content) return emptyDocument
@@ -530,11 +435,19 @@ function parseContent(content: string) {
 
 function computePickerPosition(
   coords: { left: number; top: number; bottom: number; right: number },
-  popoverHeight = 340,
+  popoverHeight = 320,
   popoverWidth = 384,
   gap = 8,
-) {
-  if (typeof window === 'undefined') return { left: coords.left, top: coords.bottom + gap }
+): PickerPosition {
+  if (typeof window === 'undefined') {
+    return {
+      left: coords.left,
+      top: coords.bottom + gap,
+      placement: 'below',
+      anchorTop: coords.top,
+      anchorBottom: coords.bottom,
+    }
+  }
   const bounds = getVisualViewportBounds()
   const visibleBottom = bounds.visibleBottom
   const minTop = bounds.offsetTop + 8
@@ -543,7 +456,13 @@ function computePickerPosition(
     ? coords.bottom + gap
     : (coords.top - gap - popoverHeight >= minTop ? coords.top - gap - popoverHeight : Math.max(minTop, visibleBottom - popoverHeight - 8))
   const left = Math.max(8, Math.min(coords.left, window.innerWidth - popoverWidth - 16))
-  return { left, top }
+  return {
+    left,
+    top,
+    placement: hasRoomBelow ? 'below' : 'above',
+    anchorTop: coords.top,
+    anchorBottom: coords.bottom,
+  }
 }
 
 function cleanPastedHtml(html: string) {
@@ -669,15 +588,32 @@ function cleanPastedText(text: string) {
   return text.replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n')
 }
 
+function clearEditorHistory(editor: NonNullable<ReturnType<typeof useEditor>>) {
+  try {
+    const historyPlugin = editor.state.plugins.find((p: unknown) => Boolean((p as { key?: string }).key?.startsWith('history$')))
+    if (historyPlugin && historyPlugin.spec.state?.init) {
+      const emptyHistoryState = historyPlugin.spec.state.init({} as never, editor.state)
+      const tr = editor.state.tr.setMeta(historyPlugin, { historyState: emptyHistoryState })
+      editor.view.dispatch(tr)
+    }
+  } catch (err) {
+    console.warn('[Editor] Failed to reset history:', err)
+  }
+}
+
 function isWholeDocumentSelection(editor: NonNullable<ReturnType<typeof useEditor>>) {
   const { doc, selection } = editor.state
   return selection.from <= 1 && selection.to >= doc.content.size
 }
 
 function resetEditorToEmptyDocument(editor: NonNullable<ReturnType<typeof useEditor>>) {
-  editor.commands.setContent(emptyDocument, { emitUpdate: true })
-  const selection = TextSelection.create(editor.state.doc, 1)
-  editor.view.dispatch(editor.state.tr.setSelection(selection).scrollIntoView())
+  const { tr, doc } = editor.state
+  const paragraphType = editor.schema.nodes.paragraph
+  if (!paragraphType) return
+  const emptyParagraph = paragraphType.create()
+  const transaction = tr.replaceWith(0, doc.content.size, emptyParagraph)
+  transaction.setSelection(TextSelection.create(transaction.doc, 1)).scrollIntoView()
+  editor.view.dispatch(transaction)
   editor.view.focus()
 }
 
@@ -849,10 +785,25 @@ function MentionSuggestionMenu({ menu, isMobile, selectedIndex, onSelectedIndexC
     )
   }
 
-  return <div role="dialog" aria-label="Mention" data-mention-menu="true" data-editor-popover="true" className="fixed z-50 w-56 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.14)]" style={{ top: Math.min(menu.rect.bottom + 4, window.innerHeight - 132), left: Math.max(8, Math.min(menu.rect.left, window.innerWidth - 232)) }}>
-    <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">Mention</div>
-    {options}
-  </div>
+  const bounds = getVisualViewportBounds()
+  const minTop = bounds.offsetTop + 8
+  const mentionHeight = 132
+  const top = commandMenuTop(menu.rect, mentionHeight, 8, minTop, bounds.visibleBottom)
+  const left = Math.max(8, Math.min(menu.rect.left, (typeof window !== 'undefined' ? window.innerWidth : 1024) - 232))
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Mention"
+      data-mention-menu="true"
+      data-editor-popover="true"
+      className="fixed z-50 w-56 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.14)]"
+      style={{ top: Math.max(minTop, top), left }}
+    >
+      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">Mention</div>
+      {options}
+    </div>
+  )
 }
 
 function PasteAsMenu({
@@ -887,6 +838,11 @@ function PasteAsMenu({
     return () => window.removeEventListener('scroll', handleScroll, true)
   }, [onClose])
 
+  const bounds = getVisualViewportBounds()
+  const minTop = bounds.offsetTop + 8
+  const left = Math.max(8, Math.min(menu.position.left, (typeof window !== 'undefined' ? window.innerWidth : 1024) - 216))
+  const top = Math.max(minTop, menu.position.top)
+
   return (
     <div
       ref={menuRef}
@@ -902,11 +858,8 @@ function PasteAsMenu({
       }}
       className="fixed z-50 min-w-48 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 text-sm shadow-[0_16px_48px_rgba(15,23,42,0.18)]"
       style={{
-        left: Math.max(8, Math.min(menu.position.left, window.innerWidth - 216)),
-        top: Math.max(
-          typeof window !== 'undefined' ? getVisualViewportBounds().offsetTop + 8 : 8,
-          Math.min(menu.position.top, (typeof window !== 'undefined' ? getVisualViewportBounds().visibleBottom : 768) - 196),
-        ),
+        left,
+        top,
       }}
     >
       <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Paste as</div>
@@ -1580,35 +1533,39 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     ? `A document named "${appFileName(duplicateTitleFile.name, duplicateTitleFile.type)}" already exists in this folder.`
     : null
   const closeImagePicker = useCallback(() => {
+    const wasOpen = Boolean(imagePickerRef.current)
     imagePickerRef.current = null
     setImagePicker(null)
     const currentEditor = editorRef.current
-    if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+    if (wasOpen && currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null, pickerPos: null }))
     }
   }, [])
   const closeVideoPicker = useCallback(() => {
+    const wasOpen = Boolean(videoPickerRef.current)
     videoPickerRef.current = null
     setVideoPicker(null)
     const currentEditor = editorRef.current
-    if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+    if (wasOpen && currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null, pickerPos: null }))
     }
   }, [])
   const closeAudioPicker = useCallback(() => {
+    const wasOpen = Boolean(audioPickerRef.current)
     audioPickerRef.current = null
     setAudioPicker(null)
     const currentEditor = editorRef.current
-    if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+    if (wasOpen && currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null, pickerPos: null }))
     }
   }, [])
   const closeFilePicker = useCallback(() => {
+    const wasOpen = Boolean(filePickerRef.current)
     filePickerRef.current = null
     setFilePicker(null)
     const currentEditor = editorRef.current
-    if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+    if (wasOpen && currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null, pickerPos: null }))
     }
   }, [])
   const updateSlashMenu = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
@@ -1681,20 +1638,21 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     setInlineLinkToolbar(null)
   }, [])
   const closeDocumentLinkPicker = useCallback(() => {
+    const wasOpen = Boolean(documentLinkPickerRef.current)
     documentLinkPickerRef.current = null
     setDocumentLinkPicker(null)
     documentLinkSelectedIndexRef.current = 0
     setDocumentLinkSelectedIndex(0)
     const currentEditor = editorRef.current
-    if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+    if (wasOpen && currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null, pickerPos: null }))
     }
   }, [])
   const updateDocumentLinkPicker = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
     const picker = documentLinkPickerRef.current
     if (!picker) return
     const { selection, doc } = currentEditor.state
-    if (!selection.empty || selection.from < picker.range.from) {
+    if (!selection.empty || picker.range.from < 0 || picker.range.from > doc.content.size || selection.from < picker.range.from || selection.from > doc.content.size) {
       closeDocumentLinkPicker()
       return
     }
@@ -1705,7 +1663,13 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       return
     }
     const query = doc.textBetween(picker.range.from, selection.from, '\n', '\0')
-    const coords = currentEditor.view.coordsAtPos(selection.from)
+    let coords: { left: number; top: number; right: number; bottom: number } | null = null
+    try {
+      coords = currentEditor.view.coordsAtPos(selection.from)
+    } catch {
+      closeDocumentLinkPicker()
+      return
+    }
     const rect = new DOMRect(coords.left, coords.top, Math.max(1, coords.right - coords.left), Math.max(1, coords.bottom - coords.top))
     const next: DocumentLinkPickerState = {
       query,
@@ -1920,7 +1884,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           const nextPasteMenu = {
             urlInfo,
             range: nextRange,
-            position: { left: coords.left, top: coords.bottom + 8 },
+            position: computePickerPosition(coords, 210, 216),
             documentTarget: documentTarget ? { id: documentTarget.id, name: documentTarget.name } : undefined,
           }
           pasteAsMenuRef.current = nextPasteMenu
@@ -2446,22 +2410,22 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const openImagePicker = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
-    const { selection } = currentEditor.state
-    const coords = currentEditor.view.coordsAtPos(selection.from)
-    const nextPicker: ImagePickerState = {
-      range: { from: selection.from, to: selection.to },
-      position: computePickerPosition(coords, 340, 384),
-    }
-    imagePickerRef.current = nextPicker
-    setImagePicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
-    slashMenuRef.current = null
-    setSlashMenu(null)
     closeDocumentLinkPicker()
     closeVideoPicker()
     closeAudioPicker()
     closeFilePicker()
     closePasteAsMenu()
+    const { selection } = currentEditor.state
+    const coords = currentEditor.view.coordsAtPos(selection.from)
+    const nextPicker: ImagePickerState = {
+      range: { from: selection.from, to: selection.to },
+      position: computePickerPosition(coords, 320, 384),
+    }
+    imagePickerRef.current = nextPicker
+    setImagePicker(nextPicker)
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'image', pickerPos: selection.from }))
+    slashMenuRef.current = null
+    setSlashMenu(null)
   }, [closeDocumentLinkPicker, closeVideoPicker, closeAudioPicker, closeFilePicker, closePasteAsMenu])
 
   const handleInsertImage = useCallback((src: string, alt: string) => {
@@ -2484,22 +2448,22 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const openVideoPicker = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
-    const { selection } = currentEditor.state
-    const coords = currentEditor.view.coordsAtPos(selection.from)
-    const nextPicker: VideoPickerState = {
-      range: { from: selection.from, to: selection.to },
-      position: computePickerPosition(coords, 340, 384),
-    }
-    videoPickerRef.current = nextPicker
-    setVideoPicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
-    slashMenuRef.current = null
-    setSlashMenu(null)
     closeDocumentLinkPicker()
     closeImagePicker()
     closeAudioPicker()
     closeFilePicker()
     closePasteAsMenu()
+    const { selection } = currentEditor.state
+    const coords = currentEditor.view.coordsAtPos(selection.from)
+    const nextPicker: VideoPickerState = {
+      range: { from: selection.from, to: selection.to },
+      position: computePickerPosition(coords, 320, 384),
+    }
+    videoPickerRef.current = nextPicker
+    setVideoPicker(nextPicker)
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'video', pickerPos: selection.from }))
+    slashMenuRef.current = null
+    setSlashMenu(null)
   }, [closeDocumentLinkPicker, closeImagePicker, closeAudioPicker, closeFilePicker, closePasteAsMenu])
 
   const handleInsertVideo = useCallback((src: string, alt: string, provider?: 'html5' | 'youtube' | 'vimeo' | 'embed') => {
@@ -2522,22 +2486,22 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const openAudioPicker = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
-    const { selection } = currentEditor.state
-    const coords = currentEditor.view.coordsAtPos(selection.from)
-    const nextPicker: AudioPickerState = {
-      range: { from: selection.from, to: selection.to },
-      position: computePickerPosition(coords, 340, 384),
-    }
-    audioPickerRef.current = nextPicker
-    setAudioPicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
-    slashMenuRef.current = null
-    setSlashMenu(null)
     closeDocumentLinkPicker()
     closeImagePicker()
     closeVideoPicker()
     closeFilePicker()
     closePasteAsMenu()
+    const { selection } = currentEditor.state
+    const coords = currentEditor.view.coordsAtPos(selection.from)
+    const nextPicker: AudioPickerState = {
+      range: { from: selection.from, to: selection.to },
+      position: computePickerPosition(coords, 320, 384),
+    }
+    audioPickerRef.current = nextPicker
+    setAudioPicker(nextPicker)
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'audio', pickerPos: selection.from }))
+    slashMenuRef.current = null
+    setSlashMenu(null)
   }, [closeDocumentLinkPicker, closeImagePicker, closeVideoPicker, closeFilePicker, closePasteAsMenu])
 
   const handleInsertAudio = useCallback((src: string, title: string, provider?: 'html5' | 'embed') => {
@@ -2560,22 +2524,22 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const openFilePicker = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
-    const { selection } = currentEditor.state
-    const coords = currentEditor.view.coordsAtPos(selection.from)
-    const nextPicker: FilePickerState = {
-      range: { from: selection.from, to: selection.to },
-      position: computePickerPosition(coords, 340, 384),
-    }
-    filePickerRef.current = nextPicker
-    setFilePicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
-    slashMenuRef.current = null
-    setSlashMenu(null)
     closeDocumentLinkPicker()
     closeImagePicker()
     closeVideoPicker()
     closeAudioPicker()
     closePasteAsMenu()
+    const { selection } = currentEditor.state
+    const coords = currentEditor.view.coordsAtPos(selection.from)
+    const nextPicker: FilePickerState = {
+      range: { from: selection.from, to: selection.to },
+      position: computePickerPosition(coords, 320, 384),
+    }
+    filePickerRef.current = nextPicker
+    setFilePicker(nextPicker)
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'file', pickerPos: selection.from }))
+    slashMenuRef.current = null
+    setSlashMenu(null)
   }, [closeDocumentLinkPicker, closeImagePicker, closeVideoPicker, closeAudioPicker, closePasteAsMenu])
 
   const handleInsertFile = useCallback((src: string, name: string, mimeType = '', size = 0, pdfPreview = false) => {
@@ -2637,6 +2601,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const openDocumentLinkPicker = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
+    closeImagePicker()
+    closeVideoPicker()
+    closeAudioPicker()
+    closeFilePicker()
+    closePasteAsMenu()
     const { selection } = currentEditor.state
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const rect = new DOMRect(coords.left, coords.top, Math.max(1, coords.right - coords.left), Math.max(1, coords.bottom - coords.top))
@@ -2648,16 +2617,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     documentLinkPickerRef.current = nextPicker
     setDocumentLinkPicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'document-link', pickerPos: selection.from }))
     documentLinkSelectedIndexRef.current = 0
     setDocumentLinkSelectedIndex(0)
     slashMenuRef.current = null
     setSlashMenu(null)
-    closeImagePicker()
-    closeVideoPicker()
-    closeAudioPicker()
-    closeFilePicker()
-    closePasteAsMenu()
   }, [closeImagePicker, closeVideoPicker, closeAudioPicker, closeFilePicker, closePasteAsMenu])
 
   useEffect(() => {
@@ -2849,6 +2813,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       const { from, to } = editor.state.selection
       const initialContent = incomingContent || content
       editor.commands.setContent(parseContent(initialContent), { emitUpdate: false })
+      clearEditorHistory(editor)
       if (isFocused) {
         const maxPos = editor.state.doc.content.size
         if (maxPos > 0) {
@@ -3466,7 +3431,13 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     else if (action === 'open-drive' && file.driveFileId) void openDriveFileInBrowser(file.driveFileId)
     else if (action === 'import') importInputRef.current?.click()
     else if (action === 'duplicate') void duplicateDocument()
-    else if (action === 'undo') editor.chain().focus().undo().run()
+    else if (action === 'undo') {
+      try {
+        editor.chain().focus().undo().run()
+      } catch (err) {
+        console.warn('[Editor] Intercepted undo error:', err)
+      }
+    }
     else if (action === 'redo') editor.chain().focus().redo().run()
     else if (action === 'clear') editor.chain().focus().unsetAllMarks().clearNodes().run()
     else if (action === 'link') setEditorLink()
@@ -3585,6 +3556,18 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, insertPos)))
         runSlashCommand(editor, commandId, { from: insertPos, to: insertPos })
         focusAndScrollActiveBlock()
+        return
+      }
+
+      if (['image', 'video', 'audio', 'file', 'document-link'].includes(commandId)) {
+        if (isEmpty) {
+          editor.chain().focus().setTextSelection(targetPos + 1).run()
+          runSlashCommand(editor, commandId, { from: targetPos + 1, to: targetPos + 1 })
+        } else {
+          const insertPos = targetPos + targetNode.nodeSize
+          editor.chain().focus().insertContentAt(insertPos, { type: 'paragraph' }).setTextSelection(insertPos + 1).run()
+          runSlashCommand(editor, commandId, { from: insertPos + 1, to: insertPos + 1 })
+        }
         return
       }
 

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import TaskList from '@tiptap/extension-task-list'
@@ -107,6 +107,52 @@ describe('EditorKeyboardShortcuts Enter behavior', () => {
     // Even if code mark was somehow active in list item
     editor.commands.toggleCode()
     expect(pressEnter()).toBe(false)
+
+    editor.destroy()
+  })
+
+  it('safely handles ProseMirror undo exceptions without crashing', () => {
+    const editor = new Editor({
+      extensions: [StarterKit, EditorKeyboardShortcuts],
+      content: '<p>Some content</p>',
+    })
+
+    // Mock undo throwing an out-of-range error
+    vi.spyOn(editor.commands, 'undo').mockImplementation(() => {
+      throw new RangeError('Position 137 out of range')
+    })
+
+    const keyboardShortcutsExt = editor.extensionManager.extensions.find(
+      (ext) => ext.name === 'editorKeyboardShortcuts',
+    )
+    const shortcuts = keyboardShortcutsExt?.config.addKeyboardShortcuts?.call({
+      editor,
+      options: {},
+      name: 'editorKeyboardShortcuts',
+      storage: {},
+      type: null as never,
+      parent: undefined,
+    })
+
+    const handleModZ = shortcuts?.['Mod-z']
+    expect(handleModZ).toBeTypeOf('function')
+    // Should catch the RangeError safely without rethrowing
+    expect(() => handleModZ?.({ editor } as never)).not.toThrow()
+    expect(handleModZ?.({ editor } as never)).toBe(false)
+
+    editor.destroy()
+  })
+
+  it('has high priority to ensure safe undo interceptor executes before default history', () => {
+    const editor = new Editor({
+      extensions: [StarterKit, EditorKeyboardShortcuts],
+      content: '<p>Content</p>',
+    })
+
+    const shortcutExt = editor.extensionManager.extensions.find(
+      (ext) => ext.name === 'editorKeyboardShortcuts',
+    )
+    expect(shortcutExt?.config.priority).toBe(200)
 
     editor.destroy()
   })

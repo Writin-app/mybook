@@ -3,7 +3,7 @@ import { Delete02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { NodeSelection, TextSelection } from '@tiptap/pm/state'
+import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state'
 import { useEffect, useRef, useState } from 'react'
 
 import { useHoverBlockControlsAvailable } from '../../hooks/useHoverBlockControls'
@@ -26,8 +26,14 @@ const CENTERED_BLOCK_CONTROLS = new Set(['bookmarkBlock', 'documentLink', 'embed
 
 function targetAtBlockPos(editor: Editor, node: ProseMirrorNode, pos: number): BlockTarget {
   const { view } = editor
-  const blockElement = view.nodeDOM(pos)
-  const coords = view.coordsAtPos(pos)
+  const clampedPos = Math.max(0, Math.min(pos, editor.state.doc.content.size))
+  let coords = { left: 0, top: 0, right: 0, bottom: 0 }
+  try {
+    coords = view.coordsAtPos(clampedPos)
+  } catch {
+    // View might not have finished updating DOM
+  }
+  const blockElement = view.nodeDOM(clampedPos)
   const editorDomRect = view.dom.getBoundingClientRect()
   const fallbackWidth = Math.max(0, editorDomRect.width - 32)
   const rect = blockElement instanceof Element
@@ -50,8 +56,13 @@ function targetAtBlockPos(editor: Editor, node: ProseMirrorNode, pos: number): B
     topPos = $from.before(1)
   }
 
-  const topElement = view.nodeDOM(topPos)
-  const topCoords = view.coordsAtPos(topPos)
+  const topElement = view.nodeDOM(Math.max(0, Math.min(topPos, editor.state.doc.content.size)))
+  let topCoords = coords
+  try {
+    topCoords = view.coordsAtPos(Math.max(0, Math.min(topPos, editor.state.doc.content.size)))
+  } catch {
+    // View might not have finished updating DOM
+  }
   const controlRect = topElement instanceof Element
     ? topElement.getBoundingClientRect()
     : new DOMRect(topCoords.left, topCoords.top, Math.max(topCoords.right - topCoords.left, fallbackWidth), topCoords.bottom - topCoords.top)
@@ -193,12 +204,14 @@ function collectGutterTargets(editor: Editor): BlockTarget[] {
 }
 
 function toMovableBlock(editor: Editor, target: BlockTarget): BlockTarget {
+  if (target.pos < 0 || target.pos > editor.state.doc.content.size) return target
   const block = movableBlockAt(editor.state.doc, target.pos)
   if (!block || block.pos === target.pos) return target
   return targetAtBlockPos(editor, block.node, block.pos)
 }
 
 function selectTarget(editor: Editor, target: BlockTarget) {
+  if (target.pos < 0 || target.pos > editor.state.doc.content.size) return
   const selection = target.node.isTextblock
     ? TextSelection.create(editor.state.doc, target.pos + 1, Math.max(target.pos + 1, target.pos + target.node.nodeSize - 1))
     : NodeSelection.create(editor.state.doc, target.pos)
@@ -217,6 +230,7 @@ async function copyTarget(target: BlockTarget) {
 }
 
 function findParentColumnsTarget(editor: Editor, target: BlockTarget): BlockTarget | null {
+  if (target.pos < 0 || target.pos > editor.state.doc.content.size) return null
   const $pos = editor.state.doc.resolve(target.pos)
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
     const node = $pos.node(depth)
@@ -229,6 +243,7 @@ function findParentColumnsTarget(editor: Editor, target: BlockTarget): BlockTarg
 }
 
 function deleteTarget(editor: Editor, target: BlockTarget) {
+  if (target.pos < 0 || target.pos > editor.state.doc.content.size) return
   const $pos = editor.state.doc.resolve(target.pos)
   let parentContainer: { node: ProseMirrorNode; pos: number } | null = null
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
@@ -264,6 +279,31 @@ function blockControlsTop(target: BlockTarget | null) {
   return Math.max(8, target.rect.top)
 }
 
+function safePostMoveSelection(editor: Editor, pos: number, node: ProseMirrorNode): Selection {
+  const doc = editor.state.doc
+  const maxPos = doc.content.size
+  if (node.isTextblock && node.content.size > 0) {
+    return TextSelection.create(doc, Math.min(pos + 1, maxPos))
+  }
+  if (node.type.name === 'table') {
+    let firstCellPos: number | null = null
+    node.descendants((child, childPos) => {
+      if (firstCellPos !== null) return false
+      if (child.isTextblock) {
+        firstCellPos = pos + 1 + childPos + 1
+        return false
+      }
+    })
+    if (firstCellPos !== null && firstCellPos <= maxPos) {
+      return TextSelection.create(doc, firstCellPos)
+    }
+  }
+  if (NodeSelection.isSelectable(node)) {
+    return NodeSelection.create(doc, Math.min(pos, maxPos))
+  }
+  return TextSelection.near(doc.resolve(Math.min(pos + 1, maxPos)))
+}
+
 function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; side: 'before' | 'after' }) {
   if (source.node.type.name === 'column') return
   const dropNode = editor.state.doc.nodeAt(drop.pos)
@@ -296,9 +336,7 @@ function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; si
       : targetInsertPos
     tr.insert(adjustedTarget, source.node)
     editor.view.dispatch(tr.scrollIntoView())
-    const selection = source.node.isTextblock && source.node.content.size
-      ? TextSelection.create(editor.state.doc, adjustedTarget + 1)
-      : NodeSelection.create(editor.state.doc, adjustedTarget)
+    const selection = safePostMoveSelection(editor, adjustedTarget, source.node)
     editor.view.dispatch(editor.state.tr.setSelection(selection))
     editor.view.focus()
     return
@@ -314,13 +352,16 @@ function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; si
     }
   }
   if (dropParentToggle && dropParentToggle.node.childCount === 1 && dropNode.isTextblock && dropNode.content.size === 0) {
-    const tr = editor.state.tr.delete(source.pos, source.pos + source.node.nodeSize)
+    let tr = editor.state.tr.delete(source.pos, source.pos + source.node.nodeSize)
     const adjustedDropPos = drop.pos > source.pos ? drop.pos - source.node.nodeSize : drop.pos
     tr.replaceWith(adjustedDropPos, adjustedDropPos + dropNode.nodeSize, source.node)
+    const togglePos = dropParentToggle.pos > source.pos ? dropParentToggle.pos - source.node.nodeSize : dropParentToggle.pos
+    const currentToggle = tr.doc.nodeAt(togglePos)
+    if (currentToggle && currentToggle.type.name === 'toggleBlock' && !currentToggle.attrs.open) {
+      tr = tr.setNodeMarkup(togglePos, undefined, { ...currentToggle.attrs, open: true })
+    }
     editor.view.dispatch(tr.scrollIntoView())
-    const selection = source.node.isTextblock && source.node.content.size
-      ? TextSelection.create(editor.state.doc, adjustedDropPos + 1)
-      : NodeSelection.create(editor.state.doc, adjustedDropPos)
+    const selection = safePostMoveSelection(editor, adjustedDropPos, source.node)
     editor.view.dispatch(editor.state.tr.setSelection(selection))
     editor.view.focus()
     return
@@ -329,9 +370,7 @@ function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; si
   const insertPos = targetInsertPos > source.pos ? targetInsertPos - source.node.nodeSize : targetInsertPos
   const tr = editor.state.tr.delete(source.pos, source.pos + source.node.nodeSize).insert(insertPos, source.node)
   editor.view.dispatch(tr.scrollIntoView())
-  const selection = source.node.isTextblock && source.node.content.size
-    ? TextSelection.create(editor.state.doc, insertPos + 1)
-    : NodeSelection.create(editor.state.doc, insertPos)
+  const selection = safePostMoveSelection(editor, insertPos, source.node)
   editor.view.dispatch(editor.state.tr.setSelection(selection))
   editor.view.focus()
 }
@@ -465,7 +504,9 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
         if (command) {
           onInsertBlock(command.id, target)
           setIsInsertOpen(false)
-          editor.view.focus()
+          if (!command.id.startsWith('toggle')) {
+            editor.view.focus()
+          }
         }
       }
     }
@@ -539,8 +580,9 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
     }
   }, [dragState, editor])
 
-  const top = blockControlsTop(target)
-  const left = Math.max(8, (target?.controlRect.left ?? 76) - 68)
+  const validTarget = target && target.pos <= editor.state.doc.content.size ? target : null
+  const top = blockControlsTop(validTarget)
+  const left = Math.max(8, (validTarget?.controlRect.left ?? 76) - 68)
   const header = document.querySelector<HTMLElement>('.mybook-document-editor > header')
   const headerBottom = header?.getBoundingClientRect().bottom ?? 0
   const menuBoundary = Math.max(8, headerBottom + 8)
@@ -549,18 +591,18 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
     : 768
   const maxControlsTop = Math.max(menuBoundary, viewportHeight - 36)
   const controlsTop = Math.max(menuBoundary, Math.min(top, maxControlsTop))
-  const bridgeTop = Math.max(8, Math.min(controlsTop, target?.rect.top ?? controlsTop))
+  const bridgeTop = Math.max(8, Math.min(controlsTop, validTarget?.rect.top ?? controlsTop))
   const bridgeLeft = Math.max(0, left)
-  const bridgeWidth = Math.max(0, (target?.controlRect.left ?? left) - bridgeLeft)
-  const bridgeHeight = Math.max(32, target?.rect.height ?? 32)
+  const bridgeWidth = Math.max(0, (validTarget?.controlRect.left ?? left) - bridgeLeft)
+  const bridgeHeight = Math.max(32, validTarget?.rect.height ?? 32)
   const menuRect = new DOMRect(left, controlsTop, 56, 28)
   const insertMenuTop = commandMenuTop(menuRect, 352, 8, menuBoundary)
   const insertMenuWidth = 320
   const insertMenuLeft = Math.max(8, Math.min(left, window.innerWidth - insertMenuWidth - 8))
-  const insertMenuMaxHeight = Math.max(160, viewportHeight - insertMenuTop - 8)
+  const insertMenuMaxHeight = Math.min(352, Math.max(160, viewportHeight - insertMenuTop - 8))
 
-  const parentColumnsTarget = target ? findParentColumnsTarget(editor, target) : null
-  const actionsMenuEstimatedHeight = parentColumnsTarget ? 272 : target?.node.type.name === 'columns' ? 180 : 144
+  const parentColumnsTarget = validTarget ? findParentColumnsTarget(editor, validTarget) : null
+  const actionsMenuEstimatedHeight = parentColumnsTarget ? 272 : validTarget?.node.type.name === 'columns' ? 180 : 144
   const actionsMenuTop = commandMenuTop(menuRect, actionsMenuEstimatedHeight, 8, menuBoundary)
   const actionsMenuWidth = 176
   const actionsMenuMaxHeight = Math.max(120, viewportHeight - actionsMenuTop - 8)
@@ -574,9 +616,12 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
   const isDragging = Boolean(dragState?.isDragging)
 
   const runInsertCommand = (command: SlashCommand) => {
-    onInsertBlock(command.id, target)
+    if (!validTarget) return
+    onInsertBlock(command.id, validTarget)
     setIsInsertOpen(false)
-    editor.view.focus()
+    if (!command.id.startsWith('toggle')) {
+      editor.view.focus()
+    }
   }
 
   return (
@@ -612,7 +657,7 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
           />
         )
       })}
-      {target ? (
+      {validTarget ? (
         <>
       <div
         ref={hoverBridgeRef}
@@ -621,7 +666,7 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
         aria-hidden="true"
         onPointerEnter={(event) => {
           if (event.pointerType === 'touch') return
-          setTarget(target)
+          setTarget(validTarget)
         }}
         onPointerLeave={(event) => {
           if (event.pointerType === 'touch') return
@@ -652,10 +697,10 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
           title="Add block"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
-            if (target) {
+            if (validTarget) {
               const currentSel = editor.state.selection
               if (currentSel.empty) {
-                const selection = safeSelectionForBlock(editor, target.pos)
+                const selection = safeSelectionForBlock(editor, validTarget.pos)
                 editor.view.dispatch(editor.state.tr.setSelection(selection))
                 editor.view.focus()
               }
@@ -676,8 +721,8 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
           onPointerDown={(event) => {
             if (event.pointerType === 'touch') return
             event.preventDefault()
-            selectTarget(editor, target)
-            setDragState({ source: toMovableBlock(editor, target), startX: event.clientX, startY: event.clientY, isDragging: false, drop: null })
+            selectTarget(editor, validTarget)
+            setDragState({ source: toMovableBlock(editor, validTarget), startX: event.clientX, startY: event.clientY, isDragging: false, drop: null })
           }}
           onClick={() => {
             if (suppressNextClickRef.current) return
@@ -721,7 +766,7 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
           aria-label="Block actions"
         >
           {(() => {
-            const parentColumnsTarget = target ? findParentColumnsTarget(editor, target) : null
+            const parentColumnsTarget = validTarget ? findParentColumnsTarget(editor, validTarget) : null
             if (!parentColumnsTarget) return null
             return (
               <>
@@ -763,7 +808,7 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    deleteColumnAt(editor, target.pos)
+                    deleteColumnAt(editor, validTarget.pos)
                     setIsActionsOpen(false)
                     setTarget(null)
                   }}
@@ -775,12 +820,12 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
               </>
             )
           })()}
-          {target.node.type.name === 'columns' ? (
+          {validTarget.node.type.name === 'columns' ? (
             <button
               type="button"
               role="menuitem"
               onClick={() => {
-                const insertPos = target.pos + target.node.nodeSize
+                const insertPos = validTarget.pos + validTarget.node.nodeSize
                 const paragraphType = editor.state.schema.nodes.paragraph
                 if (paragraphType) {
                   editor
@@ -798,9 +843,9 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
               Insert below columns
             </button>
           ) : null}
-          <button type="button" role="menuitem" onClick={() => { void copyTarget(target); setIsActionsOpen(false) }} className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm hover:bg-[var(--app-subtle)]"><ClipboardDocumentIcon aria-hidden="true" className="size-4" />Copy</button>
-          <button type="button" role="menuitem" onClick={() => { duplicateTarget(editor, target); setIsActionsOpen(false) }} className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm hover:bg-[var(--app-subtle)]"><DocumentDuplicateIcon aria-hidden="true" className="size-4" />Duplicate</button>
-          <button type="button" role="menuitem" onClick={() => { deleteTarget(editor, target); setIsActionsOpen(false); setTarget(null); setDragState(null) }} className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm text-red-600 hover:bg-red-50"><HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />Delete</button>
+          <button type="button" role="menuitem" onClick={() => { void copyTarget(validTarget); setIsActionsOpen(false) }} className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm hover:bg-[var(--app-subtle)]"><ClipboardDocumentIcon aria-hidden="true" className="size-4" />Copy</button>
+          <button type="button" role="menuitem" onClick={() => { duplicateTarget(editor, validTarget); setIsActionsOpen(false) }} className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm hover:bg-[var(--app-subtle)]"><DocumentDuplicateIcon aria-hidden="true" className="size-4" />Duplicate</button>
+          <button type="button" role="menuitem" onClick={() => { setIsActionsOpen(false); setTarget(null); setDragState(null); deleteTarget(editor, validTarget); }} className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm text-red-600 hover:bg-red-50"><HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />Delete</button>
         </div>
       ) : null}
         </>

@@ -182,4 +182,51 @@ describe('ImageBlockPicker', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(2)
   })
+
+  it('renders popover with expected top position without secondary clamp shift', () => {
+    const { container } = render(
+      <ImageBlockPicker
+        position={{ left: 100, top: 400 }}
+        onClose={vi.fn()}
+        onInsert={vi.fn()}
+      />
+    )
+
+    const dialog = container.querySelector('[data-image-picker="true"]') as HTMLElement
+    expect(dialog).toBeTruthy()
+    expect(dialog.style.top).toBe('400px')
+    expect(dialog.style.left).toBe('100px')
+  })
+
+  it('adjusts top position when placed above the line with anchorTop', () => {
+    const originalGetBoundingClientRect = HTMLDivElement.prototype.getBoundingClientRect
+    HTMLDivElement.prototype.getBoundingClientRect = vi.fn(() => ({
+      width: 384,
+      height: 280,
+      top: 0,
+      left: 0,
+      bottom: 280,
+      right: 384,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    }))
+
+    try {
+      const { container } = render(
+        <ImageBlockPicker
+          position={{ left: 100, top: 400, placement: 'above', anchorTop: 750, anchorBottom: 770 }}
+          onClose={vi.fn()}
+          onInsert={vi.fn()}
+        />
+      )
+
+      const dialog = container.querySelector('[data-image-picker="true"]') as HTMLElement
+      expect(dialog).toBeTruthy()
+      // top should be anchorTop (750) - 8 - 280 = 462px
+      expect(dialog.style.top).toBe('462px')
+    } finally {
+      HTMLDivElement.prototype.getBoundingClientRect = originalGetBoundingClientRect
+    }
+  })
 })

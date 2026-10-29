@@ -76,13 +76,13 @@ export function FileBlockNodeView({
   const isUrl = Boolean(src && (src.startsWith('http://') || src.startsWith('https://')))
   const isLocalFile = src.startsWith('data:') || src.startsWith('blob:')
   const effectiveLink = href || (isUrl ? src : '')
-  const isPdf = String(mimeType).toLowerCase() === 'application/pdf' || /\.pdf$/iu.test(fileName) || /^data:application\/pdf(?:;|,)/iu.test(src)
-  const canPreviewPdf = isLocalFile && isPdf
+  const isPdf = String(mimeType).toLowerCase() === 'application/pdf' || /\.pdf$/iu.test(fileName) || /^data:application\/pdf(?:;|,)/iu.test(src) || /\.pdf(?:$|\?)/iu.test(src)
+  const canPreviewPdf = Boolean(src && isPdf)
   const isPdfPreview = canPreviewPdf && node.attrs.pdfPreview === true
   const { extension, label, icon: FileIcon, sizeFormatted } = getFileTypeDetails(fileName, mimeType, size)
 
   const embeddableType = getEmbeddableFileType(fileName, mimeType)
-  const canEmbedAsContent = isLocalFile && (embeddableType === 'docx' || embeddableType === 'html' || embeddableType === 'csv')
+  const canEmbedAsContent = Boolean(src) && (embeddableType === 'docx' || embeddableType === 'html' || embeddableType === 'csv')
 
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null)
 
@@ -284,16 +284,32 @@ export function FileBlockNodeView({
 
     try {
       let contentHtml = ''
-      if (embeddableType === 'docx') {
-        const buffer = decodeDataUrlToArrayBuffer(src)
-        const { html } = await convertDocxToHtml(buffer)
-        contentHtml = html
-      } else if (embeddableType === 'html') {
-        const text = decodeDataUrlToText(src)
-        contentHtml = normalizeInlineFormatting(text)
-      } else if (embeddableType === 'csv') {
-        const text = decodeDataUrlToText(src)
-        contentHtml = csvToHtmlTable(text)
+      if (isLocalFile) {
+        if (embeddableType === 'docx') {
+          const buffer = decodeDataUrlToArrayBuffer(src)
+          const { html } = await convertDocxToHtml(buffer)
+          contentHtml = html
+        } else if (embeddableType === 'html') {
+          const text = decodeDataUrlToText(src)
+          contentHtml = normalizeInlineFormatting(text)
+        } else if (embeddableType === 'csv') {
+          const text = decodeDataUrlToText(src)
+          contentHtml = csvToHtmlTable(text)
+        }
+      } else if (isUrl) {
+        const response = await fetch(src)
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        if (embeddableType === 'docx') {
+          const buffer = await response.arrayBuffer()
+          const { html } = await convertDocxToHtml(buffer)
+          contentHtml = html
+        } else if (embeddableType === 'html') {
+          const text = await response.text()
+          contentHtml = normalizeInlineFormatting(text)
+        } else if (embeddableType === 'csv') {
+          const text = await response.text()
+          contentHtml = csvToHtmlTable(text)
+        }
       }
 
       if (contentHtml) {

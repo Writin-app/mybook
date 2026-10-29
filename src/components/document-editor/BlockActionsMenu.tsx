@@ -177,10 +177,11 @@ export function BlockActionsMenu({ editor }: { editor: Editor }) {
     }
   }, [editor])
 
-  if (!target) return null
+  const maxPos = editor.state.doc.content.size
+  if (!target || target.pos < 0 || target.pos + target.node.nodeSize > maxPos) return null
 
-  const previous = target ? editor.state.doc.resolve(target.pos).nodeBefore : null
-  const next = target ? editor.state.doc.resolve(target.pos + target.node.nodeSize).nodeAfter : null
+  const previous = editor.state.doc.resolve(target.pos).nodeBefore
+  const next = editor.state.doc.resolve(target.pos + target.node.nodeSize).nodeAfter
   const viewportHeight = typeof window !== 'undefined'
     ? (window.visualViewport ? window.visualViewport.offsetTop + window.visualViewport.height : window.innerHeight)
     : 768

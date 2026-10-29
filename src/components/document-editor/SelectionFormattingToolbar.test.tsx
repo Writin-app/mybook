@@ -219,4 +219,27 @@ describe('SelectionFormattingToolbar', () => {
     fireEvent.click(inlineCodeButton)
     expect(editor.isActive('code')).toBe(false)
   })
+
+  it('clamps toolbar horizontal position preventing overflow at the right window edge', () => {
+    window.innerWidth = 1000
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit],
+      content: '<p>Rightmost text in table cell</p>',
+    })
+    // Coordinates right near the right edge
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({ left: 950, right: 990, top: 200, bottom: 220 })
+    vi.spyOn(editor, 'isFocused', 'get').mockReturnValue(true)
+
+    render(<SelectionFormattingToolbar editor={editor} onInsertBlock={() => undefined} onEditLink={() => undefined} />)
+    act(() => {
+      editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 1, 10)))
+    })
+
+    const toolbar = screen.getByRole('toolbar', { name: 'Selected text formatting' })
+    expect(toolbar).toBeTruthy()
+    const leftStyle = parseFloat(toolbar.style.left)
+    // Clamped so toolbar (width ~436) does not overflow the 1000px window
+    expect(leftStyle).toBe(1000 - 436 - 8)
+  })
 })
