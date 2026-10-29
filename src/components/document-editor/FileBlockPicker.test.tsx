@@ -118,7 +118,7 @@ describe('FileBlockPicker', () => {
 
     // Enter valid URL
     fireEvent.change(urlInput, { target: { value: 'https://example.com/documents/financial-report-2024.docx' } })
-    const submitBtn = screen.getByRole('button', { name: 'Add file' })
+    const submitBtn = screen.getByRole('button', { name: 'Attach link' })
     fireEvent.click(submitBtn)
 
     await waitFor(() => {
@@ -126,7 +126,8 @@ describe('FileBlockPicker', () => {
         'https://example.com/documents/financial-report-2024.docx',
         'financial-report-2024.docx',
         '',
-        0
+        0,
+        false
       )
     })
   })

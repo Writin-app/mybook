@@ -3,7 +3,7 @@ import { Delete02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { NodeSelection, TextSelection } from '@tiptap/pm/state'
+import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state'
 import { useEffect, useRef, useState } from 'react'
 
 import { useHoverBlockControlsAvailable } from '../../hooks/useHoverBlockControls'
@@ -264,6 +264,31 @@ function blockControlsTop(target: BlockTarget | null) {
   return Math.max(8, target.rect.top)
 }
 
+function safePostMoveSelection(editor: Editor, pos: number, node: ProseMirrorNode): Selection {
+  const doc = editor.state.doc
+  const maxPos = doc.content.size
+  if (node.isTextblock && node.content.size > 0) {
+    return TextSelection.create(doc, Math.min(pos + 1, maxPos))
+  }
+  if (node.type.name === 'table') {
+    let firstCellPos: number | null = null
+    node.descendants((child, childPos) => {
+      if (firstCellPos !== null) return false
+      if (child.isTextblock) {
+        firstCellPos = pos + 1 + childPos + 1
+        return false
+      }
+    })
+    if (firstCellPos !== null && firstCellPos <= maxPos) {
+      return TextSelection.create(doc, firstCellPos)
+    }
+  }
+  if (NodeSelection.isSelectable(node)) {
+    return NodeSelection.create(doc, Math.min(pos, maxPos))
+  }
+  return TextSelection.near(doc.resolve(Math.min(pos + 1, maxPos)))
+}
+
 function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; side: 'before' | 'after' }) {
   if (source.node.type.name === 'column') return
   const dropNode = editor.state.doc.nodeAt(drop.pos)
@@ -296,9 +321,7 @@ function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; si
       : targetInsertPos
     tr.insert(adjustedTarget, source.node)
     editor.view.dispatch(tr.scrollIntoView())
-    const selection = source.node.isTextblock && source.node.content.size
-      ? TextSelection.create(editor.state.doc, adjustedTarget + 1)
-      : NodeSelection.create(editor.state.doc, adjustedTarget)
+    const selection = safePostMoveSelection(editor, adjustedTarget, source.node)
     editor.view.dispatch(editor.state.tr.setSelection(selection))
     editor.view.focus()
     return
@@ -314,13 +337,16 @@ function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; si
     }
   }
   if (dropParentToggle && dropParentToggle.node.childCount === 1 && dropNode.isTextblock && dropNode.content.size === 0) {
-    const tr = editor.state.tr.delete(source.pos, source.pos + source.node.nodeSize)
+    let tr = editor.state.tr.delete(source.pos, source.pos + source.node.nodeSize)
     const adjustedDropPos = drop.pos > source.pos ? drop.pos - source.node.nodeSize : drop.pos
     tr.replaceWith(adjustedDropPos, adjustedDropPos + dropNode.nodeSize, source.node)
+    const togglePos = dropParentToggle.pos > source.pos ? dropParentToggle.pos - source.node.nodeSize : dropParentToggle.pos
+    const currentToggle = tr.doc.nodeAt(togglePos)
+    if (currentToggle && currentToggle.type.name === 'toggleBlock' && !currentToggle.attrs.open) {
+      tr = tr.setNodeMarkup(togglePos, undefined, { ...currentToggle.attrs, open: true })
+    }
     editor.view.dispatch(tr.scrollIntoView())
-    const selection = source.node.isTextblock && source.node.content.size
-      ? TextSelection.create(editor.state.doc, adjustedDropPos + 1)
-      : NodeSelection.create(editor.state.doc, adjustedDropPos)
+    const selection = safePostMoveSelection(editor, adjustedDropPos, source.node)
     editor.view.dispatch(editor.state.tr.setSelection(selection))
     editor.view.focus()
     return
@@ -329,9 +355,7 @@ function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; si
   const insertPos = targetInsertPos > source.pos ? targetInsertPos - source.node.nodeSize : targetInsertPos
   const tr = editor.state.tr.delete(source.pos, source.pos + source.node.nodeSize).insert(insertPos, source.node)
   editor.view.dispatch(tr.scrollIntoView())
-  const selection = source.node.isTextblock && source.node.content.size
-    ? TextSelection.create(editor.state.doc, insertPos + 1)
-    : NodeSelection.create(editor.state.doc, insertPos)
+  const selection = safePostMoveSelection(editor, insertPos, source.node)
   editor.view.dispatch(editor.state.tr.setSelection(selection))
   editor.view.focus()
 }
@@ -465,7 +489,9 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
         if (command) {
           onInsertBlock(command.id, target)
           setIsInsertOpen(false)
-          editor.view.focus()
+          if (!command.id.startsWith('toggle')) {
+            editor.view.focus()
+          }
         }
       }
     }
@@ -557,7 +583,7 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
   const insertMenuTop = commandMenuTop(menuRect, 352, 8, menuBoundary)
   const insertMenuWidth = 320
   const insertMenuLeft = Math.max(8, Math.min(left, window.innerWidth - insertMenuWidth - 8))
-  const insertMenuMaxHeight = Math.max(160, viewportHeight - insertMenuTop - 8)
+  const insertMenuMaxHeight = Math.min(352, Math.max(160, viewportHeight - insertMenuTop - 8))
 
   const parentColumnsTarget = target ? findParentColumnsTarget(editor, target) : null
   const actionsMenuEstimatedHeight = parentColumnsTarget ? 272 : target?.node.type.name === 'columns' ? 180 : 144
@@ -576,7 +602,9 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
   const runInsertCommand = (command: SlashCommand) => {
     onInsertBlock(command.id, target)
     setIsInsertOpen(false)
-    editor.view.focus()
+    if (!command.id.startsWith('toggle')) {
+      editor.view.focus()
+    }
   }
 
   return (

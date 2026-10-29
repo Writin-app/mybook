@@ -11,7 +11,6 @@ import { Input } from '../ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import { parseFileUrl } from './fileClipboard'
 import { formatFileSize } from './fileIcons'
-import { getVisualViewportBounds } from '../../hooks/useVisualViewport'
 import {
   convertDocxToHtml,
   csvToHtmlTable,
@@ -32,6 +31,15 @@ export interface FileBlockPickerProps {
   initialUrl?: string
   isInline?: boolean
   className?: string
+}
+
+function getLinkEmbedType(url: string, name: string): 'pdf' | 'docx' | 'csv' | 'html' | null {
+  const target = ((name || url).toLowerCase().split('?')[0] ?? '').split('#')[0] ?? ''
+  if (target.endsWith('.pdf')) return 'pdf'
+  if (target.endsWith('.docx') || target.endsWith('.doc')) return 'docx'
+  if (target.endsWith('.csv')) return 'csv'
+  if (target.endsWith('.html') || target.endsWith('.htm')) return 'html'
+  return null
 }
 
 export function FileBlockPicker({
@@ -61,6 +69,8 @@ export function FileBlockPicker({
   const [isEmbedding, setIsEmbedding] = useState(false)
 
   const embeddableType = selectedFile ? getEmbeddableFileType(selectedFile.name, selectedFile.type) : null
+  const parsedLink = embedUrl.trim() ? parseFileUrl(embedUrl.trim()) : null
+  const linkEmbedType = parsedLink ? getLinkEmbedType(parsedLink.src, parsedLink.name) : null
 
   // Auto-focus embed input when embed tab is active
   useEffect(() => {
@@ -179,7 +189,7 @@ export function FileBlockPicker({
     }
   }
 
-  const handleEmbedSubmit = (event?: FormEvent) => {
+  const handleEmbedSubmit = async (event?: FormEvent, embedDirect = false) => {
     event?.preventDefault()
     const trimmed = embedUrl.trim()
     setEmbedError(null)
@@ -195,13 +205,39 @@ export function FileBlockPicker({
       return
     }
 
-    const isPdfUrl = /\.pdf(?:$|\?)/i.test(parsed.src) || /\.pdf$/i.test(parsed.name)
+    const embedType = getLinkEmbedType(parsed.src, parsed.name)
     setIsEmbedding(true)
-    if (isPdfUrl) {
+
+    if (embedDirect && embedType === 'pdf') {
       onInsert(parsed.src, parsed.name, 'application/pdf', 0, true)
-    } else {
-      onInsert(parsed.src, parsed.name, '', 0)
+      return
     }
+
+    if (embedDirect && (embedType === 'docx' || embedType === 'html' || embedType === 'csv') && onEmbedContent) {
+      try {
+        const response = await fetch(parsed.src)
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        if (embedType === 'docx') {
+          const buffer = await response.arrayBuffer()
+          const { html } = await convertDocxToHtml(buffer)
+          onEmbedContent(html)
+        } else if (embedType === 'html') {
+          const text = await response.text()
+          onEmbedContent(normalizeInlineFormatting(text))
+        } else if (embedType === 'csv') {
+          const text = await response.text()
+          onEmbedContent(csvToHtmlTable(text))
+        }
+        return
+      } catch {
+        setEmbedError('Could not fetch external file for direct embedding. You can attach it as a link instead.')
+        setIsEmbedding(false)
+        return
+      }
+    }
+
+    // Default: attach as link
+    onInsert(parsed.src, parsed.name, embedType === 'pdf' ? 'application/pdf' : '', 0, false)
   }
 
   const clearSelectedFile = () => {
@@ -214,9 +250,8 @@ export function FileBlockPicker({
   const isCentered = !isInline && (isMobile || !position || (position.left === 0 && position.top === 0))
 
   const popoverWidth = 384 // 24rem
-  const popoverHeight = 340
   const left = position ? Math.max(8, Math.min(position.left, window.innerWidth - popoverWidth - 16)) : undefined
-  const top = position ? Math.max(8, Math.min(position.top, (typeof window !== 'undefined' ? getVisualViewportBounds().visibleBottom : 768) - popoverHeight - 16)) : undefined
+  const top = position ? Math.max(8, position.top) : undefined
 
   const pickerDialog = (
     <div
@@ -423,19 +458,39 @@ export function FileBlockPicker({
               </p>
             ) : null}
 
-            <div className="flex items-center justify-between pt-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
               <span className="text-[11px] text-muted-foreground">
                 Direct file links and web document URLs
               </span>
-              <Button
-                type="submit"
-                variant="default"
-                size="sm"
-                disabled={!embedUrl.trim() || isEmbedding}
-                className="rounded-lg text-xs"
-              >
-                {isEmbedding ? 'Saving…' : submitLabel}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="submit"
+                  variant={linkEmbedType ? 'outline' : 'default'}
+                  size="sm"
+                  disabled={!embedUrl.trim() || isEmbedding}
+                  className="rounded-lg text-xs"
+                >
+                  {isEmbedding ? 'Saving…' : 'Attach link'}
+                </Button>
+                {linkEmbedType ? (
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    disabled={!embedUrl.trim() || isEmbedding}
+                    onClick={() => void handleEmbedSubmit(undefined, true)}
+                    className="rounded-lg text-xs"
+                  >
+                    {isEmbedding
+                      ? 'Embedding…'
+                      : linkEmbedType === 'pdf'
+                        ? 'Embed PDF'
+                        : linkEmbedType === 'csv'
+                          ? 'Embed as table'
+                          : 'Embed into document'}
+                  </Button>
+                ) : null}
+              </div>
             </div>
           </form>
         </TabsContent>

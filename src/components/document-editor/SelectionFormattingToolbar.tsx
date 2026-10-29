@@ -56,7 +56,9 @@ function selectionPosition(editor: Editor): ToolbarPosition | null {
     top = Math.max(start.bottom, end.bottom) + 8
   }
   top = Math.max(minTop, Math.min(top, maxTop))
-  const left = Math.max(8, Math.min(Math.min(start.left, end.left), (typeof window !== 'undefined' ? window.innerWidth : 1024) - 380))
+  const toolbarWidth = 436
+  const maxLeft = (typeof window !== 'undefined' ? window.innerWidth : 1024) - toolbarWidth - 8
+  const left = Math.max(8, Math.min(Math.min(start.left, end.left), maxLeft))
   return { left, top }
 }
 

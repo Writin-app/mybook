@@ -6,7 +6,6 @@ import { columnsNode } from './extensions/Columns'
 import { databaseBlockNode } from './extensions/DatabaseBlock'
 import { dateTimeBlockNode } from './extensions/DateTimeBlock'
 import { tableOfContentsNode } from './extensions/TableOfContents'
-import { toggleBlockNode } from './extensions/ToggleBlock'
 import { convertSelectedBlocks, isFormatCommand } from './blockConversion'
 
 export function isInsideColumns(editor: Pick<Editor, 'state'>): boolean {
@@ -221,11 +220,12 @@ export function runSlashCommand(
   else if (commandId === 'columns-5') {
     if (!isInsideColumns(editor)) chain.insertContent(columnsNode(5)).run()
   }
-  else if (commandId === 'toggle') chain.insertContent(toggleBlockNode()).run()
-  else if (commandId === 'toggle-h1') chain.insertContent(toggleBlockNode('Toggle', 1)).run()
-  else if (commandId === 'toggle-h2') chain.insertContent(toggleBlockNode('Toggle', 2)).run()
-  else if (commandId === 'toggle-h3') chain.insertContent(toggleBlockNode('Toggle', 3)).run()
-  else if (commandId === 'toggle-h4') chain.insertContent(toggleBlockNode('Toggle', 4)).run()
+  else if (commandId === 'toggle' || commandId === 'toggle-h1' || commandId === 'toggle-h2' || commandId === 'toggle-h3' || commandId === 'toggle-h4') {
+    if (!isConversion && range.from < range.to) {
+      chain.run()
+    }
+    convertSelectedBlocks(editor, commandId)
+  }
   else if (commandId === 'toc') chain.insertContent([tableOfContentsNode(), { type: 'paragraph' }]).run()
   else if (commandId === 'database') chain.insertContent([databaseBlockNode(), { type: 'paragraph' }]).run()
   else if (commandId === 'date-time') {

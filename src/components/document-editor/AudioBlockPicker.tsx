@@ -10,7 +10,6 @@ import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import { parseAudioUrl } from './audioClipboard'
-import { getVisualViewportBounds } from '../../hooks/useVisualViewport'
 
 const MAX_AUDIO_FILE_SIZE_BYTES = 50 * 1024 * 1024 // 50 MB
 
@@ -221,9 +220,8 @@ export function AudioBlockPicker({
   const isCentered = !isInline && (isMobile || !position || (position.left === 0 && position.top === 0))
 
   const popoverWidth = 384 // 24rem
-  const popoverHeight = 340
   const left = position ? Math.max(8, Math.min(position.left, window.innerWidth - popoverWidth - 16)) : undefined
-  const top = position ? Math.max(8, Math.min(position.top, (typeof window !== 'undefined' ? getVisualViewportBounds().visibleBottom : 768) - popoverHeight - 16)) : undefined
+  const top = position ? Math.max(8, position.top) : undefined
 
   const pickerDialog = (
     <div

@@ -530,7 +530,7 @@ function parseContent(content: string) {
 
 function computePickerPosition(
   coords: { left: number; top: number; bottom: number; right: number },
-  popoverHeight = 340,
+  popoverHeight = 260,
   popoverWidth = 384,
   gap = 8,
 ) {
@@ -667,6 +667,19 @@ function cleanPastedHtml(html: string) {
 
 function cleanPastedText(text: string) {
   return text.replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n')
+}
+
+export function clearEditorHistory(editor: NonNullable<ReturnType<typeof useEditor>>) {
+  try {
+    const historyPlugin = editor.state.plugins.find((p: unknown) => Boolean((p as { key?: string }).key?.startsWith('history$')))
+    if (historyPlugin && historyPlugin.spec.state?.init) {
+      const emptyHistoryState = historyPlugin.spec.state.init({} as never, editor.state)
+      const tr = editor.state.tr.setMeta(historyPlugin, { historyState: emptyHistoryState })
+      editor.view.dispatch(tr)
+    }
+  } catch (err) {
+    console.warn('[Editor] Failed to reset history:', err)
+  }
 }
 
 function isWholeDocumentSelection(editor: NonNullable<ReturnType<typeof useEditor>>) {
@@ -2450,7 +2463,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: ImagePickerState = {
       range: { from: selection.from, to: selection.to },
-      position: computePickerPosition(coords, 340, 384),
+      position: computePickerPosition(coords, 260, 384),
     }
     imagePickerRef.current = nextPicker
     setImagePicker(nextPicker)
@@ -2488,7 +2501,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: VideoPickerState = {
       range: { from: selection.from, to: selection.to },
-      position: computePickerPosition(coords, 340, 384),
+      position: computePickerPosition(coords, 260, 384),
     }
     videoPickerRef.current = nextPicker
     setVideoPicker(nextPicker)
@@ -2526,7 +2539,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: AudioPickerState = {
       range: { from: selection.from, to: selection.to },
-      position: computePickerPosition(coords, 340, 384),
+      position: computePickerPosition(coords, 260, 384),
     }
     audioPickerRef.current = nextPicker
     setAudioPicker(nextPicker)
@@ -2564,7 +2577,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: FilePickerState = {
       range: { from: selection.from, to: selection.to },
-      position: computePickerPosition(coords, 340, 384),
+      position: computePickerPosition(coords, 280, 384),
     }
     filePickerRef.current = nextPicker
     setFilePicker(nextPicker)
@@ -2849,6 +2862,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       const { from, to } = editor.state.selection
       const initialContent = incomingContent || content
       editor.commands.setContent(parseContent(initialContent), { emitUpdate: false })
+      clearEditorHistory(editor)
       if (isFocused) {
         const maxPos = editor.state.doc.content.size
         if (maxPos > 0) {
@@ -3466,7 +3480,13 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     else if (action === 'open-drive' && file.driveFileId) void openDriveFileInBrowser(file.driveFileId)
     else if (action === 'import') importInputRef.current?.click()
     else if (action === 'duplicate') void duplicateDocument()
-    else if (action === 'undo') editor.chain().focus().undo().run()
+    else if (action === 'undo') {
+      try {
+        editor.chain().focus().undo().run()
+      } catch (err) {
+        console.warn('[Editor] Intercepted undo error:', err)
+      }
+    }
     else if (action === 'redo') editor.chain().focus().redo().run()
     else if (action === 'clear') editor.chain().focus().unsetAllMarks().clearNodes().run()
     else if (action === 'link') setEditorLink()

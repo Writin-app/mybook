@@ -182,4 +182,19 @@ describe('ImageBlockPicker', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(2)
   })
+
+  it('renders popover with expected top position without secondary clamp shift', () => {
+    const { container } = render(
+      <ImageBlockPicker
+        position={{ left: 100, top: 400 }}
+        onClose={vi.fn()}
+        onInsert={vi.fn()}
+      />
+    )
+
+    const dialog = container.querySelector('[data-image-picker="true"]') as HTMLElement
+    expect(dialog).toBeTruthy()
+    expect(dialog.style.top).toBe('400px')
+    expect(dialog.style.left).toBe('100px')
+  })
 })

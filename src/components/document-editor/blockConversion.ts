@@ -38,7 +38,23 @@ export function focusToggleTitle(editor: Editor, pos: number) {
     if (editor.isDestroyed) return false
     const nodeDOM = editor.view.nodeDOM(pos)
     const element = nodeDOM instanceof HTMLElement ? nodeDOM : null
-    const titleInput = element?.querySelector<HTMLInputElement>('input.mybook-toggle-title')
+    let titleInput = element?.querySelector<HTMLInputElement>('input.mybook-toggle-title')
+    if (!titleInput) {
+      try {
+        const domAtPos = editor.view.domAtPos(pos)
+        const parent = domAtPos.node instanceof HTMLElement ? domAtPos.node : domAtPos.node.parentElement
+        titleInput = parent?.querySelector<HTMLInputElement>('input.mybook-toggle-title') ?? null
+      } catch {
+        // ignore
+      }
+    }
+    if (!titleInput && typeof document !== 'undefined') {
+      // Fallback: look for the last inserted toggle title input if exact pos DOM is still mounting
+      const inputs = editor.view.dom.querySelectorAll<HTMLInputElement>('input.mybook-toggle-title')
+      if (inputs.length > 0) {
+        titleInput = inputs[inputs.length - 1]
+      }
+    }
     if (titleInput) {
       titleInput.focus()
       const len = titleInput.value.length
@@ -195,23 +211,42 @@ export function convertSelectedBlocks(
     }
 
     if (!selection.empty) {
-      const text = capitalizeFirstLetter(editor.state.doc.textBetween(selection.from, selection.to, ' ').trim())
+      let fromDepth = selection.$from.depth
+      while (fromDepth > 0 && !selection.$from.node(fromDepth).isBlock) {
+        fromDepth--
+      }
+      let toDepth = selection.$to.depth
+      while (toDepth > 0 && !selection.$to.node(toDepth).isBlock) {
+        toDepth--
+      }
+      const blockStart = fromDepth > 0 ? selection.$from.before(fromDepth) : selection.from
+      const blockEnd = toDepth > 0 ? selection.$to.after(toDepth) : selection.to
+      const text = capitalizeFirstLetter(
+        editor.state.doc.textBetween(selection.from, selection.to, ' ').trim() ||
+        editor.state.doc.textBetween(blockStart, blockEnd, ' ').trim(),
+      )
       const newToggle = toggleType.create({ title: text, open: true, level: toggleLevel }, [pType.create()])
-      const tr = editor.state.tr.replaceWith(selection.from, selection.to, newToggle)
+      const tr = editor.state.tr.replaceWith(blockStart, blockEnd, newToggle)
       editor.view.dispatch(tr)
-      focusToggleTitle(editor, selection.from)
+      focusToggleTitle(editor, blockStart)
       return true
     }
 
-    const blockPos = selection.$from.before(Math.min(selection.$from.depth, 1))
-    const blockNode = editor.state.doc.nodeAt(blockPos)
-    if (blockNode) {
-      const text = capitalizeFirstLetter(blockNode.textContent.trim())
-      const newToggle = toggleType.create({ title: text, open: true, level: toggleLevel }, [pType.create()])
-      const tr = editor.state.tr.replaceWith(blockPos, blockPos + blockNode.nodeSize, newToggle)
-      editor.view.dispatch(tr)
-      focusToggleTitle(editor, blockPos)
-      return true
+    let blockDepth = selection.$from.depth
+    while (blockDepth > 0 && !selection.$from.node(blockDepth).isBlock) {
+      blockDepth--
+    }
+    if (blockDepth > 0) {
+      const blockPos = selection.$from.before(blockDepth)
+      const blockNode = editor.state.doc.nodeAt(blockPos)
+      if (blockNode) {
+        const text = capitalizeFirstLetter(blockNode.textContent.trim())
+        const newToggle = toggleType.create({ title: text, open: true, level: toggleLevel }, [pType.create()])
+        const tr = editor.state.tr.replaceWith(blockPos, blockPos + blockNode.nodeSize, newToggle)
+        editor.view.dispatch(tr)
+        focusToggleTitle(editor, blockPos)
+        return true
+      }
     }
     return false
   }
