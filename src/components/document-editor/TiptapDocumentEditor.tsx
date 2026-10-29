@@ -143,7 +143,7 @@ const MarkdownLinkShortcut = Extension.create({
 interface PasteAsMenuState {
   urlInfo: PasteUrlInfo
   range: { from: number; to: number }
-  position: { left: number; top: number }
+  position: PickerPosition
   documentTarget?: { id: string; name: string }
 }
 interface InlineLinkToolbarState {
@@ -160,24 +160,31 @@ interface InlineLinkToolbarState {
 interface DocumentLinkPickerState {
   query: string
   range: { from: number; to: number }
-  position: { left: number; top: number }
+  position: PickerPosition
   rect?: DOMRect
+}
+export interface PickerPosition {
+  left: number
+  top: number
+  placement?: 'below' | 'above'
+  anchorTop?: number
+  anchorBottom?: number
 }
 interface ImagePickerState {
   range: { from: number; to: number }
-  position: { left: number; top: number }
+  position: PickerPosition
 }
 interface VideoPickerState {
   range: { from: number; to: number }
-  position: { left: number; top: number }
+  position: PickerPosition
 }
 interface AudioPickerState {
   range: { from: number; to: number }
-  position: { left: number; top: number }
+  position: PickerPosition
 }
 interface FilePickerState {
   range: { from: number; to: number }
-  position: { left: number; top: number }
+  position: PickerPosition
 }
 
 function blockPosAtPoint(view: EditorView, x: number, y: number) {
@@ -530,11 +537,19 @@ function parseContent(content: string) {
 
 function computePickerPosition(
   coords: { left: number; top: number; bottom: number; right: number },
-  popoverHeight = 260,
+  popoverHeight = 320,
   popoverWidth = 384,
   gap = 8,
-) {
-  if (typeof window === 'undefined') return { left: coords.left, top: coords.bottom + gap }
+): PickerPosition {
+  if (typeof window === 'undefined') {
+    return {
+      left: coords.left,
+      top: coords.bottom + gap,
+      placement: 'below',
+      anchorTop: coords.top,
+      anchorBottom: coords.bottom,
+    }
+  }
   const bounds = getVisualViewportBounds()
   const visibleBottom = bounds.visibleBottom
   const minTop = bounds.offsetTop + 8
@@ -543,7 +558,13 @@ function computePickerPosition(
     ? coords.bottom + gap
     : (coords.top - gap - popoverHeight >= minTop ? coords.top - gap - popoverHeight : Math.max(minTop, visibleBottom - popoverHeight - 8))
   const left = Math.max(8, Math.min(coords.left, window.innerWidth - popoverWidth - 16))
-  return { left, top }
+  return {
+    left,
+    top,
+    placement: hasRoomBelow ? 'below' : 'above',
+    anchorTop: coords.top,
+    anchorBottom: coords.bottom,
+  }
 }
 
 function cleanPastedHtml(html: string) {
@@ -862,10 +883,25 @@ function MentionSuggestionMenu({ menu, isMobile, selectedIndex, onSelectedIndexC
     )
   }
 
-  return <div role="dialog" aria-label="Mention" data-mention-menu="true" data-editor-popover="true" className="fixed z-50 w-56 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.14)]" style={{ top: Math.min(menu.rect.bottom + 4, window.innerHeight - 132), left: Math.max(8, Math.min(menu.rect.left, window.innerWidth - 232)) }}>
-    <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">Mention</div>
-    {options}
-  </div>
+  const bounds = getVisualViewportBounds()
+  const minTop = bounds.offsetTop + 8
+  const mentionHeight = 132
+  const top = commandMenuTop(menu.rect, mentionHeight, 8, minTop, bounds.visibleBottom)
+  const left = Math.max(8, Math.min(menu.rect.left, (typeof window !== 'undefined' ? window.innerWidth : 1024) - 232))
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Mention"
+      data-mention-menu="true"
+      data-editor-popover="true"
+      className="fixed z-50 w-56 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.14)]"
+      style={{ top: Math.max(minTop, top), left }}
+    >
+      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">Mention</div>
+      {options}
+    </div>
+  )
 }
 
 function PasteAsMenu({
@@ -900,6 +936,11 @@ function PasteAsMenu({
     return () => window.removeEventListener('scroll', handleScroll, true)
   }, [onClose])
 
+  const bounds = getVisualViewportBounds()
+  const minTop = bounds.offsetTop + 8
+  const left = Math.max(8, Math.min(menu.position.left, (typeof window !== 'undefined' ? window.innerWidth : 1024) - 216))
+  const top = Math.max(minTop, menu.position.top)
+
   return (
     <div
       ref={menuRef}
@@ -915,11 +956,8 @@ function PasteAsMenu({
       }}
       className="fixed z-50 min-w-48 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 text-sm shadow-[0_16px_48px_rgba(15,23,42,0.18)]"
       style={{
-        left: Math.max(8, Math.min(menu.position.left, window.innerWidth - 216)),
-        top: Math.max(
-          typeof window !== 'undefined' ? getVisualViewportBounds().offsetTop + 8 : 8,
-          Math.min(menu.position.top, (typeof window !== 'undefined' ? getVisualViewportBounds().visibleBottom : 768) - 196),
-        ),
+        left,
+        top,
       }}
     >
       <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Paste as</div>
@@ -1933,7 +1971,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           const nextPasteMenu = {
             urlInfo,
             range: nextRange,
-            position: { left: coords.left, top: coords.bottom + 8 },
+            position: computePickerPosition(coords, 210, 216),
             documentTarget: documentTarget ? { id: documentTarget.id, name: documentTarget.name } : undefined,
           }
           pasteAsMenuRef.current = nextPasteMenu
@@ -2463,7 +2501,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: ImagePickerState = {
       range: { from: selection.from, to: selection.to },
-      position: computePickerPosition(coords, 260, 384),
+      position: computePickerPosition(coords, 320, 384),
     }
     imagePickerRef.current = nextPicker
     setImagePicker(nextPicker)
@@ -2501,7 +2539,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: VideoPickerState = {
       range: { from: selection.from, to: selection.to },
-      position: computePickerPosition(coords, 260, 384),
+      position: computePickerPosition(coords, 320, 384),
     }
     videoPickerRef.current = nextPicker
     setVideoPicker(nextPicker)
@@ -2539,7 +2577,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: AudioPickerState = {
       range: { from: selection.from, to: selection.to },
-      position: computePickerPosition(coords, 260, 384),
+      position: computePickerPosition(coords, 320, 384),
     }
     audioPickerRef.current = nextPicker
     setAudioPicker(nextPicker)
@@ -2577,7 +2615,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: FilePickerState = {
       range: { from: selection.from, to: selection.to },
-      position: computePickerPosition(coords, 280, 384),
+      position: computePickerPosition(coords, 320, 384),
     }
     filePickerRef.current = nextPicker
     setFilePicker(nextPicker)

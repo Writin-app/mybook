@@ -4,7 +4,7 @@ import {
   MusicalNoteIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
-import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
 
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
@@ -14,7 +14,13 @@ import { parseAudioUrl } from './audioClipboard'
 const MAX_AUDIO_FILE_SIZE_BYTES = 50 * 1024 * 1024 // 50 MB
 
 export interface AudioBlockPickerProps {
-  position?: { left: number; top: number } | null
+  position?: {
+    left: number
+    top: number
+    placement?: 'below' | 'above'
+    anchorTop?: number
+    anchorBottom?: number
+  } | null
   onClose: () => void
   onInsert: (
     src: string,
@@ -216,12 +222,27 @@ export function AudioBlockPicker({
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  const [actualHeight, setActualHeight] = useState<number | null>(null)
+
+  useLayoutEffect(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect()
+      if (rect.height > 0) {
+        setActualHeight(rect.height)
+      }
+    }
+  }, [activeTab, selectedFile, uploadError, embedError])
+
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640
   const isCentered = !isInline && (isMobile || !position || (position.left === 0 && position.top === 0))
 
   const popoverWidth = 384 // 24rem
   const left = position ? Math.max(8, Math.min(position.left, window.innerWidth - popoverWidth - 16)) : undefined
-  const top = position ? Math.max(8, position.top) : undefined
+  const top = position
+    ? position.placement === 'above' && position.anchorTop != null && actualHeight != null
+      ? Math.max(8, position.anchorTop - 8 - actualHeight)
+      : Math.max(8, position.top)
+    : undefined
 
   const pickerDialog = (
     <div
