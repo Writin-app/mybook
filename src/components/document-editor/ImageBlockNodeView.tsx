@@ -118,6 +118,15 @@ export function ImageBlockNodeView({
       setImageStatus('loaded')
       return
     }
+    const img = imageRef.current
+    if (img && img.complete) {
+      if (img.naturalWidth > 0) {
+        setImageStatus('loaded')
+        return
+      }
+      setImageStatus('error')
+      return
+    }
     setImageStatus('loading')
   }, [src, retryKey])
 
@@ -657,7 +666,7 @@ export function ImageBlockNodeView({
               ref={imageRef}
               src={src}
               alt={alt}
-              loading="lazy"
+              loading={imageStatus === 'loaded' ? 'lazy' : 'eager'}
               decoding="async"
               referrerPolicy="no-referrer"
               draggable={false}
@@ -665,8 +674,12 @@ export function ImageBlockNodeView({
               onError={() => setImageStatus('error')}
               onClick={handleImageClick}
               title={href ? (href.startsWith('doc:') ? 'Linked page' : `Linked to: ${href}`) : undefined}
-              className={`mybook-image block w-full rounded-lg object-contain transition-shadow duration-150 ${
-                imageStatus === 'loaded' ? 'block' : 'hidden'
+              className={`mybook-image w-full rounded-lg object-contain transition-shadow duration-150 ${
+                imageStatus === 'loaded'
+                  ? 'block'
+                  : imageStatus === 'loading'
+                  ? 'absolute inset-0 size-full opacity-0 pointer-events-none'
+                  : 'hidden'
               } ${
                 href ? 'cursor-pointer' : ''
               } ${

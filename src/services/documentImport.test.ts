@@ -1,7 +1,16 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 
-import { convertRtfToHtml, documentImportTitle, isSupportedDocumentImport, normalizeInlineFormatting, plainTextToHtml } from './documentImport'
+import {
+  convertRtfToHtml,
+  csvToHtmlTable,
+  documentImportTitle,
+  getEmbeddableFileType,
+  isSupportedDocumentImport,
+  normalizeInlineFormatting,
+  parseCsvRows,
+  plainTextToHtml,
+} from './documentImport'
 
 describe('document import helpers', () => {
   it.each(['notes.md', 'notes.markdown', 'notes.txt', 'notes.docx', 'notes.html', 'notes.htm', 'notes.rtf', 'notes.mybook.md'])(
@@ -12,6 +21,49 @@ describe('document import helpers', () => {
   it('rejects unsupported formats', () => {
     expect(isSupportedDocumentImport({ name: 'report.pdf' })).toBe(false)
     expect(isSupportedDocumentImport({ name: 'sheet.xlsx' })).toBe(false)
+  })
+
+  it('identifies embeddable file types accurately', () => {
+    expect(getEmbeddableFileType('doc.pdf')).toBe('pdf')
+    expect(getEmbeddableFileType('file.bin', 'application/pdf')).toBe('pdf')
+    expect(getEmbeddableFileType('contract.docx')).toBe('docx')
+    expect(getEmbeddableFileType('page.html')).toBe('html')
+    expect(getEmbeddableFileType('data.csv')).toBe('csv')
+    expect(getEmbeddableFileType('data.txt')).toBeNull()
+    expect(getEmbeddableFileType('archive.zip')).toBeNull()
+  })
+
+  it('parses standard and quoted CSV text into rows', () => {
+    const csv = 'Name,Role,"Salary, USD"\nAlice,Engineer,"120,000"\nBob,"Senior ""Lead"" Designer",95000'
+    const rows = parseCsvRows(csv)
+    expect(rows).toEqual([
+      ['Name', 'Role', 'Salary, USD'],
+      ['Alice', 'Engineer', '120,000'],
+      ['Bob', 'Senior "Lead" Designer', '95000'],
+    ])
+  })
+
+  it('parses tab-delimited and semicolon-delimited tabular data', () => {
+    const tsv = 'Item\tCount\tPrice\nApple\t10\t1.50'
+    expect(parseCsvRows(tsv)).toEqual([
+      ['Item', 'Count', 'Price'],
+      ['Apple', '10', '1.50'],
+    ])
+
+    const semi = 'Col1;Col2\nVal1;Val2'
+    expect(parseCsvRows(semi)).toEqual([
+      ['Col1', 'Col2'],
+      ['Val1', 'Val2'],
+    ])
+  })
+
+  it('converts CSV text to an HTML table with header and cells', () => {
+    const csv = 'City,Country\nParis,France\nTokyo,Japan'
+    const tableHtml = csvToHtmlTable(csv)
+    expect(tableHtml).toContain('<table><tbody>')
+    expect(tableHtml).toContain('<th><p>City</p></th><th><p>Country</p></th>')
+    expect(tableHtml).toContain('<td><p>Paris</p></td><td><p>France</p></td>')
+    expect(tableHtml).toContain('<td><p>Tokyo</p></td><td><p>Japan</p></td>')
   })
 
   it('removes the complete recognized extension from the new document title', () => {

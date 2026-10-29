@@ -475,7 +475,7 @@ function GripMenuContent({
                 <span aria-hidden="true">›</span>
               </button>
               {openSubmenu === submenu ? (
-                <div role="menu" aria-label={label === 'Color' ? 'Background color' : 'Align'} className="my-1 rounded-lg border border-[var(--app-border)] bg-popover p-1 shadow-lg sm:absolute sm:left-full sm:top-0 sm:z-20 sm:ml-1 sm:min-w-44">
+                <div role="menu" aria-label={label === 'Color' ? 'Background color' : 'Align'} className="my-1 rounded-lg border border-[var(--app-border)] bg-popover p-1 shadow-lg sm:absolute sm:left-full sm:top-0 sm:z-50 sm:ml-1 sm:min-w-44">
                   {label === 'Color' ? tableColors.map((color) => (
                     <button
                       key={color.name}
@@ -753,15 +753,18 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
     const menuRect = columnMenuRef.current.getBoundingClientRect()
     const gripTop = geometry.tableRect.top - 9
     const gripBottom = geometry.tableRect.top + 9
-    const top = tableMenuTop(gripTop, gripBottom, menuRect.height)
+    const menuHeight = menuRect.height > 0 ? menuRect.height : 340
+    const top = tableMenuTop(gripTop, gripBottom, menuHeight)
     setColumnMenuTop((current) => current === top ? current : top)
   }, [geometry, isManualMenuOpen, isTouch, selection])
 
   useLayoutEffect(() => {
     if (isTouch || !geometry || !isManualMenuOpen || selection?.axis !== 'row' || !rowMenuRef.current) return
+    const menuRect = rowMenuRef.current.getBoundingClientRect()
     const gripTop = selection.rect.top + selection.rect.height / 2 - 9
     const gripBottom = gripTop + 18
-    const top = rowGripMenuTop(gripTop, gripBottom, rowMenuRef.current.getBoundingClientRect().height)
+    const menuHeight = menuRect.height > 0 ? menuRect.height : 340
+    const top = rowGripMenuTop(gripTop, gripBottom, menuHeight)
     setRowMenuTop((current) => current === top ? current : top)
   }, [geometry, isManualMenuOpen, isTouch, selection])
 
@@ -1052,6 +1055,8 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
             />
             <div
               ref={selection.axis === 'column' ? columnMenuRef : rowMenuRef}
+              data-table-menu="true"
+              data-editor-popover="true"
               className="mybook-table-manual-menu fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-[var(--app-border)] bg-popover p-3 pb-[max(1rem,env(safe-area-inset-bottom))] text-popover-foreground shadow-2xl animate-in slide-in-from-bottom-4 duration-200"
               role="menu"
             >
@@ -1062,10 +1067,12 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
         ) : (
           <div
             ref={selection.axis === 'column' ? columnMenuRef : rowMenuRef}
-            className="mybook-table-manual-menu fixed z-50 w-64 rounded-xl border border-[var(--app-border)] bg-popover p-1 text-popover-foreground shadow-lg"
+            data-table-menu="true"
+            data-editor-popover="true"
+            className="mybook-table-manual-menu fixed z-50 w-64 max-h-[min(24rem,calc(100dvh-5rem))] overflow-y-auto rounded-xl border border-[var(--app-border)] bg-popover p-1 text-popover-foreground shadow-lg"
             style={selection.axis === 'row'
               ? {
-                  top: rowMenuTop ?? rowGripMenuTop(selection.rect.top + selection.rect.height / 2 - 9, selection.rect.top + selection.rect.height / 2 + 9, 280),
+                  top: rowMenuTop ?? rowGripMenuTop(selection.rect.top + selection.rect.height / 2 - 9, selection.rect.top + selection.rect.height / 2 + 9, 360),
                   left: Math.max(8, Math.min(visibleTableLeft + 14, window.innerWidth - 264)),
                 }
               : {

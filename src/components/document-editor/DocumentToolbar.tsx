@@ -461,7 +461,7 @@ function ToolbarControls({
       <div
         role="toolbar"
         aria-label="Document formatting"
-        className={`mybook-mobile-document-toolbar pointer-events-none fixed inset-x-0 bottom-0 z-20 ${
+        className={`mybook-mobile-document-toolbar pointer-events-none fixed inset-x-0 bottom-0 z-40 ${
           keyboardOffset > 0 ? '' : 'transition-[bottom] duration-150'
         } md:hidden ${
           isAddBlockOpen

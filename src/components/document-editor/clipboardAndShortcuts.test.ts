@@ -35,6 +35,7 @@ describe('EditorKeyboardShortcuts extension', () => {
     expect(shortcuts).toHaveProperty('ArrowRight')
     expect(shortcuts).toHaveProperty('ArrowLeft')
     expect(shortcuts).toHaveProperty('Space')
+    expect(shortcuts).toHaveProperty('Enter')
   })
 })
 

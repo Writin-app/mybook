@@ -144,6 +144,27 @@ describe('ImageBlockPicker', () => {
     expect(onInsert).toHaveBeenCalledWith('https://images.unsplash.com/photo-123.jpg', 'photo-123')
   })
 
+  it('auto-normalizes image URLs without protocol with https://', () => {
+    const onInsert = vi.fn()
+    render(
+      <ImageBlockPicker
+        position={defaultPosition}
+        onClose={vi.fn()}
+        onInsert={onInsert}
+      />
+    )
+
+    const embedTab = screen.getByRole('tab', { name: 'Embed link' })
+    fireEvent.click(embedTab)
+
+    const input = screen.getByPlaceholderText(/paste image link/i)
+    fireEvent.change(input, { target: { value: 'images.unsplash.com/photo-456.jpg' } })
+    const submitBtn = screen.getByRole('button', { name: /add image/i })
+    fireEvent.click(submitBtn)
+
+    expect(onInsert).toHaveBeenCalledWith('https://images.unsplash.com/photo-456.jpg', 'photo-456')
+  })
+
   it('closes popover on Escape key and Close button click', () => {
     const onClose = vi.fn()
     render(

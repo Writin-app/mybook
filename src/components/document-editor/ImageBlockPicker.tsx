@@ -32,14 +32,39 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function normalizeImageUrl(candidate: string): string {
+  const trimmed = candidate.trim()
+  if (!trimmed) return ''
+  if (
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('/') ||
+    trimmed.startsWith('./') ||
+    trimmed.startsWith('../') ||
+    trimmed.includes('://')
+  ) {
+    return trimmed
+  }
+  if (trimmed.startsWith('localhost') || trimmed.includes('.')) {
+    return `https://${trimmed}`
+  }
+  return trimmed
+}
+
 function isValidImageUrl(candidate: string): boolean {
   try {
-    const trimmed = candidate.trim()
-    if (!trimmed) return false
-    if (trimmed.startsWith('data:image/') || trimmed.startsWith('/') || trimmed.startsWith('./') || trimmed.startsWith('../')) {
+    const normalized = normalizeImageUrl(candidate)
+    if (!normalized) return false
+    if (
+      normalized.startsWith('data:image/') ||
+      normalized.startsWith('blob:') ||
+      normalized.startsWith('/') ||
+      normalized.startsWith('./') ||
+      normalized.startsWith('../')
+    ) {
       return true
     }
-    const parsed = new URL(trimmed)
+    const parsed = new URL(normalized)
     return parsed.protocol === 'http:' || parsed.protocol === 'https:'
   } catch {
     return false
@@ -182,11 +207,12 @@ export function ImageBlockPicker({
       return
     }
 
+    const finalUrl = normalizeImageUrl(trimmed)
     setIsEmbedding(true)
     // Extract filename from URL pathname if available for alt text
     let alt = ''
     try {
-      const parsed = new URL(trimmed, window.location.origin)
+      const parsed = new URL(finalUrl, window.location.origin)
       const pathname = parsed.pathname
       const filename = pathname.substring(pathname.lastIndexOf('/') + 1)
       if (filename) alt = filename.replace(/\.[^.]+$/u, '')
@@ -194,7 +220,7 @@ export function ImageBlockPicker({
       // ignore
     }
 
-    onInsert(trimmed, alt)
+    onInsert(finalUrl, alt)
   }
 
   const clearSelectedFile = () => {
@@ -222,12 +248,13 @@ export function ImageBlockPicker({
         className
           ? className
           : isInline
-            ? 'absolute top-11 right-0 z-40 w-[min(24rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
+            ? 'absolute top-11 right-0 z-50 w-[min(24rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
             : isCentered
               ? 'w-[min(24rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
               : 'fixed z-50 w-[min(24rem,calc(100vw-1rem))] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
       }
       data-image-picker="true"
+      data-editor-popover="true"
       data-command-menu-scroller="true"
       style={isInline || isCentered ? undefined : { left, top }}
     >

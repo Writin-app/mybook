@@ -367,7 +367,7 @@ export function DateTimePicker({
             <button type="button" aria-label="Date format" aria-expanded={dateFormatOpen} onClick={() => setDateFormatOpen((current) => !current)} className="flex min-h-8 w-full items-center justify-between rounded px-1 text-left text-sm hover:bg-muted">
               <span>Date format</span><span className="flex items-center gap-1 text-muted-foreground">{DATE_FORMATS.find((option) => option.value === dateFormat)?.label}<HugeiconsIcon icon={ArrowRightIcon} strokeWidth={2} className="size-4" /></span>
             </button>
-            {dateFormatOpen && <div role="menu" aria-label="Date format options" className={cn('absolute right-0 top-0 z-20 w-44 translate-x-[calc(100%+0.5rem)] rounded-lg border border-border bg-popover p-1 shadow-lg', isMobile && 'left-0 top-full w-full translate-x-0')}>
+            {dateFormatOpen && <div role="menu" aria-label="Date format options" data-editor-popover="true" className={cn('absolute right-0 top-0 z-50 w-44 translate-x-[calc(100%+0.5rem)] rounded-lg border border-border bg-popover p-1 shadow-lg', isMobile && 'left-0 top-full w-full translate-x-0')}>
               {DATE_FORMATS.map((option) => <button key={option.value} type="button" role="menuitemradio" aria-checked={dateFormat === option.value} onClick={() => { onDateFormatChange(option.value); setDateFormatOpen(false) }} className="flex h-7 w-full items-center justify-between rounded px-2 text-left text-xs hover:bg-muted">{option.label}{dateFormat === option.value ? <span aria-hidden="true">✓</span> : null}</button>)}
             </div>}
           </div>

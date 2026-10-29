@@ -180,7 +180,9 @@ export function FindReplaceDialog({
       ref={dialogRef}
       role="region"
       aria-label="Find and replace"
-      className="absolute inset-x-0 top-0 z-40 border-b border-border bg-background/95 shadow-md backdrop-blur supports-[backdrop-filter]:bg-background/85"
+      data-find-replace="true"
+      data-editor-popover="true"
+      className="absolute inset-x-0 top-0 z-50 border-b border-border bg-background/95 shadow-md backdrop-blur supports-[backdrop-filter]:bg-background/85"
     >
       <div className="mx-auto flex max-w-screen-2xl flex-col gap-1.5 px-2.5 py-2 sm:gap-2 sm:px-5">
         {/* Row 1: Search & Navigation */}

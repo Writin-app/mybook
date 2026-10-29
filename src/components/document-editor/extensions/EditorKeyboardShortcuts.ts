@@ -121,6 +121,37 @@ export const EditorKeyboardShortcuts = Extension.create({
       'Mod-Alt-c': () => this.editor.commands.toggleCodeBlock(),
       'Mod-Alt-C': () => this.editor.commands.toggleCodeBlock(),
 
+      // Exit inline code formatting when pressing Enter in an empty paragraph (e.g. second Enter)
+      Enter: () => {
+        const { state } = this.editor
+        const { selection } = state
+        if (!selection.empty) return false
+
+        // Let list item handlers manage lists
+        if (this.editor.isActive('listItem') || this.editor.isActive('taskItem')) {
+          return false
+        }
+
+        const { $from } = selection
+        const codeType = state.schema.marks.code
+        if (!codeType) return false
+
+        const hasCodeInStoredMarks = Boolean(state.storedMarks?.some((m) => m.type === codeType))
+        const hasCodeInCursorMarks = Boolean($from.marks().some((m) => m.type === codeType))
+        const isCodeActive = hasCodeInStoredMarks || hasCodeInCursorMarks || this.editor.isActive('code')
+
+        if (!isCodeActive) return false
+
+        if ($from.parent.type.name === 'paragraph' && $from.parent.content.size === 0) {
+          if (this.editor.commands.splitBlock()) {
+            this.editor.commands.unsetCode()
+            return true
+          }
+        }
+
+        return false
+      },
+
       // Step out of inline mark (like inline code) at the boundary
       ArrowRight: () => {
         const { state, view } = this.editor

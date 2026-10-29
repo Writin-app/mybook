@@ -4,10 +4,13 @@ import {
   CopyLinkIcon,
   Delete02Icon,
   Download01Icon,
+  FileCodeIcon,
   LinkIcon,
+  LinkOffIcon,
   MoreHorizontalIcon,
   ReloadIcon,
   SquareArrowOutUpRightIcon,
+  Table01Icon,
   Tick02Icon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -31,10 +34,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu'
-import { downloadFile, parseFileUrl } from './fileClipboard'
+import { useDocumentLinkContext } from './DocumentLinkContext'
+import { dataUrlToBlob, decodeDataUrlToArrayBuffer, decodeDataUrlToText, downloadFile, parseFileUrl } from './fileClipboard'
 import { FileBlockPicker } from './FileBlockPicker'
 import { FileEditLinkPopover } from './FileEditLinkPopover'
 import { getFileTypeDetails } from './fileIcons'
+import { resolveInternalDocumentId } from './imageClipboard'
+import { ImageLinkPopover } from './ImageLinkPopover'
+import {
+  convertDocxToHtml,
+  csvToHtmlTable,
+  getEmbeddableFileType,
+  normalizeInlineFormatting,
+} from '../../services/documentImport'
 
 export function FileBlockNodeView({
   editor,
@@ -45,11 +57,13 @@ export function FileBlockNodeView({
   selected,
 }: NodeViewProps) {
   const { isTouch } = useDeviceMode()
+  const docContext = useDocumentLinkContext()
   const {
     src = '',
     name = '',
     mimeType = '',
     size = 0,
+    href = null,
   } = node.attrs
 
   const fileName = name || 'File'
@@ -61,18 +75,52 @@ export function FileBlockNodeView({
 
   const isUrl = Boolean(src && (src.startsWith('http://') || src.startsWith('https://')))
   const isLocalFile = src.startsWith('data:') || src.startsWith('blob:')
+  const effectiveLink = href || (isUrl ? src : '')
   const isPdf = String(mimeType).toLowerCase() === 'application/pdf' || /\.pdf$/iu.test(fileName) || /^data:application\/pdf(?:;|,)/iu.test(src)
   const canPreviewPdf = isLocalFile && isPdf
   const isPdfPreview = canPreviewPdf && node.attrs.pdfPreview === true
   const { extension, label, icon: FileIcon, sizeFormatted } = getFileTypeDetails(fileName, mimeType, size)
 
+  const embeddableType = getEmbeddableFileType(fileName, mimeType)
+  const canEmbedAsContent = isLocalFile && (embeddableType === 'docx' || embeddableType === 'html' || embeddableType === 'csv')
+
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!isPdfPreview || !src || !src.startsWith('data:')) {
+      setPreviewBlobUrl(null)
+      return
+    }
+
+    if (typeof window === 'undefined' || typeof window.URL?.createObjectURL !== 'function') {
+      setPreviewBlobUrl(null)
+      return
+    }
+
+    const blob = dataUrlToBlob(src)
+    if (!blob) {
+      setPreviewBlobUrl(null)
+      return
+    }
+
+    const url = window.URL.createObjectURL(blob)
+    setPreviewBlobUrl(url)
+
+    return () => {
+      window.URL.revokeObjectURL(url)
+    }
+  }, [isPdfPreview, src])
+
+  const activePreviewSrc = previewBlobUrl || src
+
   const [isMoreOpen, setIsMoreOpen] = useState(false)
   const [showReplacePicker, setShowReplacePicker] = useState(false)
   const [showEditLinkPopover, setShowEditLinkPopover] = useState(false)
+  const [showAttachedLinkPopover, setShowAttachedLinkPopover] = useState(false)
   const [copied, setCopied] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
 
-  const isToolbarActive = isMoreOpen || showReplacePicker || showEditLinkPopover
+  const isToolbarActive = isMoreOpen || showReplacePicker || showEditLinkPopover || showAttachedLinkPopover
 
   // Auto-probe HEAD request for URL-based files to get Content-Length (file size)
   useEffect(() => {
@@ -143,11 +191,31 @@ export function FileBlockNodeView({
     return parts.join(' · ') || 'File'
   }, [extension, sizeFormatted, domain, isUrl])
 
-  const handleOpen = () => {
-    if (isUrl) {
-      window.open(src, '_blank', 'noopener,noreferrer')
+  const handleOpenLink = () => {
+    if (!effectiveLink) return
+    const internalDocId = resolveInternalDocumentId(effectiveLink, docContext?.files)
+    if (internalDocId) {
+      docContext?.openDocument(internalDocId)
     } else {
-      void downloadFile(src, fileName)
+      const targetUrl = /^https?:\/\//i.test(effectiveLink) || effectiveLink.startsWith('/') ? effectiveLink : `https://${effectiveLink}`
+      window.open(targetUrl, '_blank', 'noopener,noreferrer')
+    }
+  }
+
+  const handleCardClick = (event: MouseEvent) => {
+    if (effectiveLink) {
+      event.preventDefault()
+      event.stopPropagation()
+      handleOpenLink()
+    } else {
+      // Do not download or preview/open file when clicked. Select node in editor.
+      const pos = getPos()
+      if (pos !== undefined && editor) {
+        if (typeof editor.commands?.setNodeSelection === 'function') {
+          editor.commands.setNodeSelection(pos)
+        }
+        editor.view?.focus?.()
+      }
     }
   }
 
@@ -178,10 +246,62 @@ export function FileBlockNodeView({
     }
   }
 
+  const handleCopyHrefLink = async () => {
+    if (!effectiveLink) return
+    let linkToCopy = effectiveLink
+    const internalDocId = resolveInternalDocumentId(effectiveLink, docContext?.files)
+    if (internalDocId) {
+      const target = docContext?.files.find((file) => file.id === internalDocId)
+      const route = target?.type === 'spreadsheet' ? `/spreadsheet/${internalDocId}` : `/document/${internalDocId}`
+      linkToCopy = typeof window !== 'undefined' && window.location ? `${window.location.origin}${route}` : route
+    } else if (/^https?:\/\//i.test(effectiveLink) || /^(?:mailto:|ftp:|tel:)/i.test(effectiveLink)) {
+      linkToCopy = effectiveLink
+    } else if (effectiveLink.startsWith('/')) {
+      linkToCopy = typeof window !== 'undefined' && window.location ? `${window.location.origin}${effectiveLink}` : effectiveLink
+    } else {
+      linkToCopy = `https://${effectiveLink}`
+    }
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(linkToCopy)
+        setCopiedLink(true)
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const togglePdfPreview = () => {
     if (!canPreviewPdf) return
     updateAttributes({ pdfPreview: !isPdfPreview })
     setIsMoreOpen(false)
+  }
+
+  const handleEmbedAsContent = async () => {
+    const pos = getPos()
+    if (pos === undefined) return
+
+    try {
+      let contentHtml = ''
+      if (embeddableType === 'docx') {
+        const buffer = decodeDataUrlToArrayBuffer(src)
+        const { html } = await convertDocxToHtml(buffer)
+        contentHtml = html
+      } else if (embeddableType === 'html') {
+        const text = decodeDataUrlToText(src)
+        contentHtml = normalizeInlineFormatting(text)
+      } else if (embeddableType === 'csv') {
+        const text = decodeDataUrlToText(src)
+        contentHtml = csvToHtmlTable(text)
+      }
+
+      if (contentHtml) {
+        editor.chain().focus().insertContentAt({ from: pos, to: pos + node.nodeSize }, contentHtml).run()
+      }
+    } catch (err) {
+      console.error('Failed to embed file content into document:', err)
+    }
   }
 
   const handleDuplicate = () => {
@@ -223,7 +343,9 @@ export function FileBlockNodeView({
   const handleKeyDown = (event: ReactKeyboardEvent) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      handleOpen()
+      if (effectiveLink) {
+        handleOpenLink()
+      }
     }
   }
 
@@ -331,10 +453,10 @@ export function FileBlockNodeView({
             </>
           ) : null}
 
-          {isUrl ? (
+          {effectiveLink ? (
             <DropdownMenuItem
               onClick={() => {
-                window.open(src, '_blank', 'noopener,noreferrer')
+                handleOpenLink()
                 setIsMoreOpen(false)
               }}
               className="flex items-center gap-2"
@@ -349,6 +471,28 @@ export function FileBlockNodeView({
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={togglePdfPreview} className="flex items-center gap-2">
                 <span className="whitespace-nowrap">{isPdfPreview ? 'Show as file card' : 'Embed PDF'}</span>
+              </DropdownMenuItem>
+            </>
+          ) : null}
+
+          {canEmbedAsContent ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  void handleEmbedAsContent()
+                  setIsMoreOpen(false)
+                }}
+                className="flex items-center gap-2"
+              >
+                <HugeiconsIcon
+                  icon={embeddableType === 'csv' ? Table01Icon : FileCodeIcon}
+                  strokeWidth={2}
+                  className="size-4 shrink-0 text-foreground"
+                />
+                <span className="whitespace-nowrap">
+                  {embeddableType === 'csv' ? 'Embed as table' : 'Embed in document'}
+                </span>
               </DropdownMenuItem>
             </>
           ) : null}
@@ -387,7 +531,45 @@ export function FileBlockNodeView({
                 <span className="whitespace-nowrap">{copiedLink ? 'Copied' : 'Copy link'}</span>
               </DropdownMenuItem>
             </>
-          ) : null}
+          ) : (
+            <>
+              <DropdownMenuItem
+                onClick={() => {
+                  setShowAttachedLinkPopover(true)
+                  setIsMoreOpen(false)
+                }}
+                className="flex items-center gap-2"
+              >
+                <HugeiconsIcon icon={LinkIcon} strokeWidth={2} className="size-4 shrink-0 text-foreground" />
+                <span className="whitespace-nowrap">{href ? 'Edit link' : 'Add link'}</span>
+              </DropdownMenuItem>
+
+              {href ? (
+                <>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      updateAttributes({ href: null })
+                      setIsMoreOpen(false)
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <HugeiconsIcon icon={LinkOffIcon} strokeWidth={2} className="size-4 shrink-0 text-foreground" />
+                    <span className="whitespace-nowrap">Remove link</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    closeOnClick={false}
+                    onClick={() => {
+                      void handleCopyHrefLink()
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <HugeiconsIcon icon={copiedLink ? Tick02Icon : CopyLinkIcon} strokeWidth={2} className="size-4 shrink-0 text-foreground" />
+                    <span className="whitespace-nowrap">{copiedLink ? 'Copied' : 'Copy link'}</span>
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </>
+          )}
 
           <DropdownMenuSeparator />
 
@@ -428,9 +610,10 @@ export function FileBlockNodeView({
             <CardHeader className="mybook-file-pdf-header">
               <button
                 type="button"
-                onClick={handleOpen}
-                aria-label={`Open ${displayName}`}
-                className="mybook-file-pdf-meta text-left"
+                onClick={handleCardClick}
+                aria-label={effectiveLink ? `Open linked destination for ${displayName}` : displayName}
+                title={effectiveLink ? (effectiveLink.startsWith('doc:') ? 'Linked page' : `Linked to: ${effectiveLink}`) : undefined}
+                className={`mybook-file-pdf-meta text-left ${effectiveLink ? 'cursor-pointer' : 'cursor-default'}`}
               >
                 <span className="mybook-file-pdf-icon" aria-hidden="true">
                   <HugeiconsIcon icon={FileIcon} strokeWidth={1.75} className="size-4 text-primary" />
@@ -448,7 +631,7 @@ export function FileBlockNodeView({
             <CardContent className="mybook-bookmark-content !p-0">
               <iframe
                 title={`PDF preview: ${fileName}`}
-                src={src}
+                src={activePreviewSrc}
                 className="block h-[min(70dvh,56rem)] min-h-72 w-full border-0 bg-muted rounded-b-[10px]"
               >
                 <p className="p-4 text-xs text-muted-foreground">
@@ -462,10 +645,11 @@ export function FileBlockNodeView({
             <CardContent className="mybook-bookmark-content px-0">
               <button
                 type="button"
-                onClick={handleOpen}
+                onClick={handleCardClick}
                 onKeyDown={handleKeyDown}
-                aria-label={`Open ${displayName}`}
-                className="mybook-bookmark-card"
+                aria-label={effectiveLink ? `Open linked destination for ${displayName}` : displayName}
+                title={effectiveLink ? (effectiveLink.startsWith('doc:') ? 'Linked page' : `Linked to: ${effectiveLink}`) : undefined}
+                className={`mybook-bookmark-card ${effectiveLink ? 'cursor-pointer' : 'cursor-default'}`}
               >
                 <span className="mybook-bookmark-logo" aria-hidden="true">
                   <HugeiconsIcon icon={FileIcon} strokeWidth={1.75} className="size-5 text-primary" />
@@ -499,7 +683,7 @@ export function FileBlockNodeView({
         />
       ) : null}
 
-      {/* Edit Link Popover */}
+      {/* Edit Link Popover for URL files */}
       {showEditLinkPopover && isUrl ? (
         <FileEditLinkPopover
           initialUrl={src}
@@ -521,6 +705,23 @@ export function FileBlockNodeView({
             }
           }}
           onClose={() => setShowEditLinkPopover(false)}
+        />
+      ) : null}
+
+      {/* Attached Link Popover */}
+      {showAttachedLinkPopover ? (
+        <ImageLinkPopover
+          isInline
+          initialHref={href}
+          onSave={(newHref) => {
+            updateAttributes({ href: newHref })
+            setShowAttachedLinkPopover(false)
+          }}
+          onRemove={() => {
+            updateAttributes({ href: null })
+            setShowAttachedLinkPopover(false)
+          }}
+          onClose={() => setShowAttachedLinkPopover(false)}
         />
       ) : null}
     </NodeViewWrapper>

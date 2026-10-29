@@ -4,6 +4,7 @@ import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 
 import { movableBlockAt } from './blockDrag'
+import { ToggleBlock } from './extensions/ToggleBlock'
 
 const createEditor = (content: string) => new Editor({ element: document.createElement('div'), extensions: [StarterKit], content })
 
@@ -32,6 +33,37 @@ describe('movableBlockAt', () => {
     const headingPos = editor.state.doc.child(0).nodeSize
     const block = movableBlockAt(editor.state.doc, headingPos)
     expect(block).toBeNull()
+    editor.destroy()
+  })
+
+  it('resolves a child block inside a toggleBlock to the child block', () => {
+    const editor = new Editor({
+      element: document.createElement('div'),
+      extensions: [StarterKit, ToggleBlock],
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'toggleBlock',
+            attrs: { title: 'Heading 1', level: 1 },
+            content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'child one' }] },
+              { type: 'paragraph', content: [{ type: 'text', text: 'child two' }] },
+            ],
+          },
+        ],
+      },
+    })
+    const child1Pos = 1 // inside toggleBlock at pos 0
+    const block1 = movableBlockAt(editor.state.doc, child1Pos + 1)
+    expect(block1?.node.type.name).toBe('paragraph')
+    expect(block1?.pos).toBe(child1Pos)
+
+    const child1Size = editor.state.doc.nodeAt(child1Pos)!.nodeSize
+    const child2Pos = child1Pos + child1Size
+    const block2 = movableBlockAt(editor.state.doc, child2Pos + 1)
+    expect(block2?.node.type.name).toBe('paragraph')
+    expect(block2?.pos).toBe(child2Pos)
     editor.destroy()
   })
 })

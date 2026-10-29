@@ -30,12 +30,18 @@ describe('FileBlockNodeView', () => {
 
     mockEditor = {
       view: { focus: vi.fn() },
+      commands: {
+        setNodeSelection: vi.fn(),
+      },
       chain: vi.fn(() => ({
         focus: vi.fn(() => ({
           insertContentAt: vi.fn(() => ({
             run: vi.fn(),
           })),
           deleteRange: vi.fn(() => ({
+            run: vi.fn(),
+          })),
+          setNodeSelection: vi.fn(() => ({
             run: vi.fn(),
           })),
         })),
@@ -185,7 +191,7 @@ describe('FileBlockNodeView', () => {
 
     uploadedPdfNode.attrs = { ...uploadedPdfNode.attrs, pdfPreview: true }
     rerender(<FileBlockNodeView {...props} />)
-    expect(screen.getByTitle('PDF preview: report.pdf')).toHaveAttribute('src', uploadedPdfNode.attrs.src)
+    expect(screen.getByTitle('PDF preview: report.pdf').getAttribute('src')).toMatch(/^blob:/)
     expect(screen.getByRole('button', { name: 'Replace file' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy block' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Duplicate' })).toBeInTheDocument()
@@ -239,6 +245,145 @@ describe('FileBlockNodeView', () => {
       name: 'new-document.docx',
       size: 0,
       mimeType: '',
+    })
+  })
+
+  it('does not download or open the file when clicking an unlinked uploaded file, selecting the node instead', () => {
+    const uploadedFileNode = {
+      ...mockNode,
+      attrs: {
+        src: 'data:application/pdf;base64,JVBERi0xLjQ=',
+        name: 'document.pdf',
+        mimeType: 'application/pdf',
+        size: 500,
+        href: null,
+      },
+    }
+    const windowOpenSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    render(<FileBlockNodeView {...createProps(uploadedFileNode)} />)
+
+    const cardButton = screen.getByRole('button', { name: 'document' })
+    fireEvent.click(cardButton)
+
+    // Node is selected, no window.open and no download anchor clicked
+    expect((mockEditor as { commands: { setNodeSelection: unknown } }).commands.setNodeSelection).toHaveBeenCalledWith(10)
+    expect((mockEditor as { view: { focus: unknown } }).view.focus).toHaveBeenCalled()
+    expect(windowOpenSpy).not.toHaveBeenCalled()
+    windowOpenSpy.mockRestore()
+  })
+
+  it('opens the linked destination correctly when a user clicks a file block with an attached link', () => {
+    const linkedFileNode = {
+      ...mockNode,
+      attrs: {
+        src: 'data:application/pdf;base64,JVBERi0xLjQ=',
+        name: 'document.pdf',
+        mimeType: 'application/pdf',
+        size: 500,
+        href: 'https://writin.app/guide',
+      },
+    }
+    const windowOpenSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    render(<FileBlockNodeView {...createProps(linkedFileNode)} />)
+
+    const cardButton = screen.getByRole('button', { name: /open linked destination for document/i })
+    fireEvent.click(cardButton)
+
+    expect(windowOpenSpy).toHaveBeenCalledWith('https://writin.app/guide', '_blank', 'noopener,noreferrer')
+    windowOpenSpy.mockRestore()
+  })
+
+  it('allows adding, editing, and removing attached link on an uploaded file block', () => {
+    const uploadedFileNode = {
+      ...mockNode,
+      attrs: {
+        src: 'data:application/pdf;base64,JVBERi0xLjQ=',
+        name: 'contract.pdf',
+        mimeType: 'application/pdf',
+        size: 800,
+        href: null,
+      },
+    }
+    const { rerender } = render(<FileBlockNodeView {...createProps(uploadedFileNode)} />)
+
+    // More menu should offer Add link
+    fireEvent.click(screen.getByRole('button', { name: 'More file options' }))
+    const addLinkItem = screen.getByRole('menuitem', { name: 'Add link' })
+    expect(addLinkItem).toBeInTheDocument()
+    fireEvent.click(addLinkItem)
+
+    // Should open Add link popover
+    expect(screen.getByRole('dialog', { name: 'Add link' })).toBeInTheDocument()
+
+    // Now render with href attached
+    const withHrefNode = {
+      ...uploadedFileNode,
+      attrs: {
+        ...uploadedFileNode.attrs,
+        href: 'https://example.com/target',
+      },
+    }
+    rerender(<FileBlockNodeView {...createProps(withHrefNode)} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'More file options' }))
+    expect(screen.getByRole('menuitem', { name: 'Edit link' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Remove link' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Copy link' })).toBeInTheDocument()
+
+    // Remove link
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove link' }))
+    expect(updateAttributes).toHaveBeenCalledWith({ href: null })
+  })
+
+  it('offers Embed as table in More menu for uploaded CSV files and converts into editor table', async () => {
+    const csvDataUrl = 'data:text/csv;base64,' + btoa('Col1,Col2\nVal1,Val2')
+    const uploadedCsvNode = {
+      ...mockNode,
+      attrs: {
+        src: csvDataUrl,
+        name: 'spreadsheet.csv',
+        mimeType: 'text/csv',
+        size: 150,
+        href: null,
+      },
+    }
+
+    render(<FileBlockNodeView {...createProps(uploadedCsvNode)} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'More file options' }))
+    const embedTableItem = screen.getByRole('menuitem', { name: 'Embed as table' })
+    expect(embedTableItem).toBeInTheDocument()
+
+    fireEvent.click(embedTableItem)
+
+    await waitFor(() => {
+      expect((mockEditor as { chain: unknown }).chain).toHaveBeenCalled()
+    })
+  })
+
+  it('offers Embed in document in More menu for uploaded HTML files and converts into content blocks', async () => {
+    const htmlDataUrl = 'data:text/html;base64,' + btoa('<p>Hello <strong>World</strong></p>')
+    const uploadedHtmlNode = {
+      ...mockNode,
+      attrs: {
+        src: htmlDataUrl,
+        name: 'page.html',
+        mimeType: 'text/html',
+        size: 200,
+        href: null,
+      },
+    }
+
+    render(<FileBlockNodeView {...createProps(uploadedHtmlNode)} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'More file options' }))
+    const embedDocItem = screen.getByRole('menuitem', { name: 'Embed in document' })
+    expect(embedDocItem).toBeInTheDocument()
+
+    fireEvent.click(embedDocItem)
+
+    await waitFor(() => {
+      expect((mockEditor as { chain: unknown }).chain).toHaveBeenCalled()
     })
   })
 })
