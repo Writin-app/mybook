@@ -246,10 +246,11 @@ export function ImageLinkPopover({
       aria-label={title}
       className={
         isInline
-          ? 'absolute top-11 right-0 z-40 w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
-          : 'fixed z-30 w-[min(22rem,calc(100vw-1rem))] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
+          ? 'absolute top-11 right-0 z-50 w-[min(22rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
+          : 'fixed z-50 w-[min(22rem,calc(100vw-1rem))] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
       }
       data-image-link-popover="true"
+      data-editor-popover="true"
     >
       {/* Header */}
       <div className="mb-2.5 flex items-center justify-between px-1">

@@ -468,7 +468,7 @@
   .tiptap .mybook-toggle[data-level="2"] .mybook-toggle-content { margin-left: 2rem; }
   .tiptap .mybook-toggle[data-level="3"] .mybook-toggle-content { margin-left: 1.85rem; }
   .tiptap .mybook-toggle-content > * + * { margin-top: 0.75rem; }
-  .tiptap .mybook-toggle-content > p:only-child:has(> br.ProseMirror-trailingBreak)::before { content: "Empty toggle. Click or drop blocks inside."; color: var(--muted-foreground); opacity: 0.6; pointer-events: none; }
+  .tiptap .mybook-toggle-content > p:only-child:has(> br.ProseMirror-trailingBreak)::before { content: "Empty block. Type '/' to insert block or drag block inside"; color: var(--muted-foreground); opacity: 0.6; pointer-events: none; }
   .tiptap .mybook-table-of-contents { text-align: left; }
   .tiptap .mybook-table-of-contents-header { display: flex; align-items: center; gap: 0.5rem; }
   .tiptap .mybook-table-of-contents-caret {
@@ -617,7 +617,7 @@
   .tiptap .mybook-embed-fallback { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; color: white; font-weight: 650; }
   .tiptap .mybook-embed-source { display: block; overflow: hidden; padding: 0.65rem 0.85rem; text-overflow: ellipsis; white-space: nowrap; font-size: 0.875rem; }
   .tiptap .ProseMirror-selectednode.mybook-embed-block { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
-  .mybook-inline-link-toolbar { position: fixed; z-index: 20; display: flex; align-items: center; gap: 0.125rem; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface); padding: 0.2rem; box-shadow: 0 14px 42px rgba(15, 23, 42, 0.18); }
+  .mybook-inline-link-toolbar { position: fixed; z-index: 50; display: flex; align-items: center; gap: 0.125rem; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface); padding: 0.2rem; box-shadow: 0 14px 42px rgba(15, 23, 42, 0.18); }
   .mybook-inline-link-toolbar [data-slot="button"],
   .mybook-inline-link-toolbar-trigger { display: flex; width: 1.75rem; height: 1.75rem; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted-foreground); }
   .mybook-inline-link-toolbar [data-slot="button"]:hover,
@@ -732,7 +732,7 @@
   .mybook-table-column-grip,
   .mybook-table-row-grip {
     position: fixed;
-    z-index: 45;
+    z-index: 16;
     display: flex;
     width: 1.125rem;
     height: 1.125rem;
@@ -819,7 +819,7 @@
   .mybook-table-add-row,
   .mybook-table-add-corner {
     position: fixed;
-    z-index: 44;
+    z-index: 15;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -854,37 +854,91 @@
   body:has([data-slash-command-menu="true"]) .mybook-table-add-corner,
   body:has([data-slash-command-menu="true"]) .mybook-table-column-grip,
   body:has([data-slash-command-menu="true"]) .mybook-table-row-grip,
+  body:has([data-slash-command-menu="true"]) .mybook-table-resize-handle,
+  body:has([data-block-insert-menu="true"]) .mybook-table-add-column,
+  body:has([data-block-insert-menu="true"]) .mybook-table-add-row,
+  body:has([data-block-insert-menu="true"]) .mybook-table-add-corner,
+  body:has([data-block-insert-menu="true"]) .mybook-table-column-grip,
+  body:has([data-block-insert-menu="true"]) .mybook-table-row-grip,
+  body:has([data-block-insert-menu="true"]) .mybook-table-resize-handle,
+  body:has([data-block-actions-menu="true"]) .mybook-table-add-column,
+  body:has([data-block-actions-menu="true"]) .mybook-table-add-row,
+  body:has([data-block-actions-menu="true"]) .mybook-table-add-corner,
+  body:has([data-block-actions-menu="true"]) .mybook-table-column-grip,
+  body:has([data-block-actions-menu="true"]) .mybook-table-row-grip,
+  body:has([data-block-actions-menu="true"]) .mybook-table-resize-handle,
+  body:has([data-editor-popover="true"]) .mybook-table-add-column,
+  body:has([data-editor-popover="true"]) .mybook-table-add-row,
+  body:has([data-editor-popover="true"]) .mybook-table-add-corner,
+  body:has([data-editor-popover="true"]) .mybook-table-column-grip,
+  body:has([data-editor-popover="true"]) .mybook-table-row-grip,
+  body:has([data-editor-popover="true"]) .mybook-table-resize-handle,
   body:has([data-image-picker="true"]) .mybook-table-add-column,
   body:has([data-image-picker="true"]) .mybook-table-add-row,
   body:has([data-image-picker="true"]) .mybook-table-add-corner,
   body:has([data-image-picker="true"]) .mybook-table-column-grip,
   body:has([data-image-picker="true"]) .mybook-table-row-grip,
+  body:has([data-image-picker="true"]) .mybook-table-resize-handle,
   body:has([data-video-picker="true"]) .mybook-table-add-column,
   body:has([data-video-picker="true"]) .mybook-table-add-row,
   body:has([data-video-picker="true"]) .mybook-table-add-corner,
   body:has([data-video-picker="true"]) .mybook-table-column-grip,
   body:has([data-video-picker="true"]) .mybook-table-row-grip,
+  body:has([data-video-picker="true"]) .mybook-table-resize-handle,
   body:has([data-audio-picker="true"]) .mybook-table-add-column,
   body:has([data-audio-picker="true"]) .mybook-table-add-row,
   body:has([data-audio-picker="true"]) .mybook-table-add-corner,
   body:has([data-audio-picker="true"]) .mybook-table-column-grip,
   body:has([data-audio-picker="true"]) .mybook-table-row-grip,
+  body:has([data-audio-picker="true"]) .mybook-table-resize-handle,
   body:has([data-file-picker="true"]) .mybook-table-add-column,
   body:has([data-file-picker="true"]) .mybook-table-add-row,
   body:has([data-file-picker="true"]) .mybook-table-add-corner,
   body:has([data-file-picker="true"]) .mybook-table-column-grip,
   body:has([data-file-picker="true"]) .mybook-table-row-grip,
+  body:has([data-file-picker="true"]) .mybook-table-resize-handle,
   body:has([data-document-link-picker="true"]) .mybook-table-add-column,
   body:has([data-document-link-picker="true"]) .mybook-table-add-row,
   body:has([data-document-link-picker="true"]) .mybook-table-add-corner,
   body:has([data-document-link-picker="true"]) .mybook-table-column-grip,
-  body:has([data-document-link-picker="true"]) .mybook-table-row-grip {
+  body:has([data-document-link-picker="true"]) .mybook-table-row-grip,
+  body:has([data-document-link-picker="true"]) .mybook-table-resize-handle,
+  body:has([data-mention-menu="true"]) .mybook-table-add-column,
+  body:has([data-mention-menu="true"]) .mybook-table-add-row,
+  body:has([data-mention-menu="true"]) .mybook-table-add-corner,
+  body:has([data-mention-menu="true"]) .mybook-table-column-grip,
+  body:has([data-mention-menu="true"]) .mybook-table-row-grip,
+  body:has([data-mention-menu="true"]) .mybook-table-resize-handle,
+  body:has([data-paste-as-menu="true"]) .mybook-table-add-column,
+  body:has([data-paste-as-menu="true"]) .mybook-table-add-row,
+  body:has([data-paste-as-menu="true"]) .mybook-table-add-corner,
+  body:has([data-paste-as-menu="true"]) .mybook-table-column-grip,
+  body:has([data-paste-as-menu="true"]) .mybook-table-row-grip,
+  body:has([data-paste-as-menu="true"]) .mybook-table-resize-handle,
+  body:has([data-selection-toolbar="true"]) .mybook-table-add-column,
+  body:has([data-selection-toolbar="true"]) .mybook-table-add-row,
+  body:has([data-selection-toolbar="true"]) .mybook-table-add-corner,
+  body:has([data-selection-toolbar="true"]) .mybook-table-column-grip,
+  body:has([data-selection-toolbar="true"]) .mybook-table-row-grip,
+  body:has([data-selection-toolbar="true"]) .mybook-table-resize-handle,
+  body:has([data-table-menu="true"]) .mybook-table-add-column,
+  body:has([data-table-menu="true"]) .mybook-table-add-row,
+  body:has([data-table-menu="true"]) .mybook-table-add-corner,
+  body:has([data-table-menu="true"]) .mybook-table-column-grip,
+  body:has([data-table-menu="true"]) .mybook-table-row-grip,
+  body:has([data-table-menu="true"]) .mybook-table-resize-handle,
+  body:has([data-find-replace="true"]) .mybook-table-add-column,
+  body:has([data-find-replace="true"]) .mybook-table-add-row,
+  body:has([data-find-replace="true"]) .mybook-table-add-corner,
+  body:has([data-find-replace="true"]) .mybook-table-column-grip,
+  body:has([data-find-replace="true"]) .mybook-table-row-grip,
+  body:has([data-find-replace="true"]) .mybook-table-resize-handle {
     opacity: 0 !important;
     pointer-events: none !important;
   }
   .mybook-table-resize-handle {
     position: fixed;
-    z-index: 46;
+    z-index: 17;
     width: 1rem;
     height: 1rem;
     border: 0;

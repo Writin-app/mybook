@@ -387,4 +387,18 @@ describe('ImageBlockNodeView', () => {
     expect(screen.getByRole('button', { name: /^replace$/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument()
   })
+
+  it('displays loading placeholder and eager loading attribute until onLoad fires', () => {
+    render(<ImageBlockNodeView {...createProps()} />)
+    const img = screen.getByRole('img', { name: /test diagram/i, hidden: true })
+    expect(img).toHaveAttribute('loading', 'eager')
+    expect(screen.getByText('Loading image…')).toBeInTheDocument()
+
+    // Trigger image loaded
+    fireEvent.load(img)
+
+    expect(screen.queryByText('Loading image…')).not.toBeInTheDocument()
+    expect(img).toHaveAttribute('loading', 'lazy')
+    expect(img).toHaveClass('block')
+  })
 })

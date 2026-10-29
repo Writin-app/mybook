@@ -1,5 +1,6 @@
 import { mergeAttributes, Node } from '@tiptap/core'
 import { TextSelection } from '@tiptap/pm/state'
+import { capitalizeFirstLetter } from './BlockAutoCapitalize'
 
 export function getTogglePlaceholder(level: number | null | undefined): string {
   if (level === 1) return 'Heading 1'
@@ -44,7 +45,12 @@ export const ToggleBlock = Node.create({
   },
 
   parseHTML() {
-    return [{ tag: 'details[data-type="toggle"]' }]
+    return [
+      {
+        tag: 'details[data-type="toggle"]',
+        contentElement: (element) => (element as HTMLElement).querySelector('.mybook-toggle-content') || element,
+      },
+    ]
   },
 
   renderHTML({ HTMLAttributes, node }) {
@@ -121,9 +127,10 @@ export const ToggleBlock = Node.create({
       const title = document.createElement('input')
       title.className = 'mybook-toggle-title'
       title.type = 'text'
-      title.value = String(node.attrs.title || '')
+      title.value = capitalizeFirstLetter(String(node.attrs.title || ''))
       title.placeholder = getTogglePlaceholder(node.attrs.level)
       title.setAttribute('aria-label', node.attrs.level ? `Toggle heading ${node.attrs.level} title` : 'Toggle title')
+      title.setAttribute('autocapitalize', 'sentences')
 
       const content = document.createElement('div')
       content.className = 'mybook-toggle-content'
@@ -149,13 +156,23 @@ export const ToggleBlock = Node.create({
         if (match) {
           const hashes = match[1] ?? ''
           const newLevel = hashes.length as 1 | 2 | 3 | 4
-          const restText = match[2] ?? ''
+          const restText = capitalizeFirstLetter(match[2] ?? '')
           title.value = restText
           updateAttributes({ level: newLevel, title: restText })
           details.dataset.level = String(newLevel)
           title.placeholder = getTogglePlaceholder(newLevel)
           title.setAttribute('aria-label', `Toggle heading ${newLevel} title`)
           return
+        }
+
+        const capitalized = capitalizeFirstLetter(title.value)
+        if (capitalized !== title.value) {
+          const selStart = title.selectionStart
+          const selEnd = title.selectionEnd
+          title.value = capitalized
+          if (selStart !== null && selEnd !== null) {
+            title.setSelectionRange(selStart, selEnd)
+          }
         }
         updateAttributes({ title: title.value })
       }
@@ -236,9 +253,53 @@ export const ToggleBlock = Node.create({
       const handleSummaryClick = (event: MouseEvent) => {
         if (event.target === summary) event.preventDefault()
       }
+      const handleTitlePaste = (event: ClipboardEvent) => {
+        event.stopPropagation()
+        const text = event.clipboardData?.getData('text/plain')
+        if (!text) return
+
+        if (text.includes('\n')) {
+          event.preventDefault()
+          const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l, idx) => idx === 0 || l.length > 0)
+          if (lines.length === 0) return
+          const firstLine = capitalizeFirstLetter(lines[0] ?? '')
+          const restLines = lines.slice(1)
+
+          title.value = firstLine
+          handleInput()
+
+          if (restLines.length > 0 && typeof getPos === 'function') {
+            const position = getPos()
+            if (typeof position === 'number') {
+              const paragraphType = editor.schema.nodes.paragraph
+              if (paragraphType) {
+                const nodes = restLines.map((line) => {
+                  const capLine = capitalizeFirstLetter(line)
+                  return paragraphType.create(null, capLine ? editor.schema.text(capLine) : undefined)
+                })
+                const toggleNode = editor.view.state.doc.nodeAt(position)
+                let tr = editor.view.state.tr
+                const bodyPosition = position + 1
+                if (toggleNode && toggleNode.childCount === 1 && toggleNode.child(0).isTextblock && toggleNode.child(0).content.size === 0) {
+                  tr = tr.replaceWith(bodyPosition, bodyPosition + toggleNode.child(0).nodeSize, nodes)
+                } else {
+                  tr = tr.insert(bodyPosition, nodes)
+                }
+                if (!details.open) {
+                  details.open = true
+                  tr = tr.setNodeMarkup(position, undefined, { ...toggleNode?.attrs, open: true })
+                  updateCaret()
+                }
+                editor.view.dispatch(tr)
+              }
+            }
+          }
+        }
+      }
 
       title.addEventListener('input', handleInput)
       title.addEventListener('keydown', handleTitleKeyDown)
+      title.addEventListener('paste', handleTitlePaste)
       caret.addEventListener('click', handleCaretClick)
       summary.addEventListener('click', handleSummaryClick)
       updateCaret()
@@ -275,6 +336,7 @@ export const ToggleBlock = Node.create({
         destroy: () => {
           title.removeEventListener('input', handleInput)
           title.removeEventListener('keydown', handleTitleKeyDown)
+          title.removeEventListener('paste', handleTitlePaste)
           caret.removeEventListener('click', handleCaretClick)
           summary.removeEventListener('click', handleSummaryClick)
         },

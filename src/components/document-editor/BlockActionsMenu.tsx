@@ -181,7 +181,15 @@ export function BlockActionsMenu({ editor }: { editor: Editor }) {
 
   const previous = target ? editor.state.doc.resolve(target.pos).nodeBefore : null
   const next = target ? editor.state.doc.resolve(target.pos + target.node.nodeSize).nodeAfter : null
-  const top = target ? Math.max(88, target.rect.top) : 88
+  const viewportHeight = typeof window !== 'undefined'
+    ? (window.visualViewport ? window.visualViewport.offsetTop + window.visualViewport.height : window.innerHeight)
+    : 768
+  const header = typeof document !== 'undefined' ? document.querySelector<HTMLElement>('.mybook-document-editor > header') : null
+  const headerBottom = header?.getBoundingClientRect().bottom ?? 0
+  const minTop = Math.max(88, headerBottom + 8)
+  const menuHeight = 44
+  const maxTop = Math.max(minTop, viewportHeight - menuHeight - 12)
+  const top = target ? Math.max(minTop, Math.min(target.rect.top, maxTop)) : minTop
   const left = target ? Math.max(8, Math.min(target.rect.left - 52, window.innerWidth - 188)) : 8
 
   const runMobileAction = (action: () => void) => {
@@ -193,7 +201,8 @@ export function BlockActionsMenu({ editor }: { editor: Editor }) {
     <>
       {target ? (
         <div
-          className="fixed z-20 hidden gap-1 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.12)] md:flex"
+          data-editor-popover="true"
+          className="fixed z-50 hidden gap-1 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.12)] md:flex"
           style={{ top, left }}
           role="toolbar"
           aria-label="Block actions"
@@ -214,7 +223,7 @@ export function BlockActionsMenu({ editor }: { editor: Editor }) {
       ) : null}
 
       {target ? (
-      <div className="fixed right-4 z-20 md:hidden" style={{ bottom: 'calc(var(--mybook-keyboard-offset, 0px) + 5.5rem + env(safe-area-inset-bottom))' }}>
+      <div className="fixed right-4 z-50 md:hidden" style={{ bottom: 'calc(var(--mybook-keyboard-offset, 0px) + 5.5rem + env(safe-area-inset-bottom))' }}>
         <MobileBottomSheet
           title="Block actions"
           triggerLabel="Open block actions"

@@ -529,5 +529,148 @@ describe('blockConversion', () => {
       cleanup()
     })
   })
+
+  describe('Toggle and Callout block replacement', () => {
+    it('replaces a Heading with a Toggle Heading 1, preserving heading text as title', () => {
+      const { editor, cleanup } = createTestEditor('<h1>Section Overview</h1><p>Next paragraph</p>')
+      expect(editor.state.doc.childCount).toBe(2)
+
+      const headingNode = editor.state.doc.child(0)
+      const target = { node: headingNode, pos: 0 }
+
+      const converted = convertSelectedBlocks(editor, 'toggle-h1', target)
+      expect(converted).toBe(true)
+
+      // Must replace the heading, so doc still has 2 children (toggleBlock + paragraph)
+      expect(editor.state.doc.childCount).toBe(2)
+      const firstChild = editor.state.doc.child(0)
+      expect(firstChild.type.name).toBe('toggleBlock')
+      expect(firstChild.attrs.title).toBe('Section Overview')
+      expect(firstChild.attrs.level).toBe(1)
+
+      const titleInput = editor.view.dom.querySelector<HTMLInputElement>('input.mybook-toggle-title')
+      expect(titleInput).not.toBeNull()
+      expect(document.activeElement).toBe(titleInput)
+      expect(titleInput?.selectionStart).toBe('Section Overview'.length)
+
+      cleanup()
+    })
+
+    it('focuses the toggle heading input with cursor at end of text when converting an existing block', () => {
+      const { editor, cleanup } = createTestEditor('<h2>Heading To Convert</h2>')
+      const target = { node: editor.state.doc.child(0), pos: 0 }
+
+      const converted = convertSelectedBlocks(editor, 'toggle-h2', target)
+      expect(converted).toBe(true)
+
+      const titleInput = editor.view.dom.querySelector<HTMLInputElement>('input.mybook-toggle-title')
+      expect(titleInput).not.toBeNull()
+      expect(document.activeElement).toBe(titleInput)
+      expect(titleInput?.value).toBe('Heading To Convert')
+      expect(titleInput?.selectionStart).toBe('Heading To Convert'.length)
+
+      cleanup()
+    })
+
+    it('replaces a Paragraph with a basic Toggle', () => {
+      const { editor, cleanup } = createTestEditor('<p>Collapsible notes</p><p>Subsequent block</p>')
+      expect(editor.state.doc.childCount).toBe(2)
+      const target = { node: editor.state.doc.child(0), pos: 0 }
+
+      const converted = convertSelectedBlocks(editor, 'toggle', target)
+      expect(converted).toBe(true)
+
+      expect(editor.state.doc.childCount).toBe(2)
+      const toggle = editor.state.doc.child(0)
+      expect(toggle.type.name).toBe('toggleBlock')
+      expect(toggle.attrs.title).toBe('Collapsible notes')
+      expect(toggle.attrs.level).toBeNull()
+      expect(editor.state.doc.child(1).textContent).toBe('Subsequent block')
+
+      cleanup()
+    })
+
+    it('replaces a Toggle Heading with a regular Heading 1', () => {
+      const { editor, cleanup } = createTestEditor('<details data-type="toggle" data-level="1" data-title="Architecture"><summary class="mybook-toggle-summary">Architecture</summary><div class="mybook-toggle-content"><p>Detail line</p></div></details><p>Subsequent block</p>')
+      const target = { node: editor.state.doc.child(0), pos: 0 }
+
+      const converted = convertSelectedBlocks(editor, 'h1', target)
+      expect(converted).toBe(true)
+
+      const firstChild = editor.state.doc.child(0)
+      expect(firstChild.type.name).toBe('heading')
+      expect(firstChild.attrs.level).toBe(1)
+      expect(firstChild.textContent).toBe('Architecture')
+      expect(editor.state.doc.child(1).textContent).toBe('Detail line')
+      expect(editor.state.doc.child(2).textContent).toBe('Subsequent block')
+
+      cleanup()
+    })
+
+    it('replaces a Heading with a Callout block', () => {
+      const { editor, cleanup } = createTestEditor('<h2>Important Warning</h2><p>Subsequent block</p>')
+      expect(editor.state.doc.childCount).toBe(2)
+      const target = { node: editor.state.doc.child(0), pos: 0 }
+
+      const converted = convertSelectedBlocks(editor, 'callout', target)
+      expect(converted).toBe(true)
+
+      expect(editor.state.doc.childCount).toBe(2)
+      const callout = editor.state.doc.child(0)
+      expect(callout.type.name).toBe('callout')
+      expect(callout.textContent).toBe('Important Warning')
+      expect(editor.state.doc.child(1).textContent).toBe('Subsequent block')
+
+      cleanup()
+    })
+
+    it('replaces a Callout with a regular Heading 2', () => {
+      const { editor, cleanup } = createTestEditor('<aside data-type="callout"><p>Key Takeaway</p></aside><p>Subsequent block</p>')
+      expect(editor.state.doc.childCount).toBe(2)
+      const target = { node: editor.state.doc.child(0), pos: 0 }
+
+      const converted = convertSelectedBlocks(editor, 'h2', target)
+      expect(converted).toBe(true)
+
+      expect(editor.state.doc.childCount).toBe(2)
+      const heading = editor.state.doc.child(0)
+      expect(heading.type.name).toBe('heading')
+      expect(heading.attrs.level).toBe(2)
+      expect(heading.textContent).toBe('Key Takeaway')
+      expect(editor.state.doc.child(1).textContent).toBe('Subsequent block')
+
+      cleanup()
+    })
+
+    it('capitalizes the first letter when converting a lowercase paragraph to Heading 1', () => {
+      const { editor, cleanup } = createTestEditor('<p>my lowercase heading</p><p>Subsequent block</p>')
+      const target = { node: editor.state.doc.child(0), pos: 0 }
+
+      const converted = convertSelectedBlocks(editor, 'h1', target)
+      expect(converted).toBe(true)
+
+      const heading = editor.state.doc.child(0)
+      expect(heading.type.name).toBe('heading')
+      expect(heading.attrs.level).toBe(1)
+      expect(heading.textContent).toBe('My lowercase heading')
+
+      cleanup()
+    })
+
+    it('capitalizes the title when converting a lowercase block to a Toggle Heading', () => {
+      const { editor, cleanup } = createTestEditor('<p>section details</p><p>Subsequent block</p>')
+      const target = { node: editor.state.doc.child(0), pos: 0 }
+
+      const converted = convertSelectedBlocks(editor, 'toggle-h2', target)
+      expect(converted).toBe(true)
+
+      const toggle = editor.state.doc.child(0)
+      expect(toggle.type.name).toBe('toggleBlock')
+      expect(toggle.attrs.level).toBe(2)
+      expect(toggle.attrs.title).toBe('Section details')
+
+      cleanup()
+    })
+  })
 })
 

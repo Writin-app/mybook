@@ -172,6 +172,51 @@ describe('SelectionFormattingToolbar', () => {
     })
 
     expect(editor.isActive('table')).toBe(true)
-    expect(screen.getByRole('toolbar', { name: 'Selected text formatting' })).toBeTruthy()
+    const toolbar = screen.getByRole('toolbar', { name: 'Selected text formatting' })
+    expect(toolbar).toBeTruthy()
+    expect(toolbar.className).toContain('z-50')
+    expect(toolbar.getAttribute('data-selection-toolbar')).toBe('true')
+    expect(toolbar.getAttribute('data-editor-popover')).toBe('true')
+
+    // Dropdown menus should have z-50
+    fireEvent.click(screen.getByRole('button', { name: 'Block style' }))
+    const blockMenu = screen.getByRole('menu', { name: 'Block style' })
+    expect(blockMenu.className).toContain('z-50')
+  })
+
+  it('renders an inline code action immediately to the right of checklist and toggles code formatting', () => {
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit],
+      content: '<p>Formatted code snippet</p>',
+    })
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({ left: 10, right: 20, top: 100, bottom: 120 })
+    vi.spyOn(editor, 'isFocused', 'get').mockReturnValue(true)
+
+    render(<SelectionFormattingToolbar editor={editor} onInsertBlock={() => undefined} onEditLink={() => undefined} />)
+    act(() => {
+      editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 1, 10)))
+    })
+
+    const checklistButton = screen.getByRole('button', { name: 'Checklist' })
+    const inlineCodeButton = screen.getByRole('button', { name: 'Inline code' })
+
+    expect(checklistButton).toBeTruthy()
+    expect(inlineCodeButton).toBeTruthy()
+
+    // Verify DOM positioning: inline code is immediately to the right of checklist
+    expect(checklistButton.nextElementSibling).toBe(inlineCodeButton)
+
+    // Verify initial active state
+    expect(inlineCodeButton.getAttribute('aria-pressed')).toBe('false')
+    expect(editor.isActive('code')).toBe(false)
+
+    // Toggle inline code
+    fireEvent.click(inlineCodeButton)
+    expect(editor.isActive('code')).toBe(true)
+
+    // Toggle off
+    fireEvent.click(inlineCodeButton)
+    expect(editor.isActive('code')).toBe(false)
   })
 })

@@ -28,9 +28,11 @@ function targetAtBlockPos(editor: Editor, node: ProseMirrorNode, pos: number): B
   const { view } = editor
   const blockElement = view.nodeDOM(pos)
   const coords = view.coordsAtPos(pos)
+  const editorDomRect = view.dom.getBoundingClientRect()
+  const fallbackWidth = Math.max(0, editorDomRect.width - 32)
   const rect = blockElement instanceof Element
     ? blockElement.getBoundingClientRect()
-    : new DOMRect(coords.left, coords.top, coords.right - coords.left, coords.bottom - coords.top)
+    : new DOMRect(coords.left, coords.top, Math.max(coords.right - coords.left, fallbackWidth), coords.bottom - coords.top)
   const $from = editor.state.doc.resolve(Math.min(pos + 1, editor.state.doc.content.size))
 
   let columnDepth = -1
@@ -52,14 +54,14 @@ function targetAtBlockPos(editor: Editor, node: ProseMirrorNode, pos: number): B
   const topCoords = view.coordsAtPos(topPos)
   const controlRect = topElement instanceof Element
     ? topElement.getBoundingClientRect()
-    : new DOMRect(topCoords.left, topCoords.top, topCoords.right - topCoords.left, topCoords.bottom - topCoords.top)
+    : new DOMRect(topCoords.left, topCoords.top, Math.max(topCoords.right - topCoords.left, fallbackWidth), topCoords.bottom - topCoords.top)
   return { node, pos, rect, controlRect }
 }
 
 function blockTargetAtResolvedPos(editor: Editor, pos: number): BlockTarget | null {
-  const { state, view } = editor
-  const $from = state.doc.resolve(pos)
-  let topBlock: { pos: number; rect: DOMRect } | null = null
+  const { state } = editor
+  const clampedPos = Math.max(0, Math.min(pos, state.doc.content.size))
+  const $from = state.doc.resolve(clampedPos)
 
   for (let depth = $from.depth; depth > 0; depth -= 1) {
     const node = $from.node(depth)
@@ -68,39 +70,21 @@ function blockTargetAtResolvedPos(editor: Editor, pos: number): BlockTarget | nu
     return targetAtBlockPos(editor, node, tablePos)
   }
 
-  let columnDepth = -1
-  for (let depth = $from.depth; depth > 0; depth -= 1) {
-    if ($from.node(depth).type.name === 'column') {
-      columnDepth = depth
-      break
+  if ($from.depth === 0) {
+    if ($from.nodeAfter && $from.nodeAfter.isBlock) {
+      return targetAtBlockPos(editor, $from.nodeAfter, clampedPos)
     }
-  }
-
-  if (columnDepth !== -1 && $from.depth > columnDepth) {
-    const topPos = $from.before(columnDepth + 1)
-    const topElement = view.nodeDOM(topPos)
-    const topCoords = view.coordsAtPos(topPos)
-    const rect = topElement instanceof Element
-      ? topElement.getBoundingClientRect()
-      : new DOMRect(topCoords.left, topCoords.top, topCoords.right - topCoords.left, topCoords.bottom - topCoords.top)
-    topBlock = { pos: topPos, rect }
-  } else if ($from.depth > 0) {
-    const topPos = $from.before(1)
-    const topElement = view.nodeDOM(topPos)
-    const topCoords = view.coordsAtPos(topPos)
-    const rect = topElement instanceof Element
-      ? topElement.getBoundingClientRect()
-      : new DOMRect(topCoords.left, topCoords.top, topCoords.right - topCoords.left, topCoords.bottom - topCoords.top)
-    topBlock = { pos: topPos, rect }
+    if ($from.nodeBefore && $from.nodeBefore.isBlock) {
+      return targetAtBlockPos(editor, $from.nodeBefore, clampedPos - $from.nodeBefore.nodeSize)
+    }
+    return null
   }
 
   for (let depth = $from.depth; depth > 0; depth -= 1) {
     const node = $from.node(depth)
     if (node.type.name !== 'taskItem') continue
     const taskPos = $from.before(depth)
-    const coords = view.coordsAtPos(taskPos)
-    const rect = new DOMRect(coords.left, coords.top, coords.right - coords.left, coords.bottom - coords.top)
-    return { node, pos: taskPos, rect, controlRect: topBlock?.rect ?? rect }
+    return targetAtBlockPos(editor, node, taskPos)
   }
 
   for (let depth = $from.depth; depth > 0; depth -= 1) {
@@ -108,9 +92,7 @@ function blockTargetAtResolvedPos(editor: Editor, pos: number): BlockTarget | nu
     if (node.type.name === 'column') continue
     if (node.isBlock) {
       const blockPos = $from.before(depth)
-      const coords = view.coordsAtPos(blockPos)
-      const rect = new DOMRect(coords.left, coords.top, coords.right - coords.left, coords.bottom - coords.top)
-      return { node, pos: blockPos, rect, controlRect: topBlock?.rect ?? rect }
+      return targetAtBlockPos(editor, node, blockPos)
     }
   }
   return null
@@ -149,6 +131,20 @@ function findPointerTarget(editor: Editor, event: PointerEvent, clampToEditor = 
       return targetAtBlockPos(editor, node, resolved.before(depth))
     }
   }
+
+  const toggleElement = event.target instanceof Element ? event.target.closest<HTMLElement>('.mybook-toggle') : null
+  if (toggleElement && event.target instanceof Element && event.target.closest('.mybook-toggle-summary')) {
+    let match: BlockTarget | null = null
+    editor.state.doc.descendants((node, pos) => {
+      if (match || node.type.name !== 'toggleBlock') return
+      const nodeElement = editor.view.nodeDOM(pos)
+      if (nodeElement === toggleElement) {
+        match = targetAtBlockPos(editor, node, pos)
+      }
+    })
+    if (match) return match
+  }
+
   // While dragging from the gutter the pointer is left of the text, where posAtCoords finds nothing
   const editorRect = editor.view.dom.getBoundingClientRect()
   const left = clampToEditor
@@ -234,16 +230,17 @@ function findParentColumnsTarget(editor: Editor, target: BlockTarget): BlockTarg
 
 function deleteTarget(editor: Editor, target: BlockTarget) {
   const $pos = editor.state.doc.resolve(target.pos)
-  let parentColumn: { node: ProseMirrorNode; pos: number } | null = null
+  let parentContainer: { node: ProseMirrorNode; pos: number } | null = null
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    if ($pos.node(depth).type.name === 'column') {
-      parentColumn = { node: $pos.node(depth), pos: $pos.before(depth) }
+    const typeName = $pos.node(depth).type.name
+    if (typeName === 'column' || typeName === 'toggleBlock' || typeName === 'callout') {
+      parentContainer = { node: $pos.node(depth), pos: $pos.before(depth) }
       break
     }
   }
 
-  // Empty column safety: if this is the only block inside a column, replace it with an empty paragraph instead of leaving column empty
-  if (parentColumn && parentColumn.node.childCount <= 1) {
+  // Empty container safety: if this is the only block inside a container, replace it with an empty paragraph instead of leaving container empty
+  if (parentContainer && parentContainer.node.childCount <= 1) {
     const paragraphType = editor.state.schema.nodes.paragraph
     if (paragraphType) {
       editor
@@ -269,7 +266,9 @@ function blockControlsTop(target: BlockTarget | null) {
 
 function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; side: 'before' | 'after' }) {
   if (source.node.type.name === 'column') return
-  const targetInsertPos = drop.side === 'before' ? drop.pos : drop.pos + editor.state.doc.nodeAt(drop.pos)!.nodeSize
+  const dropNode = editor.state.doc.nodeAt(drop.pos)
+  if (!dropNode) return
+  const targetInsertPos = drop.side === 'before' ? drop.pos : drop.pos + dropNode.nodeSize
   if (targetInsertPos >= source.pos && targetInsertPos <= source.pos + source.node.nodeSize) return
   if (source.node.type.name === 'columns') {
     const resolved = editor.state.doc.resolve(targetInsertPos)
@@ -279,16 +278,17 @@ function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; si
   }
 
   const $sourcePos = editor.state.doc.resolve(source.pos)
-  let sourceParentCol: { node: ProseMirrorNode; pos: number } | null = null
+  let sourceParentContainer: { node: ProseMirrorNode; pos: number } | null = null
   for (let depth = $sourcePos.depth; depth > 0; depth -= 1) {
-    if ($sourcePos.node(depth).type.name === 'column') {
-      sourceParentCol = { node: $sourcePos.node(depth), pos: $sourcePos.before(depth) }
+    const typeName = $sourcePos.node(depth).type.name
+    if (typeName === 'column' || typeName === 'toggleBlock' || typeName === 'callout') {
+      sourceParentContainer = { node: $sourcePos.node(depth), pos: $sourcePos.before(depth) }
       break
     }
   }
 
   const paragraphType = editor.state.schema.nodes.paragraph
-  if (sourceParentCol && sourceParentCol.node.childCount <= 1 && paragraphType) {
+  if (sourceParentContainer && sourceParentContainer.node.childCount <= 1 && paragraphType) {
     const emptyParagraph = paragraphType.createAndFill()!
     const tr = editor.state.tr.replaceWith(source.pos, source.pos + source.node.nodeSize, emptyParagraph)
     const adjustedTarget = targetInsertPos > source.pos
@@ -299,6 +299,28 @@ function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; si
     const selection = source.node.isTextblock && source.node.content.size
       ? TextSelection.create(editor.state.doc, adjustedTarget + 1)
       : NodeSelection.create(editor.state.doc, adjustedTarget)
+    editor.view.dispatch(editor.state.tr.setSelection(selection))
+    editor.view.focus()
+    return
+  }
+
+  // Dropping into an empty toggle block placeholder:
+  const $dropPos = editor.state.doc.resolve(drop.pos)
+  let dropParentToggle: { node: ProseMirrorNode; pos: number } | null = null
+  for (let depth = $dropPos.depth; depth > 0; depth -= 1) {
+    if ($dropPos.node(depth).type.name === 'toggleBlock') {
+      dropParentToggle = { node: $dropPos.node(depth), pos: $dropPos.before(depth) }
+      break
+    }
+  }
+  if (dropParentToggle && dropParentToggle.node.childCount === 1 && dropNode.isTextblock && dropNode.content.size === 0) {
+    const tr = editor.state.tr.delete(source.pos, source.pos + source.node.nodeSize)
+    const adjustedDropPos = drop.pos > source.pos ? drop.pos - source.node.nodeSize : drop.pos
+    tr.replaceWith(adjustedDropPos, adjustedDropPos + dropNode.nodeSize, source.node)
+    editor.view.dispatch(tr.scrollIntoView())
+    const selection = source.node.isTextblock && source.node.content.size
+      ? TextSelection.create(editor.state.doc, adjustedDropPos + 1)
+      : NodeSelection.create(editor.state.doc, adjustedDropPos)
     editor.view.dispatch(editor.state.tr.setSelection(selection))
     editor.view.focus()
     return
@@ -368,7 +390,7 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
     }
     const updateFromPointer = (event: PointerEvent) => {
       if (event.pointerType === 'touch') return
-      if (isInsertOpen || isActionsOpen || dragState?.isDragging) return
+      if (isInsertOpen || isActionsOpen || dragState) return
       const pointerNode = event.target as Node | null
       if (
         pointerNode &&
@@ -381,7 +403,7 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
     }
     const hideFromPointerLeave = (event: PointerEvent) => {
       if (event.pointerType === 'touch') return
-      if (isInsertOpen || isActionsOpen || dragState?.isDragging) return
+      if (isInsertOpen || isActionsOpen || dragState) return
       const related = event.relatedTarget
       if (related instanceof Node && (rootRef.current?.contains(related) || hoverBridgeRef.current?.contains(related))) return
       setTarget(null)
@@ -399,7 +421,7 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
       window.removeEventListener('resize', updateOnResize)
       window.removeEventListener('scroll', closeOnScroll, true)
     }
-  }, [dragState?.isDragging, editor, isActionsOpen, isInsertOpen])
+  }, [dragState, editor, isActionsOpen, isInsertOpen])
 
   useEffect(() => {
     if (!isInsertOpen && !isActionsOpen) return
@@ -458,13 +480,47 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
       const distance = Math.hypot(event.clientX - dragState.startX, event.clientY - dragState.startY)
       const nextTarget = findPointerTarget(editor, event, true)
       const dropBlock = nextTarget ? toMovableBlock(editor, nextTarget) : null
-      const drop = dropBlock && dropBlock.pos !== dragState.source.pos
-        ? {
-            pos: dropBlock.pos,
-            side: event.clientY < dropBlock.rect.top + dropBlock.rect.height / 2 ? 'before' as const : 'after' as const,
-            rect: dropBlock.rect,
+      let drop = dragState.drop
+      if (dropBlock && dropBlock.pos !== dragState.source.pos) {
+        let side: 'before' | 'after' = event.clientY < dropBlock.rect.top + dropBlock.rect.height / 2 ? 'before' : 'after'
+        let dropRect = dropBlock.rect
+        let dropPos = dropBlock.pos
+
+        // If target is a toggleBlock and hovering over its summary
+        if (dropBlock.node.type.name === 'toggleBlock') {
+          const dom = editor.view.nodeDOM(dropBlock.pos)
+          const summary = dom instanceof Element ? dom.querySelector<HTMLElement>('.mybook-toggle-summary') : null
+          if (summary) {
+            const summaryRect = summary.getBoundingClientRect()
+            if (event.clientY <= summaryRect.bottom + 4) {
+              const isOpen = Boolean(dropBlock.node.attrs.open !== false)
+              if (event.clientY < summaryRect.top + summaryRect.height / 2) {
+                side = 'before'
+                dropRect = summaryRect
+              } else if (isOpen && dropBlock.node.childCount > 0) {
+                // Drop inside the toggle as the first child
+                const firstChildPos = dropBlock.pos + 1
+                const firstChildDom = editor.view.nodeDOM(firstChildPos)
+                const firstChildRect = firstChildDom instanceof Element
+                  ? firstChildDom.getBoundingClientRect()
+                  : new DOMRect(summaryRect.left, summaryRect.bottom, summaryRect.width, 24)
+                dropPos = firstChildPos
+                side = 'before'
+                dropRect = firstChildRect
+              } else {
+                side = 'after'
+                dropRect = summaryRect
+              }
+            }
           }
-        : dragState.drop
+        }
+
+        drop = {
+          pos: dropPos,
+          side,
+          rect: dropRect,
+        }
+      }
       setDragState({ ...dragState, isDragging: dragState.isDragging || distance > 4, drop })
     }
     const handlePointerUp = () => {
@@ -488,7 +544,11 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
   const header = document.querySelector<HTMLElement>('.mybook-document-editor > header')
   const headerBottom = header?.getBoundingClientRect().bottom ?? 0
   const menuBoundary = Math.max(8, headerBottom + 8)
-  const controlsTop = Math.max(top, menuBoundary)
+  const viewportHeight = typeof window !== 'undefined'
+    ? (window.visualViewport ? window.visualViewport.offsetTop + window.visualViewport.height : window.innerHeight)
+    : 768
+  const maxControlsTop = Math.max(menuBoundary, viewportHeight - 36)
+  const controlsTop = Math.max(menuBoundary, Math.min(top, maxControlsTop))
   const bridgeTop = Math.max(8, Math.min(controlsTop, target?.rect.top ?? controlsTop))
   const bridgeLeft = Math.max(0, left)
   const bridgeWidth = Math.max(0, (target?.controlRect.left ?? left) - bridgeLeft)
@@ -497,8 +557,13 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
   const insertMenuTop = commandMenuTop(menuRect, 352, 8, menuBoundary)
   const insertMenuWidth = 320
   const insertMenuLeft = Math.max(8, Math.min(left, window.innerWidth - insertMenuWidth - 8))
-  const actionsMenuTop = commandMenuTop(menuRect, 128, 8, menuBoundary)
+  const insertMenuMaxHeight = Math.max(160, viewportHeight - insertMenuTop - 8)
+
+  const parentColumnsTarget = target ? findParentColumnsTarget(editor, target) : null
+  const actionsMenuEstimatedHeight = parentColumnsTarget ? 272 : target?.node.type.name === 'columns' ? 180 : 144
+  const actionsMenuTop = commandMenuTop(menuRect, actionsMenuEstimatedHeight, 8, menuBoundary)
   const actionsMenuWidth = 176
+  const actionsMenuMaxHeight = Math.max(120, viewportHeight - actionsMenuTop - 8)
   const gripLeft = left + 32
   const gripRight = left + 60
   const rightAlignedActionsLeft = gripRight - actionsMenuWidth
@@ -568,7 +633,7 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
       />
       <div
         ref={rootRef}
-        className={`mybook-editor-block-controls fixed z-20 flex items-center gap-1 ${isDragging ? 'opacity-70' : ''}`}
+        className={`mybook-editor-block-controls fixed ${isInsertOpen || isActionsOpen ? 'z-50' : 'z-20'} flex items-center gap-1 ${isDragging ? 'opacity-70' : ''}`}
         style={{ top: controlsTop, left }}
         aria-label="Block controls"
         onPointerLeave={(event) => {
@@ -627,7 +692,14 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
       </div>
 
       {isInsertOpen ? (
-        <div ref={insertMenuRef} className="fixed z-20 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]" style={{ top: insertMenuTop, left: insertMenuLeft }} data-command-menu-scroller="true">
+        <div
+          ref={insertMenuRef}
+          data-block-insert-menu="true"
+          data-editor-popover="true"
+          className="fixed z-50 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]"
+          style={{ top: insertMenuTop, left: insertMenuLeft, maxHeight: insertMenuMaxHeight }}
+          data-command-menu-scroller="true"
+        >
           <BlockCommandMenu
             ariaLabel="Insert block options"
             commands={insertBlockCommands}
@@ -639,9 +711,17 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
       ) : null}
 
       {isActionsOpen ? (
-        <div ref={actionsMenuRef} className="fixed z-20 w-44 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]" style={{ top: actionsMenuTop, left: actionsMenuLeft }} role="menu" aria-label="Block actions">
+        <div
+          ref={actionsMenuRef}
+          data-block-actions-menu="true"
+          data-editor-popover="true"
+          className="fixed z-50 w-44 overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]"
+          style={{ top: actionsMenuTop, left: actionsMenuLeft, maxHeight: `${actionsMenuMaxHeight}px` }}
+          role="menu"
+          aria-label="Block actions"
+        >
           {(() => {
-            const parentColumnsTarget = findParentColumnsTarget(editor, target)
+            const parentColumnsTarget = target ? findParentColumnsTarget(editor, target) : null
             if (!parentColumnsTarget) return null
             return (
               <>
@@ -723,17 +803,18 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
           <button type="button" role="menuitem" onClick={() => { deleteTarget(editor, target); setIsActionsOpen(false); setTarget(null); setDragState(null) }} className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm text-red-600 hover:bg-red-50"><HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />Delete</button>
         </div>
       ) : null}
+        </>
+      ) : null}
       {dragState?.isDragging && dragState.drop ? (
         <div
-          className="pointer-events-none fixed z-20 h-0.5 rounded-full bg-primary shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)]"
+          data-drop-indicator="true"
+          className="pointer-events-none fixed z-50 h-0.5 rounded-full bg-primary shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)]"
           style={{
             left: Math.max(8, dragState.drop.rect.left),
             top: dragState.drop.side === 'before' ? dragState.drop.rect.top : dragState.drop.rect.bottom,
             width: Math.max(48, dragState.drop.rect.width),
           }}
         />
-      ) : null}
-        </>
       ) : null}
     </>
   )

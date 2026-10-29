@@ -22,7 +22,11 @@ describe('FindReplaceDialog', () => {
     editor = new Editor({ element: editorElement, extensions: [StarterKit], content: '<p>cat cat</p>' })
     render(<FindReplaceDialog editor={editor} open onOpenChange={() => undefined} />)
 
-    expect(screen.getByRole('region', { name: 'Find and replace' })).toBeInTheDocument()
+    const region = screen.getByRole('region', { name: 'Find and replace' })
+    expect(region).toBeInTheDocument()
+    expect(region).toHaveAttribute('data-find-replace', 'true')
+    expect(region).toHaveAttribute('data-editor-popover', 'true')
+    expect(region.className).toContain('z-50')
     expect(screen.getByText('0/0')).toBeInTheDocument()
     expect(screen.queryByLabelText('Replace with')).not.toBeInTheDocument()
 

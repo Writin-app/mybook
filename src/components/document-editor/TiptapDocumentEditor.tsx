@@ -78,6 +78,7 @@ import { getTableSelectionPlainText, isSingleTableCellSelection, unwrapTableCell
 import { InlineHighlight, InlineTextColor } from './extensions/InlineTextColor'
 import { EditorKeyboardShortcuts } from './extensions/EditorKeyboardShortcuts'
 import { BlockMarkdownShortcuts } from './extensions/BlockMarkdownShortcuts'
+import { BlockAutoCapitalize, capitalizeFirstLetter } from './extensions/BlockAutoCapitalize'
 import { SearchHighlight } from './extensions/SearchHighlight'
 import { convertSelectedBlocks, isFormatCommand } from './blockConversion'
 import { matchesEditorMenuShortcut } from './editorMenuShortcuts'
@@ -86,7 +87,7 @@ import { documentLinkLocation, documentLinkTargets, pastedDocumentLink } from '.
 import { clearTableSelection, isBlankEditorPoint, isEditorInteractiveTarget, keepEditorFocusedOnBlankClick } from './editorFocus'
 import { SlashCommandMenu } from './SlashCommandMenu'
 import { analyzePastedUrl, type PasteUrlInfo } from './pasteUrlModel'
-import { filterMentionCommands, filterSlashCommands, getMentionMenuState, getSlashMenuState, runSlashCommand, type SlashMenuState } from './slashCommands'
+import { commandMenuTop, filterMentionCommands, filterSlashCommands, getMentionMenuState, getSlashMenuState, runSlashCommand, type SlashMenuState } from './slashCommands'
 import { TableActionsMenu } from './TableActionsMenu'
 import { devLog } from '../../utils/safeLog'
 import { convertRtfToHtml, documentImportTitle, isSupportedDocumentImport, normalizeInlineFormatting, plainTextToHtml, takeDocumentImport } from '../../services/documentImport'
@@ -160,6 +161,7 @@ interface DocumentLinkPickerState {
   query: string
   range: { from: number; to: number }
   position: { left: number; top: number }
+  rect?: DOMRect
 }
 interface ImagePickerState {
   range: { from: number; to: number }
@@ -642,6 +644,24 @@ function cleanPastedHtml(html: string) {
     if (!span.attributes.length) span.replaceWith(...Array.from(span.childNodes))
   })
 
+  // Ensure the first letter of text in blocks is capitalized
+  doc.body.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th').forEach((block) => {
+    if (block.closest('pre, code')) return
+    const walker = doc.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+    let textNode = walker.nextNode()
+    while (textNode) {
+      if (textNode.parentElement && textNode.parentElement.closest('pre, code')) {
+        textNode = walker.nextNode()
+        continue
+      }
+      if (textNode.nodeValue && /\p{L}/u.test(textNode.nodeValue)) {
+        textNode.nodeValue = capitalizeFirstLetter(textNode.nodeValue)
+        break
+      }
+      textNode = walker.nextNode()
+    }
+  })
+
   return doc.body.innerHTML
 }
 
@@ -665,7 +685,7 @@ function titleInputValue(fileName: string) {
   return /^Untitled(?: Document)?(?: \d+)?$/u.test(fileName.trim()) ? '' : fileName
 }
 
-function DocumentLinkPicker({
+export function DocumentLinkPicker({
   currentFileId,
   files,
   folders,
@@ -673,6 +693,7 @@ function DocumentLinkPicker({
   onSelect,
   onSelectIndex,
   position,
+  rect,
   query,
   selectedIndex,
 }: {
@@ -682,7 +703,8 @@ function DocumentLinkPicker({
   onClose: () => void
   onSelectIndex: (index: number) => void
   onSelect: (target: { id: string; name: string }) => void
-  position: { left: number; top: number } | null
+  position?: { left: number; top: number } | null
+  rect?: DOMRect | { left: number; top: number; bottom: number; right: number } | null
   query: string
   selectedIndex: number
 }) {
@@ -722,7 +744,28 @@ function DocumentLinkPicker({
     else if (optionRect.bottom > scrollerRect.bottom) scroller.scrollTop += optionRect.bottom - scrollerRect.bottom
   }, [selectedIndex])
 
-  if (!position) return null
+  const effectiveRect = useMemo(() => {
+    if (rect) {
+      if (typeof DOMRect !== 'undefined' && rect instanceof DOMRect) return rect
+      return new DOMRect(
+        rect.left,
+        rect.top,
+        Math.max(1, (rect.right ?? rect.left) - rect.left),
+        Math.max(1, (rect.bottom ?? rect.top) - rect.top),
+      )
+    }
+    if (position) {
+      return new DOMRect(position.left, position.top - 8, 1, 8)
+    }
+    return null
+  }, [rect, position])
+
+  if (!effectiveRect) return null
+
+  const minTop = typeof window !== 'undefined' && window.visualViewport ? window.visualViewport.offsetTop + 8 : 8
+  const estimatedHeight = Math.min(352, Math.max(72, flatTargets.length * 40 + groupedTargets.length * 28 + 16))
+  const top = commandMenuTop(effectiveRect, estimatedHeight, 8, minTop)
+  const left = Math.max(8, Math.min(effectiveRect.left, (typeof window !== 'undefined' ? window.innerWidth : 1024) - 320 - 8))
 
   return (
     <div
@@ -731,13 +774,11 @@ function DocumentLinkPicker({
       aria-label="Link to Page options"
       className="fixed z-50 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.14)] outline-none"
       data-document-link-picker="true"
+      data-editor-popover="true"
       data-command-menu-scroller="true"
       style={{
-        left: Math.max(8, Math.min(position.left, window.innerWidth - 320)),
-        top: Math.max(
-          typeof window !== 'undefined' ? getVisualViewportBounds().offsetTop + 8 : 8,
-          Math.min(position.top, (typeof window !== 'undefined' ? getVisualViewportBounds().visibleBottom : 768) - 360),
-        ),
+        top: Math.max(minTop, top),
+        left,
       }}
     >
       {groupedTargets.length ? groupedTargets.map((group) => (
@@ -808,7 +849,7 @@ function MentionSuggestionMenu({ menu, isMobile, selectedIndex, onSelectedIndexC
     )
   }
 
-  return <div role="dialog" aria-label="Mention" data-mention-menu="true" className="fixed z-30 w-56 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.14)]" style={{ top: Math.min(menu.rect.bottom + 4, window.innerHeight - 132), left: Math.max(8, Math.min(menu.rect.left, window.innerWidth - 232)) }}>
+  return <div role="dialog" aria-label="Mention" data-mention-menu="true" data-editor-popover="true" className="fixed z-50 w-56 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.14)]" style={{ top: Math.min(menu.rect.bottom + 4, window.innerHeight - 132), left: Math.max(8, Math.min(menu.rect.left, window.innerWidth - 232)) }}>
     <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">Mention</div>
     {options}
   </div>
@@ -850,6 +891,7 @@ function PasteAsMenu({
     <div
       ref={menuRef}
       data-paste-as-menu="true"
+      data-editor-popover="true"
       role="menu"
       aria-label="Paste as"
       onKeyDown={(event) => {
@@ -858,7 +900,7 @@ function PasteAsMenu({
           onClose()
         }
       }}
-      className="fixed z-20 min-w-48 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 text-sm shadow-[0_16px_48px_rgba(15,23,42,0.18)]"
+      className="fixed z-50 min-w-48 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 text-sm shadow-[0_16px_48px_rgba(15,23,42,0.18)]"
       style={{
         left: Math.max(8, Math.min(menu.position.left, window.innerWidth - 216)),
         top: Math.max(
@@ -986,6 +1028,7 @@ function InlineLinkToolbar({
   return (
     <div
       ref={toolbarRef}
+      data-editor-popover="true"
       className={toolbar.startInEdit ? 'mybook-inline-link-toolbar mybook-inline-link-toolbar-bare' : 'mybook-inline-link-toolbar'}
       role="toolbar"
       aria-label="Link actions"
@@ -1663,9 +1706,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     const query = doc.textBetween(picker.range.from, selection.from, '\n', '\0')
     const coords = currentEditor.view.coordsAtPos(selection.from)
-    const next = {
+    const rect = new DOMRect(coords.left, coords.top, Math.max(1, coords.right - coords.left), Math.max(1, coords.bottom - coords.top))
+    const next: DocumentLinkPickerState = {
       query,
       range: { from: picker.range.from, to: selection.from },
+      rect,
       position: { left: coords.left, top: coords.bottom + 8 },
     }
     documentLinkPickerRef.current = next
@@ -1764,6 +1809,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       BlankBlockSelection,
       EditorKeyboardShortcuts,
       BlockMarkdownShortcuts,
+      BlockAutoCapitalize,
       SearchHighlight,
       ...(collaboration.extension ? [collaboration.extension] : []),
     ],
@@ -1773,12 +1819,21 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         class: 'tiptap min-h-[65vh] outline-none',
         'aria-label': 'Document content',
         autocorrect: 'off',
-        autocapitalize: 'off',
+        autocapitalize: 'sentences',
         spellcheck: 'false',
       },
       transformPastedHTML: cleanPastedHtml,
       transformPastedText: cleanPastedText,
       handlePaste: (view, event) => {
+        const target = event.target
+        if (
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement ||
+          (target instanceof HTMLElement && target.isContentEditable === false)
+        ) {
+          return true
+        }
+
         const clipboardImage = event.clipboardData?.files?.[0]
         if (clipboardImage && clipboardImage.type.startsWith('image/')) {
           event.preventDefault()
@@ -1884,9 +1939,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             transaction.setSelection(TextSelection.create(transaction.doc, shortcutFrom))
             view.dispatch(transaction)
             const coords = view.coordsAtPos(shortcutFrom)
-            const nextPicker = {
+            const rect = new DOMRect(coords.left, coords.top, Math.max(1, coords.right - coords.left), Math.max(1, coords.bottom - coords.top))
+            const nextPicker: DocumentLinkPickerState = {
               query: '',
               range: { from: shortcutFrom, to: shortcutFrom },
+              rect,
               position: { left: coords.left, top: coords.bottom + 8 },
             }
             documentLinkPickerRef.current = nextPicker
@@ -2357,6 +2414,17 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }, [slashMenu])
 
   useEffect(() => {
+    if (!documentLinkPicker) return
+    const closeOnScroll = (event: Event) => {
+      const scrollTarget = event.target as Node | null
+      if (scrollTarget instanceof Element && scrollTarget.closest('[data-document-link-picker="true"]')) return
+      closeDocumentLinkPicker()
+    }
+    window.addEventListener('scroll', closeOnScroll, true)
+    return () => window.removeEventListener('scroll', closeOnScroll, true)
+  }, [documentLinkPicker, closeDocumentLinkPicker])
+
+  useEffect(() => {
     if (!imagePicker && !videoPicker && !audioPicker && !filePicker) return
     const closePickersOnScroll = (event: Event) => {
       const scrollTarget = event.target as Node | null
@@ -2510,20 +2578,39 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     closePasteAsMenu()
   }, [closeDocumentLinkPicker, closeImagePicker, closeVideoPicker, closeAudioPicker, closePasteAsMenu])
 
-  const handleInsertFile = useCallback((src: string, name: string, mimeType = '', size = 0) => {
+  const handleInsertFile = useCallback((src: string, name: string, mimeType = '', size = 0, pdfPreview = false) => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
     const picker = filePickerRef.current
     closeFilePicker()
+    const node = fileAttachmentNode(src, name, mimeType, size, null, pdfPreview)
     if (picker?.range) {
       const maxPos = currentEditor.state.doc.content.size
       const range = {
         from: Math.min(picker.range.from, maxPos),
         to: Math.min(picker.range.to, maxPos),
       }
-      currentEditor.chain().focus().insertContentAt(range, [fileAttachmentNode(src, name, mimeType, size), { type: 'paragraph' }]).run()
+      currentEditor.chain().focus().insertContentAt(range, [node, { type: 'paragraph' }]).run()
     } else {
-      currentEditor.chain().focus().insertContent([fileAttachmentNode(src, name, mimeType, size), { type: 'paragraph' }]).run()
+      currentEditor.chain().focus().insertContent([node, { type: 'paragraph' }]).run()
+    }
+  }, [closeFilePicker])
+
+  const handleEmbedContent = useCallback((contentHtml: string) => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return
+    const picker = filePickerRef.current
+    closeFilePicker()
+    const cleaned = cleanPastedHtml(contentHtml)
+    if (picker?.range) {
+      const maxPos = currentEditor.state.doc.content.size
+      const range = {
+        from: Math.min(picker.range.from, maxPos),
+        to: Math.min(picker.range.to, maxPos),
+      }
+      currentEditor.chain().focus().insertContentAt(range, cleaned).run()
+    } else {
+      currentEditor.chain().focus().insertContent(cleaned).run()
     }
   }, [closeFilePicker])
 
@@ -2552,9 +2639,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (!currentEditor) return
     const { selection } = currentEditor.state
     const coords = currentEditor.view.coordsAtPos(selection.from)
-    const nextPicker = {
+    const rect = new DOMRect(coords.left, coords.top, Math.max(1, coords.right - coords.left), Math.max(1, coords.bottom - coords.top))
+    const nextPicker: DocumentLinkPickerState = {
       query: '',
       range: { from: selection.from, to: selection.from },
+      rect,
       position: computePickerPosition(coords, 320, 320),
     }
     documentLinkPickerRef.current = nextPicker
@@ -3446,7 +3535,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const activeSlashMenu = slashMenuRef.current
     if (activeSlashMenu) {
       runSelectedSlashCommand(commandId, activeSlashMenu)
-      focusAndScrollActiveBlock()
+      if (!commandId.startsWith('toggle')) {
+        focusAndScrollActiveBlock()
+      }
       return
     }
 
@@ -3461,16 +3552,22 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (isFormatCommand(commandId)) {
       if (hasSelection) {
         convertSelectedBlocks(editor, commandId)
-        focusAndScrollActiveBlock()
+        if (!commandId.startsWith('toggle')) {
+          focusAndScrollActiveBlock()
+        }
         return
       }
       if (blockTarget) {
         convertSelectedBlocks(editor, commandId, blockTarget)
-        focusAndScrollActiveBlock()
+        if (!commandId.startsWith('toggle')) {
+          focusAndScrollActiveBlock()
+        }
         return
       }
       convertSelectedBlocks(editor, commandId)
-      focusAndScrollActiveBlock()
+      if (!commandId.startsWith('toggle')) {
+        focusAndScrollActiveBlock()
+      }
       return
     }
 
@@ -3495,20 +3592,26 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         const nodeEnd = targetPos + targetNode.nodeSize
         editor.chain().focus().deleteRange({ from: targetPos, to: nodeEnd }).run()
         runSlashCommand(editor, commandId, { from: targetPos, to: targetPos })
-        focusAndScrollActiveBlock()
+        if (!commandId.startsWith('toggle')) {
+          focusAndScrollActiveBlock()
+        }
         return
       }
 
       const insertPos = targetPos + targetNode.nodeSize
       editor.chain().focus().setTextSelection(Math.min(insertPos, editor.state.doc.content.size)).run()
       runSlashCommand(editor, commandId, { from: insertPos, to: insertPos })
-      focusAndScrollActiveBlock()
+      if (!commandId.startsWith('toggle')) {
+        focusAndScrollActiveBlock()
+      }
       return
     }
 
     const { from, to } = editor.state.selection
     runSlashCommand(editor, commandId, { from, to })
-    focusAndScrollActiveBlock()
+    if (!commandId.startsWith('toggle')) {
+      focusAndScrollActiveBlock()
+    }
   }
 
   const pageScale = zoom / 100
@@ -3648,7 +3751,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           )
         }
       />
-      <div ref={findBarAnchorRef} className="sticky top-[57px] md:top-[65px] z-40 h-0 overflow-visible">
+      <div ref={findBarAnchorRef} className="sticky top-[57px] md:top-[65px] z-50 h-0 overflow-visible">
         <FindReplaceDialog editor={editor} open={isFindReplaceOpen} onOpenChange={setIsFindReplaceOpen} />
       </div>
       <nav aria-label="Desktop document commands" className="hidden">
@@ -4019,6 +4122,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           files={files}
           folders={folders}
           position={documentLinkPicker.position}
+          rect={documentLinkPicker.rect}
           query={documentLinkPicker.query}
           selectedIndex={documentLinkSelectedIndex}
           onSelectIndex={(index) => {
@@ -4055,6 +4159,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           position={filePicker.position}
           onClose={closeFilePicker}
           onInsert={handleInsertFile}
+          onEmbedContent={handleEmbedContent}
         />
       ) : null}
       {!isPageLocked ? <DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} onEditLink={openSelectionLinkEditor} variant="mobile" /> : null}

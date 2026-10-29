@@ -146,7 +146,9 @@ export function AudioBlockNodeView({
     const audio = audioRef.current
     if (!audio) return
     if (audio.paused) {
-      void audio.play()
+      void audio.play().catch(() => {
+        setIsPlaying(false)
+      })
     } else {
       audio.pause()
     }
@@ -710,6 +712,9 @@ export function AudioBlockNodeView({
               if (audioRef.current) {
                 setDuration(audioRef.current.duration || 0)
               }
+            }}
+            onError={() => {
+              setIsPlaying(false)
             }}
             className="hidden"
           />

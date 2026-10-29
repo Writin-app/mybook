@@ -1,6 +1,7 @@
 import {
   ArrowDown01Icon,
   CheckListIcon,
+  CodeIcon,
   Link02Icon,
   MoreHorizontalIcon,
   TextBoldIcon,
@@ -39,7 +40,24 @@ function selectionPosition(editor: Editor): ToolbarPosition | null {
   const start = editor.view.coordsAtPos(from)
   const end = editor.view.coordsAtPos(to)
   if (!Number.isFinite(start.left) || !Number.isFinite(end.right)) return null
-  return { left: Math.min(start.left, end.left), top: Math.min(start.top, end.top) - 44 }
+
+  const viewportHeight = typeof window !== 'undefined'
+    ? (window.visualViewport && window.visualViewport.height > 0
+        ? window.visualViewport.offsetTop + window.visualViewport.height
+        : window.innerHeight)
+    : 768
+  const header = typeof document !== 'undefined' ? document.querySelector<HTMLElement>('.mybook-document-editor > header') : null
+  const headerBottom = header?.getBoundingClientRect().bottom ?? 0
+  const minTop = Math.max(8, headerBottom + 8)
+  const maxTop = Math.max(minTop, viewportHeight - 44)
+
+  let top = Math.min(start.top, end.top) - 44
+  if (top < minTop) {
+    top = Math.max(start.bottom, end.bottom) + 8
+  }
+  top = Math.max(minTop, Math.min(top, maxTop))
+  const left = Math.max(8, Math.min(Math.min(start.left, end.left), (typeof window !== 'undefined' ? window.innerWidth : 1024) - 380))
+  return { left, top }
 }
 
 function ToolButton({ label, active, children, onClick }: { label: string; active?: boolean; children: React.ReactNode; onClick: () => void }) {
@@ -217,8 +235,10 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
     <div
       ref={toolbarRef}
       role="toolbar"
+      data-selection-toolbar="true"
+      data-editor-popover="true"
       aria-label="Selected text formatting"
-      className="fixed z-30 hidden md:flex h-9 items-center gap-0.5 rounded-[8px] bg-[var(--app-surface)] px-1 text-foreground shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
+      className="fixed z-50 hidden md:flex h-9 items-center gap-0.5 rounded-[8px] bg-[var(--app-surface)] px-1 text-foreground shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
       style={{ left: position.left, top: position.top }}
       onMouseDown={(event) => event.preventDefault()}
     >
@@ -227,7 +247,7 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
           {blockStyle}<HugeiconsIcon icon={ArrowDown01Icon} size={14} className="text-muted-foreground" />
         </button>
         {blockMenuOpen ? (
-          <div role="menu" aria-label="Block style" className={`absolute left-0 z-40 w-56 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openBlockOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
+          <div role="menu" aria-label="Block style" className={`absolute left-0 z-50 w-56 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openBlockOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
             {['Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Heading 4'].map((label, index) => (
               <button key={label} type="button" role="menuitemradio" aria-checked={blockStyle === label} onClick={() => setBlockStyle(index)} className={`flex min-h-11 w-full items-center justify-between rounded-lg px-3 text-left text-sm hover:bg-[var(--app-subtle)] ${blockStyle === label ? 'bg-[var(--app-subtle)]' : ''}`}>
                 <span>{label}</span><span className="text-muted-foreground">{'#'.repeat(index)}</span>
@@ -247,7 +267,7 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
           <span className="flex h-5 flex-col items-center justify-center text-sm font-medium leading-none">A<span className="mt-0.5 h-0.5 w-3 rounded-full" style={{ backgroundColor: editor.getAttributes('textColor').color ?? 'currentColor' }} /></span>
         </ToolButton>
         {colorMenu === 'text' ? (
-          <div role="menu" aria-label="Text color" className={`absolute left-1/2 z-40 w-48 -translate-x-1/2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openColorOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
+          <div role="menu" aria-label="Text color" className={`absolute left-1/2 z-50 w-48 -translate-x-1/2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openColorOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
             {textColors.map((color) => <button key={color.name} type="button" role="menuitemradio" aria-checked={(editor.getAttributes('textColor').color ?? null) === color.value} onClick={() => applyColor('text', color.value)} className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--app-subtle)]"><span className="size-4 rounded border border-[var(--app-border)]" style={{ backgroundColor: color.value ?? 'transparent' }}>{color.value ? null : <span className="block rotate-45 border-t border-destructive" />}</span>{color.name}{(editor.getAttributes('textColor').color ?? null) === color.value ? <CheckIcon className="ml-auto size-4" /> : null}</button>)}
           </div>
         ) : null}
@@ -257,7 +277,7 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
           <span className="flex size-4 items-center justify-center rounded border border-current text-[10px] font-bold" style={{ backgroundColor: editor.getAttributes('highlight').color ?? 'transparent' }}>H</span>
         </ToolButton>
         {colorMenu === 'highlight' ? (
-          <div role="menu" aria-label="Highlight color" className={`absolute left-1/2 z-40 w-48 -translate-x-1/2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openColorOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
+          <div role="menu" aria-label="Highlight color" className={`absolute left-1/2 z-50 w-48 -translate-x-1/2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openColorOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
             <button type="button" role="menuitem" onClick={() => applyColor('highlight', null)} className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--app-subtle)]">Remove highlight</button>
             {tableColors.filter((color) => color.name !== 'White').map((color) => <button key={color.name} type="button" role="menuitemradio" aria-checked={editor.getAttributes('highlight').color === color.value} onClick={() => applyColor('highlight', color.value)} className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--app-subtle)]"><span className="size-4 rounded border border-[var(--app-border)]" style={{ backgroundColor: color.value }} />{color.name}{editor.getAttributes('highlight').color === color.value ? <CheckIcon className="ml-auto size-4" /> : null}</button>)}
           </div>
@@ -266,13 +286,14 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
       <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
       <ToolButton label="Link" active={editor.isActive('link')} onClick={openLinkEditor}><HugeiconsIcon icon={Link02Icon} size={16} /></ToolButton>
       <ToolButton label="Checklist" active={editor.isActive('taskList')} onClick={() => { restoreSelection(); editor.chain().focus().toggleTaskList().run() }}><HugeiconsIcon icon={CheckListIcon} size={16} /></ToolButton>
+      <ToolButton label="Inline code" active={editor.isActive('code')} onClick={() => { restoreSelection(); editor.chain().focus().toggleCode().run() }}><HugeiconsIcon icon={CodeIcon} size={16} /></ToolButton>
       <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
       <div className="relative">
         <ToolButton label="More options" active={moreMenuOpen} onClick={() => { setMoreMenuOpen((open) => !open); setColorMenu(null); setBlockMenuOpen(false) }}><HugeiconsIcon icon={MoreHorizontalIcon} size={16} /></ToolButton>
         {moreMenuOpen ? (
           <div
             data-command-menu-scroller="true"
-            className={`absolute right-0 z-40 w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 text-foreground shadow-[0_12px_28px_rgba(0,0,0,0.16)] ${openMoreOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}
+            className={`absolute right-0 z-50 w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 text-foreground shadow-[0_12px_28px_rgba(0,0,0,0.16)] ${openMoreOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}
             style={{ maxHeight: moreMaxHeight }}
           >
             <BlockCommandMenu

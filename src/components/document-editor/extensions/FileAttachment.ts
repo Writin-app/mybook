@@ -42,6 +42,14 @@ export const FileAttachment = Node.create({
         parseHTML: (element) => element.getAttribute('data-pdf-preview') === 'true',
         renderHTML: (attributes) => attributes.pdfPreview ? { 'data-pdf-preview': 'true' } : {},
       },
+      href: {
+        default: null,
+        parseHTML: (element) =>
+          element.getAttribute('data-href') ??
+          element.querySelector('a[data-file-link]')?.getAttribute('href') ??
+          null,
+        renderHTML: (attributes) => attributes.href ? { 'data-href': attributes.href } : {},
+      },
     }
   },
 
@@ -77,10 +85,24 @@ export const FileAttachment = Node.create({
   },
 })
 
-export function fileAttachmentNode(src: string, name: string, mimeType = '', size = 0) {
+export function fileAttachmentNode(
+  src: string,
+  name: string,
+  mimeType = '',
+  size = 0,
+  href?: string | null,
+  pdfPreview = false
+) {
   return {
     type: 'fileAttachment',
-    attrs: { src, name, mimeType, size },
+    attrs: {
+      src,
+      name,
+      mimeType,
+      size,
+      href: href || null,
+      pdfPreview: Boolean(pdfPreview),
+    },
   }
 }
 

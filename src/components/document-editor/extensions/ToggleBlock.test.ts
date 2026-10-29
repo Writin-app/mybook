@@ -217,4 +217,96 @@ describe('ToggleBlock', () => {
     editor.destroy()
     element.remove()
   })
+
+  it('stops paste event propagation on toggle title input and handles multiline paste into body', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({
+      element,
+      extensions: [Document, Paragraph, Text, ToggleBlock],
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'Document body before toggle' }],
+          },
+          toggleBlockNode('Initial Title', 1),
+        ],
+      },
+    })
+
+    const titleInput = element.querySelector<HTMLInputElement>('input.mybook-toggle-title')!
+    expect(titleInput).not.toBeNull()
+
+    let proseMirrorPasted = false
+    element.querySelector('.ProseMirror')?.addEventListener('paste', () => {
+      proseMirrorPasted = true
+    })
+
+    // 1. Single line paste
+    const singleLineEvent = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
+    Object.defineProperty(singleLineEvent, 'clipboardData', {
+      value: { getData: (format: string) => (format === 'text/plain' ? 'Single Line Title' : '') },
+    })
+    titleInput.dispatchEvent(singleLineEvent)
+
+    // Propagation must be stopped so it does not bubble to ProseMirror
+    expect(proseMirrorPasted).toBe(false)
+
+    // 2. Multiline paste
+    const multilineEvent = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
+    Object.defineProperty(multilineEvent, 'clipboardData', {
+      value: { getData: (format: string) => (format === 'text/plain' ? 'Heading Title\nLine 1 of details\nLine 2 of details' : '') },
+    })
+    titleInput.dispatchEvent(multilineEvent)
+
+    expect(proseMirrorPasted).toBe(false)
+    expect(titleInput.value).toBe('Heading Title')
+
+    const toggleNode = editor.state.doc.child(1)
+    expect(toggleNode.type.name).toBe('toggleBlock')
+    expect(toggleNode.attrs.title).toBe('Heading Title')
+    // Body should contain the inserted details lines
+    expect(toggleNode.textContent).toContain('Line 1 of details')
+    expect(toggleNode.textContent).toContain('Line 2 of details')
+
+    editor.destroy()
+    element.remove()
+  })
+
+  it('capitalizes the first letter of text when typing or pasting into toggle title input', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({
+      element,
+      extensions: [Document, Paragraph, Text, ToggleBlock],
+      content: {
+        type: 'doc',
+        content: [toggleBlockNode('', 1)],
+      },
+    })
+
+    const titleInput = element.querySelector<HTMLInputElement>('input.mybook-toggle-title')
+    expect(titleInput).not.toBeNull()
+
+    // 1. Typing lowercase text into title input
+    titleInput!.value = 'my heading'
+    titleInput!.dispatchEvent(new Event('input', { bubbles: true }))
+
+    expect(titleInput!.value).toBe('My heading')
+    expect(editor.state.doc.firstChild?.attrs.title).toBe('My heading')
+
+    // 2. Pasting lowercase multiline text into title input
+    const multilineEvent = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
+    Object.defineProperty(multilineEvent, 'clipboardData', {
+      value: { getData: (format: string) => (format === 'text/plain' ? 'lowercase title\nlowercase body line' : '') },
+    })
+    titleInput!.dispatchEvent(multilineEvent)
+
+    expect(titleInput!.value).toBe('Lowercase title')
+    expect(editor.state.doc.firstChild?.attrs.title).toBe('Lowercase title')
+    expect(editor.state.doc.firstChild?.textContent).toContain('Lowercase body line')
+
+    editor.destroy()
+    element.remove()
+  })
 })

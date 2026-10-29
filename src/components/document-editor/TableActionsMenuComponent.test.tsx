@@ -206,4 +206,36 @@ describe('TableActionsMenu touch controls & boundaries', () => {
     expect(addCol.style.height).toBe('150px')
     expect(addCol.style.top).toBe('100px')
   })
+
+  it('flips row grip menu above when clicked on a row near the bottom of the viewport', () => {
+    isTouchMock = false
+    editor = createTableEditor()
+    editor.commands.setTextSelection(4)
+
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (this.classList.contains('tableWrapper') || this.tagName.toLowerCase() === 'table') {
+        return { left: 100, right: 500, top: 600, bottom: 740, width: 400, height: 140, x: 100, y: 600, toJSON: () => {} }
+      }
+      if (this.tagName.toLowerCase() === 'th' || this.tagName.toLowerCase() === 'tr') {
+        return { left: 100, right: 500, top: 680, bottom: 730, width: 400, height: 50, x: 100, y: 680, toJSON: () => {} }
+      }
+      return { left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => {} }
+    })
+    Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: 768 })
+
+    render(<TableActionsMenu editor={editor} />)
+
+    const row1 = screen.getByRole('button', { name: 'Row 1 actions' })
+    act(() => {
+      fireEvent.click(row1)
+    })
+
+    const menu = screen.getByRole('menu')
+    expect(menu).toBeTruthy()
+    expect(menu.getAttribute('data-table-menu')).toBe('true')
+    expect(menu.className).toContain('overflow-y-auto')
+    const topStyle = parseFloat(menu.style.top)
+    // Since row is at 680-730 in 768 viewport, menu cannot fit below, so it flips above
+    expect(topStyle).toBeLessThan(680)
+  })
 })

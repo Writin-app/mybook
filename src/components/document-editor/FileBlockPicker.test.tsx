@@ -163,4 +163,65 @@ describe('FileBlockPicker', () => {
 
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  it('offers Embed PDF button and passes pdfPreview=true on selection', async () => {
+    const onInsert = vi.fn()
+
+    render(
+      <FileBlockPicker
+        position={defaultPosition}
+        onClose={vi.fn()}
+        onInsert={onInsert}
+      />
+    )
+
+    const fileInput = screen.getByLabelText('Upload file')
+    const pdfFile = new File(['%PDF-1.4 test'], 'handbook.pdf', { type: 'application/pdf' })
+    fireEvent.change(fileInput, { target: { files: [pdfFile] } })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Embed PDF' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Add file' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Embed PDF' }))
+
+    await waitFor(() => {
+      expect(onInsert).toHaveBeenCalledWith(
+        expect.stringContaining('data:application/pdf;base64,'),
+        'handbook.pdf',
+        'application/pdf',
+        pdfFile.size,
+        true
+      )
+    })
+  })
+
+  it('offers Embed as table button for CSV files when onEmbedContent is provided', async () => {
+    const onEmbedContent = vi.fn()
+
+    render(
+      <FileBlockPicker
+        position={defaultPosition}
+        onClose={vi.fn()}
+        onInsert={vi.fn()}
+        onEmbedContent={onEmbedContent}
+      />
+    )
+
+    const fileInput = screen.getByLabelText('Upload file')
+    const csvFile = new File(['Col1,Col2\nVal1,Val2'], 'data.csv', { type: 'text/csv' })
+    fireEvent.change(fileInput, { target: { files: [csvFile] } })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Embed as table' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Add file' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Embed as table' }))
+
+    await waitFor(() => {
+      expect(onEmbedContent).toHaveBeenCalledWith(expect.stringContaining('<table><tbody>'))
+    })
+  })
 })

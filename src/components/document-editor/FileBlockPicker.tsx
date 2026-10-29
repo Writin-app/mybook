@@ -12,13 +12,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import { parseFileUrl } from './fileClipboard'
 import { formatFileSize } from './fileIcons'
 import { getVisualViewportBounds } from '../../hooks/useVisualViewport'
+import {
+  convertDocxToHtml,
+  csvToHtmlTable,
+  getEmbeddableFileType,
+  normalizeInlineFormatting,
+} from '../../services/documentImport'
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024 // 50 MB
 
 export interface FileBlockPickerProps {
   position?: { left: number; top: number } | null
   onClose: () => void
-  onInsert: (src: string, name: string, mimeType?: string, size?: number) => void
+  onInsert: (src: string, name: string, mimeType?: string, size?: number, pdfPreview?: boolean) => void
+  onEmbedContent?: (content: string) => void
   title?: string
   submitLabel?: string
   initialTab?: 'upload' | 'embed'
@@ -31,6 +38,7 @@ export function FileBlockPicker({
   position,
   onClose,
   onInsert,
+  onEmbedContent,
   title = 'Add a file',
   submitLabel = 'Add file',
   initialTab = 'upload',
@@ -51,6 +59,8 @@ export function FileBlockPicker({
   const [embedUrl, setEmbedUrl] = useState(initialUrl)
   const [embedError, setEmbedError] = useState<string | null>(null)
   const [isEmbedding, setIsEmbedding] = useState(false)
+
+  const embeddableType = selectedFile ? getEmbeddableFileType(selectedFile.name, selectedFile.type) : null
 
   // Auto-focus embed input when embed tab is active
   useEffect(() => {
@@ -122,7 +132,7 @@ export function FileBlockPicker({
     }
   }
 
-  const handleUploadSubmit = async () => {
+  const handleUploadSubmit = async (embedPdf = false) => {
     if (!selectedFile) return
     setIsUploading(true)
     setUploadError(null)
@@ -135,9 +145,36 @@ export function FileBlockPicker({
         reader.readAsDataURL(selectedFile)
       })
 
-      onInsert(dataUrl, selectedFile.name, selectedFile.type, selectedFile.size)
+      if (embedPdf) {
+        onInsert(dataUrl, selectedFile.name, selectedFile.type, selectedFile.size, true)
+      } else {
+        onInsert(dataUrl, selectedFile.name, selectedFile.type, selectedFile.size)
+      }
     } catch {
       setUploadError('Could not process file. Please try again.')
+      setIsUploading(false)
+    }
+  }
+
+  const handleEmbedContentSubmit = async () => {
+    if (!selectedFile || !onEmbedContent) return
+    setIsUploading(true)
+    setUploadError(null)
+
+    try {
+      if (embeddableType === 'docx') {
+        const buffer = await selectedFile.arrayBuffer()
+        const { html } = await convertDocxToHtml(buffer)
+        onEmbedContent(html)
+      } else if (embeddableType === 'html') {
+        const text = await selectedFile.text()
+        onEmbedContent(normalizeInlineFormatting(text))
+      } else if (embeddableType === 'csv') {
+        const text = await selectedFile.text()
+        onEmbedContent(csvToHtmlTable(text))
+      }
+    } catch {
+      setUploadError('Could not process file for embedding. Please try attaching instead.')
       setIsUploading(false)
     }
   }
@@ -158,8 +195,13 @@ export function FileBlockPicker({
       return
     }
 
+    const isPdfUrl = /\.pdf(?:$|\?)/i.test(parsed.src) || /\.pdf$/i.test(parsed.name)
     setIsEmbedding(true)
-    onInsert(parsed.src, parsed.name, '', 0)
+    if (isPdfUrl) {
+      onInsert(parsed.src, parsed.name, 'application/pdf', 0, true)
+    } else {
+      onInsert(parsed.src, parsed.name, '', 0)
+    }
   }
 
   const clearSelectedFile = () => {
@@ -185,12 +227,13 @@ export function FileBlockPicker({
         className
           ? className
           : isInline
-            ? 'absolute top-11 right-0 z-40 w-[min(24rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
+            ? 'absolute top-11 right-0 z-50 w-[min(24rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
             : isCentered
               ? 'w-[min(24rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
               : 'fixed z-50 w-[min(24rem,calc(100vw-1rem))] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
       }
       data-file-picker="true"
+      data-editor-popover="true"
       data-command-menu-scroller="true"
       style={isInline || isCentered ? undefined : { left, top }}
     >
@@ -309,14 +352,41 @@ export function FileBlockPicker({
                 </Button>
                 <Button
                   type="button"
-                  variant="default"
+                  variant={embeddableType ? 'outline' : 'default'}
                   size="sm"
                   disabled={isUploading}
-                  onClick={handleUploadSubmit}
+                  onClick={() => void handleUploadSubmit(false)}
                   className="rounded-lg text-xs"
                 >
                   {isUploading ? 'Saving…' : submitLabel}
                 </Button>
+                {embeddableType === 'pdf' ? (
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    disabled={isUploading}
+                    onClick={() => void handleUploadSubmit(true)}
+                    className="rounded-lg text-xs"
+                  >
+                    {isUploading ? 'Embedding…' : 'Embed PDF'}
+                  </Button>
+                ) : embeddableType && onEmbedContent ? (
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    disabled={isUploading}
+                    onClick={() => void handleEmbedContentSubmit()}
+                    className="rounded-lg text-xs"
+                  >
+                    {isUploading
+                      ? 'Embedding…'
+                      : embeddableType === 'csv'
+                        ? 'Embed as table'
+                        : 'Embed into document'}
+                  </Button>
+                ) : null}
               </div>
             </div>
           )}
