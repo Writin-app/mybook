@@ -605,5 +605,30 @@ describe('EditorBlockControls', () => {
       expect(toggle.type.name).toBe('toggleBlock')
       expect(toggle.textContent).toContain('Table Cell Content')
     })
+
+    it('safely handles target invalidation when document is shortened or cleared without throwing out of range errors', () => {
+      isMobileMock = false
+      editor = createTestEditor(
+        '<p>First paragraph</p><p>' + 'Second paragraph with long content '.repeat(20) + '</p>',
+      )
+
+      render(<EditorBlockControls editor={editor} onInsertBlock={vi.fn()} />)
+
+      const gutters = document.querySelectorAll('.mybook-editor-block-gutter')
+      expect(gutters.length).toBeGreaterThanOrEqual(2)
+
+      // Target the second block which is at a high position
+      act(() => {
+        fireEvent.pointerEnter(gutters[1]!, { pointerType: 'mouse' })
+      })
+
+      // Replace doc with a much shorter doc (simulate delete/clear all)
+      act(() => {
+        editor!.commands.setContent('<p>Short</p>')
+      })
+
+      // Must not throw RangeError: Position out of range
+      expect(editor!.state.doc.content.size).toBeLessThan(10)
+    })
   })
 })

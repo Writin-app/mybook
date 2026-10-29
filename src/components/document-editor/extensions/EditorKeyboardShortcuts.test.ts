@@ -142,4 +142,18 @@ describe('EditorKeyboardShortcuts Enter behavior', () => {
 
     editor.destroy()
   })
+
+  it('has high priority to ensure safe undo interceptor executes before default history', () => {
+    const editor = new Editor({
+      extensions: [StarterKit, EditorKeyboardShortcuts],
+      content: '<p>Content</p>',
+    })
+
+    const shortcutExt = editor.extensionManager.extensions.find(
+      (ext) => ext.name === 'editorKeyboardShortcuts',
+    )
+    expect(shortcutExt?.config.priority).toBe(200)
+
+    editor.destroy()
+  })
 })

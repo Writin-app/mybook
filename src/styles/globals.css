@@ -251,7 +251,8 @@
   .tiptap .mybook-column-placeholder::before { content: attr(data-placeholder) !important; font-weight: inherit; }
   .tiptap .mybook-quote-empty-placeholder::before { content: attr(data-placeholder) !important; font-weight: inherit; }
 
-  .tiptap .mybook-empty-block-placeholder {
+  .tiptap .mybook-empty-block-placeholder,
+  .tiptap .mybook-quote-empty-placeholder {
     position: relative;
   }
 

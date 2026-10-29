@@ -238,6 +238,26 @@ describe('slashCommands', () => {
     element.remove()
   })
 
+  it('inserts quote block with caret positioned inside the paragraph and supports continuous typing', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({ element, extensions: [StarterKit], content: '<p>/quote</p>' })
+    editor.commands.setTextSelection(7)
+
+    runSlashCommand(editor, 'quote', { from: 1, to: 7 })
+
+    expect(editor.getHTML()).toContain('<blockquote><p></p></blockquote>')
+    expect(editor.state.selection.$from.parent.type.name).toBe('paragraph')
+    expect(editor.state.selection.$from.parentOffset).toBe(0)
+
+    // Type text into the blockquote
+    editor.commands.insertContent('Inspiring quote')
+    expect(editor.getHTML()).toContain('<blockquote><p>Inspiring quote</p></blockquote>')
+    expect(editor.state.doc.child(0).childCount).toBe(1)
+
+    editor.destroy()
+    element.remove()
+  })
+
   it('filters toggle options on query "toggle"', () => {
     const results = filterSlashCommands('toggle')
     expect(results.some((c) => c.id === 'toggle')).toBe(true)

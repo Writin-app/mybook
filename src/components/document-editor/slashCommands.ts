@@ -1,5 +1,4 @@
 import type { Editor } from '@tiptap/react'
-import { TextSelection } from '@tiptap/pm/state'
 
 import { calloutNode } from './extensions/Callout'
 import { columnsNode } from './extensions/Columns'
@@ -153,16 +152,12 @@ export function filterSlashCommands(query: string, editor?: Pick<Editor, 'state'
 }
 
 function insertQuoteBlock(editor: Editor, range: SlashMenuState['range']) {
-  const insertAt = range.from
   editor
     .chain()
     .focus()
     .deleteRange(range)
-    .insertContent({ type: 'blockquote', content: [{ type: 'paragraph' }] })
+    .setBlockquote()
     .run()
-
-  const quoteTextStart = Math.min(insertAt + 2, editor.state.doc.content.size)
-  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, quoteTextStart)).scrollIntoView())
 }
 
 function insertCodeBlock(editor: Editor, range: SlashMenuState['range']) {

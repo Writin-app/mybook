@@ -607,9 +607,13 @@ function isWholeDocumentSelection(editor: NonNullable<ReturnType<typeof useEdito
 }
 
 function resetEditorToEmptyDocument(editor: NonNullable<ReturnType<typeof useEditor>>) {
-  editor.commands.setContent(emptyDocument, { emitUpdate: true })
-  const selection = TextSelection.create(editor.state.doc, 1)
-  editor.view.dispatch(editor.state.tr.setSelection(selection).scrollIntoView())
+  const { tr, doc } = editor.state
+  const paragraphType = editor.schema.nodes.paragraph
+  if (!paragraphType) return
+  const emptyParagraph = paragraphType.create()
+  const transaction = tr.replaceWith(0, doc.content.size, emptyParagraph)
+  transaction.setSelection(TextSelection.create(transaction.doc, 1)).scrollIntoView()
+  editor.view.dispatch(transaction)
   editor.view.focus()
 }
 
@@ -1643,7 +1647,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const picker = documentLinkPickerRef.current
     if (!picker) return
     const { selection, doc } = currentEditor.state
-    if (!selection.empty || selection.from < picker.range.from) {
+    if (!selection.empty || picker.range.from < 0 || picker.range.from > doc.content.size || selection.from < picker.range.from || selection.from > doc.content.size) {
       closeDocumentLinkPicker()
       return
     }
@@ -1654,7 +1658,13 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       return
     }
     const query = doc.textBetween(picker.range.from, selection.from, '\n', '\0')
-    const coords = currentEditor.view.coordsAtPos(selection.from)
+    let coords: { left: number; top: number; right: number; bottom: number } | null = null
+    try {
+      coords = currentEditor.view.coordsAtPos(selection.from)
+    } catch {
+      closeDocumentLinkPicker()
+      return
+    }
     const rect = new DOMRect(coords.left, coords.top, Math.max(1, coords.right - coords.left), Math.max(1, coords.bottom - coords.top))
     const next: DocumentLinkPickerState = {
       query,

@@ -41,6 +41,7 @@ const extendSelectionWithinCell = (editor: Editor, direction: 'start' | 'end') =
 
 export const EditorKeyboardShortcuts = Extension.create({
   name: 'editorKeyboardShortcuts',
+  priority: 200,
 
   addKeyboardShortcuts() {
     return {
