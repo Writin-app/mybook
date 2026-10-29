@@ -98,12 +98,10 @@ import { Input } from '../ui/input'
 import { FindReplaceDialog } from './FindReplaceDialog'
 import { normalizeLinkUrl } from './linkUrl'
 import { ArrowPathIcon } from '@heroicons/react/24/outline'
+import { EmptyBlockPlaceholder, emptyBlockPlaceholderKey } from './emptyBlockPlaceholder'
 const emptyDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
 const emptyDocumentJson = JSON.stringify(emptyDocument)
 const documentViewModeStorageKey = 'mybook-document-view-mode'
-const emptyBlockPlaceholderClass = 'mybook-empty-block-placeholder'
-const quoteEmptyPlaceholderClass = 'mybook-quote-empty-placeholder'
-const emptyBlockPlaceholderKey = new PluginKey<{ focused: boolean; pickerActive?: boolean }>('emptyBlockPlaceholder')
 const listMarkerDepthKey = new PluginKey('listMarkerDepth')
 const blankBlockSelectionKey = new PluginKey<{ anchor: number | null; head: number | null }>('blankBlockSelection')
 const blankSelectableBlockSelector = ':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > blockquote, :scope > pre, :scope > .mybook-toggle, :scope > ul > li, :scope > ol > li, :scope > [data-type="taskItem"]'
@@ -429,106 +427,6 @@ const BlankBlockSelection = Extension.create({
     })]
   },
 })
-const EmptyBlockPlaceholder = Extension.create({
-  name: 'emptyBlockPlaceholder',
-  addProseMirrorPlugins() {
-    return [new Plugin({
-      key: emptyBlockPlaceholderKey,
-      state: {
-        init: () => ({ focused: false, pickerActive: false }),
-        apply(transaction, value) {
-          const focused = transaction.getMeta(emptyBlockPlaceholderKey)?.focused
-          const pickerActive = transaction.getMeta(emptyBlockPlaceholderKey)?.pickerActive
-          return {
-            focused: focused !== undefined ? focused : value.focused,
-            pickerActive: pickerActive !== undefined ? pickerActive : value.pickerActive,
-          }
-        },
-      },
-      props: {
-        decorations(state) {
-          const decorations: Decoration[] = []
-          const pluginState = emptyBlockPlaceholderKey.getState(state)
-          const isEditorFocused = pluginState?.focused === true || pluginState?.pickerActive === true
-          const activeTextblockPos = isEditorFocused && state.selection.empty && state.selection.$from.parent.isTextblock && state.selection.$from.parent.content.size === 0
-            ? state.selection.$from.before(state.selection.$from.depth)
-            : null
-
-          state.doc.descendants((node, pos, parent) => {
-            if (!node.isTextblock || node.content.size !== 0) return
-            if (parent?.type.name === 'tableCell' || parent?.type.name === 'tableHeader') return
-            if (parent?.type.name === 'blockquote') {
-              decorations.push(Decoration.node(pos, pos + node.nodeSize, {
-                class: quoteEmptyPlaceholderClass,
-                'data-placeholder': 'Quote',
-              }))
-              return
-            }
-            if (parent?.type.name === 'taskItem') {
-              decorations.push(Decoration.node(pos, pos + node.nodeSize, {
-                class: emptyBlockPlaceholderClass,
-              }))
-              return
-            }
-            if (parent?.type.name === 'column') {
-              const isFocusedInThisBlock = pos === activeTextblockPos
-              if (!isFocusedInThisBlock) {
-                // Determine column index (1-based)
-                // pos is inside parent (column), which is inside grandparent (columns)
-                const $pos = state.doc.resolve(pos)
-                let colIndex = 1
-                for (let d = $pos.depth; d > 0; d -= 1) {
-                  if ($pos.node(d).type.name === 'column') {
-                    const colNodePos = $pos.before(d)
-                    const $colPos = state.doc.resolve(colNodePos)
-                    if ($colPos.parent.type.name === 'columns') {
-                      colIndex = $colPos.index() + 1
-                    }
-                    break
-                  }
-                }
-                decorations.push(Decoration.node(pos, pos + node.nodeSize, {
-                  class: `${emptyBlockPlaceholderClass} mybook-column-placeholder`,
-                  'data-placeholder': `Column ${colIndex}`,
-                }))
-                return
-              }
-              // If focused in this block, allow the normal emptyBlockPlaceholder decoration below
-              return
-            }
-            if (node.type.name === 'heading' || (node.type.name !== 'paragraph' && pos === activeTextblockPos)) {
-              const isHeading = node.type.name === 'heading'
-              decorations.push(Decoration.node(pos, pos + node.nodeSize, {
-                class: isHeading ? `${emptyBlockPlaceholderClass} mybook-heading-placeholder` : emptyBlockPlaceholderClass,
-                ...(isHeading ? { 'data-placeholder': `Heading ${node.attrs.level}` } : {}),
-              }))
-            }
-          })
-
-          if (isEditorFocused && state.selection.empty) {
-            const { $from } = state.selection
-            const grandparent = $from.depth > 1 ? $from.node($from.depth - 1) : null
-            if ($from.parent.type.name === 'paragraph' && $from.parent.content.size === 0 && !['tableCell', 'tableHeader'].includes(grandparent?.type.name ?? '')) {
-              const pos = $from.before($from.depth)
-              decorations.push(Decoration.node(pos, $from.after($from.depth), { class: emptyBlockPlaceholderClass }))
-            }
-          }
-          return DecorationSet.create(state.doc, decorations)
-        },
-        handleDOMEvents: {
-          focus(view) {
-            view.dispatch(view.state.tr.setMeta(emptyBlockPlaceholderKey, { focused: true }))
-            return false
-          },
-          blur(view) {
-            view.dispatch(view.state.tr.setMeta(emptyBlockPlaceholderKey, { focused: false }))
-            return false
-          },
-        },
-      },
-    })]
-  },
-})
 
 function parseContent(content: string) {
   if (!content) return emptyDocument
@@ -690,7 +588,7 @@ function cleanPastedText(text: string) {
   return text.replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n')
 }
 
-export function clearEditorHistory(editor: NonNullable<ReturnType<typeof useEditor>>) {
+function clearEditorHistory(editor: NonNullable<ReturnType<typeof useEditor>>) {
   try {
     const historyPlugin = editor.state.plugins.find((p: unknown) => Boolean((p as { key?: string }).key?.startsWith('history$')))
     if (historyPlugin && historyPlugin.spec.state?.init) {
@@ -1635,7 +1533,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     setImagePicker(null)
     const currentEditor = editorRef.current
     if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null }))
     }
   }, [])
   const closeVideoPicker = useCallback(() => {
@@ -1643,7 +1541,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     setVideoPicker(null)
     const currentEditor = editorRef.current
     if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null }))
     }
   }, [])
   const closeAudioPicker = useCallback(() => {
@@ -1651,7 +1549,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     setAudioPicker(null)
     const currentEditor = editorRef.current
     if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null }))
     }
   }, [])
   const closeFilePicker = useCallback(() => {
@@ -1659,7 +1557,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     setFilePicker(null)
     const currentEditor = editorRef.current
     if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null }))
     }
   }, [])
   const updateSlashMenu = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
@@ -1738,7 +1636,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     setDocumentLinkSelectedIndex(0)
     const currentEditor = editorRef.current
     if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null }))
     }
   }, [])
   const updateDocumentLinkPicker = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
@@ -2505,7 +2403,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     imagePickerRef.current = nextPicker
     setImagePicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'image' }))
     slashMenuRef.current = null
     setSlashMenu(null)
     closeDocumentLinkPicker()
@@ -2543,7 +2441,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     videoPickerRef.current = nextPicker
     setVideoPicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'video' }))
     slashMenuRef.current = null
     setSlashMenu(null)
     closeDocumentLinkPicker()
@@ -2581,7 +2479,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     audioPickerRef.current = nextPicker
     setAudioPicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'audio' }))
     slashMenuRef.current = null
     setSlashMenu(null)
     closeDocumentLinkPicker()
@@ -2619,7 +2517,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     filePickerRef.current = nextPicker
     setFilePicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'file' }))
     slashMenuRef.current = null
     setSlashMenu(null)
     closeDocumentLinkPicker()
@@ -2699,7 +2597,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     documentLinkPickerRef.current = nextPicker
     setDocumentLinkPicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'document-link' }))
     documentLinkSelectedIndexRef.current = 0
     setDocumentLinkSelectedIndex(0)
     slashMenuRef.current = null
