@@ -1533,35 +1533,39 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     ? `A document named "${appFileName(duplicateTitleFile.name, duplicateTitleFile.type)}" already exists in this folder.`
     : null
   const closeImagePicker = useCallback(() => {
+    const wasOpen = Boolean(imagePickerRef.current)
     imagePickerRef.current = null
     setImagePicker(null)
     const currentEditor = editorRef.current
-    if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null }))
+    if (wasOpen && currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null, pickerPos: null }))
     }
   }, [])
   const closeVideoPicker = useCallback(() => {
+    const wasOpen = Boolean(videoPickerRef.current)
     videoPickerRef.current = null
     setVideoPicker(null)
     const currentEditor = editorRef.current
-    if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null }))
+    if (wasOpen && currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null, pickerPos: null }))
     }
   }, [])
   const closeAudioPicker = useCallback(() => {
+    const wasOpen = Boolean(audioPickerRef.current)
     audioPickerRef.current = null
     setAudioPicker(null)
     const currentEditor = editorRef.current
-    if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null }))
+    if (wasOpen && currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null, pickerPos: null }))
     }
   }, [])
   const closeFilePicker = useCallback(() => {
+    const wasOpen = Boolean(filePickerRef.current)
     filePickerRef.current = null
     setFilePicker(null)
     const currentEditor = editorRef.current
-    if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null }))
+    if (wasOpen && currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null, pickerPos: null }))
     }
   }, [])
   const updateSlashMenu = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
@@ -1634,13 +1638,14 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     setInlineLinkToolbar(null)
   }, [])
   const closeDocumentLinkPicker = useCallback(() => {
+    const wasOpen = Boolean(documentLinkPickerRef.current)
     documentLinkPickerRef.current = null
     setDocumentLinkPicker(null)
     documentLinkSelectedIndexRef.current = 0
     setDocumentLinkSelectedIndex(0)
     const currentEditor = editorRef.current
-    if (currentEditor && !currentEditor.isDestroyed) {
-      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null }))
+    if (wasOpen && currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false, pickerType: null, pickerPos: null }))
     }
   }, [])
   const updateDocumentLinkPicker = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
@@ -2405,6 +2410,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const openImagePicker = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
+    closeDocumentLinkPicker()
+    closeVideoPicker()
+    closeAudioPicker()
+    closeFilePicker()
+    closePasteAsMenu()
     const { selection } = currentEditor.state
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: ImagePickerState = {
@@ -2413,14 +2423,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     imagePickerRef.current = nextPicker
     setImagePicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'image' }))
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'image', pickerPos: selection.from }))
     slashMenuRef.current = null
     setSlashMenu(null)
-    closeDocumentLinkPicker()
-    closeVideoPicker()
-    closeAudioPicker()
-    closeFilePicker()
-    closePasteAsMenu()
   }, [closeDocumentLinkPicker, closeVideoPicker, closeAudioPicker, closeFilePicker, closePasteAsMenu])
 
   const handleInsertImage = useCallback((src: string, alt: string) => {
@@ -2443,6 +2448,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const openVideoPicker = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
+    closeDocumentLinkPicker()
+    closeImagePicker()
+    closeAudioPicker()
+    closeFilePicker()
+    closePasteAsMenu()
     const { selection } = currentEditor.state
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: VideoPickerState = {
@@ -2451,14 +2461,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     videoPickerRef.current = nextPicker
     setVideoPicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'video' }))
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'video', pickerPos: selection.from }))
     slashMenuRef.current = null
     setSlashMenu(null)
-    closeDocumentLinkPicker()
-    closeImagePicker()
-    closeAudioPicker()
-    closeFilePicker()
-    closePasteAsMenu()
   }, [closeDocumentLinkPicker, closeImagePicker, closeAudioPicker, closeFilePicker, closePasteAsMenu])
 
   const handleInsertVideo = useCallback((src: string, alt: string, provider?: 'html5' | 'youtube' | 'vimeo' | 'embed') => {
@@ -2481,6 +2486,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const openAudioPicker = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
+    closeDocumentLinkPicker()
+    closeImagePicker()
+    closeVideoPicker()
+    closeFilePicker()
+    closePasteAsMenu()
     const { selection } = currentEditor.state
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: AudioPickerState = {
@@ -2489,14 +2499,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     audioPickerRef.current = nextPicker
     setAudioPicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'audio' }))
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'audio', pickerPos: selection.from }))
     slashMenuRef.current = null
     setSlashMenu(null)
-    closeDocumentLinkPicker()
-    closeImagePicker()
-    closeVideoPicker()
-    closeFilePicker()
-    closePasteAsMenu()
   }, [closeDocumentLinkPicker, closeImagePicker, closeVideoPicker, closeFilePicker, closePasteAsMenu])
 
   const handleInsertAudio = useCallback((src: string, title: string, provider?: 'html5' | 'embed') => {
@@ -2519,6 +2524,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const openFilePicker = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
+    closeDocumentLinkPicker()
+    closeImagePicker()
+    closeVideoPicker()
+    closeAudioPicker()
+    closePasteAsMenu()
     const { selection } = currentEditor.state
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: FilePickerState = {
@@ -2527,14 +2537,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     filePickerRef.current = nextPicker
     setFilePicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'file' }))
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'file', pickerPos: selection.from }))
     slashMenuRef.current = null
     setSlashMenu(null)
-    closeDocumentLinkPicker()
-    closeImagePicker()
-    closeVideoPicker()
-    closeAudioPicker()
-    closePasteAsMenu()
   }, [closeDocumentLinkPicker, closeImagePicker, closeVideoPicker, closeAudioPicker, closePasteAsMenu])
 
   const handleInsertFile = useCallback((src: string, name: string, mimeType = '', size = 0, pdfPreview = false) => {
@@ -2596,6 +2601,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const openDocumentLinkPicker = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
+    closeImagePicker()
+    closeVideoPicker()
+    closeAudioPicker()
+    closeFilePicker()
+    closePasteAsMenu()
     const { selection } = currentEditor.state
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const rect = new DOMRect(coords.left, coords.top, Math.max(1, coords.right - coords.left), Math.max(1, coords.bottom - coords.top))
@@ -2607,16 +2617,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     documentLinkPickerRef.current = nextPicker
     setDocumentLinkPicker(nextPicker)
-    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'document-link' }))
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true, pickerType: 'document-link', pickerPos: selection.from }))
     documentLinkSelectedIndexRef.current = 0
     setDocumentLinkSelectedIndex(0)
     slashMenuRef.current = null
     setSlashMenu(null)
-    closeImagePicker()
-    closeVideoPicker()
-    closeAudioPicker()
-    closeFilePicker()
-    closePasteAsMenu()
   }, [closeImagePicker, closeVideoPicker, closeAudioPicker, closeFilePicker, closePasteAsMenu])
 
   useEffect(() => {
@@ -3551,6 +3556,18 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, insertPos)))
         runSlashCommand(editor, commandId, { from: insertPos, to: insertPos })
         focusAndScrollActiveBlock()
+        return
+      }
+
+      if (['image', 'video', 'audio', 'file', 'document-link'].includes(commandId)) {
+        if (isEmpty) {
+          editor.chain().focus().setTextSelection(targetPos + 1).run()
+          runSlashCommand(editor, commandId, { from: targetPos + 1, to: targetPos + 1 })
+        } else {
+          const insertPos = targetPos + targetNode.nodeSize
+          editor.chain().focus().insertContentAt(insertPos, { type: 'paragraph' }).setTextSelection(insertPos + 1).run()
+          runSlashCommand(editor, commandId, { from: insertPos + 1, to: insertPos + 1 })
+        }
         return
       }
 

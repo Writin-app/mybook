@@ -97,4 +97,37 @@ describe('EmptyBlockPlaceholder plugin', () => {
 
     editor.destroy()
   })
+
+  it('accurately scopes picker placeholder using pickerPos even when caret moves', () => {
+    const editor = new Editor({
+      extensions: [StarterKit, EmptyBlockPlaceholder],
+      content: '<p></p><p>Some text</p><p></p>',
+    })
+
+    const plugin = emptyBlockPlaceholderKey.get(editor.state)
+    expect(plugin).toBeDefined()
+
+    const getDecoList = () => {
+      const decos = plugin ? plugin.props.decorations?.call(plugin, editor.state) : null
+      return (decos as unknown as { find: () => Array<{ type: { attrs: Record<string, string> }; from: number; to: number }> } | null)?.find() ?? []
+    }
+
+    // Target paragraph 1 (pos 1 inside pos 0..2) with video picker
+    editor.view.dispatch(editor.state.tr.setMeta(emptyBlockPlaceholderKey, {
+      pickerActive: true,
+      pickerType: 'video',
+      pickerPos: 1,
+    }))
+
+    const decoList = getDecoList()
+    const p1Deco = decoList.find((d) => d.from === 0 && d.to === 2)
+    expect(p1Deco?.type.attrs['class']).toContain('mybook-picker-placeholder')
+    expect(p1Deco?.type.attrs['data-placeholder']).toBe('Add a video')
+
+    // Paragraph 3 (pos 13..15) must not have "Add a video"
+    const p3Deco = decoList.find((d) => d.from > 10)
+    expect(p3Deco?.type.attrs?.['data-placeholder']).not.toBe('Add a video')
+
+    editor.destroy()
+  })
 })

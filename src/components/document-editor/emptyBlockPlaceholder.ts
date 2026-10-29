@@ -9,6 +9,7 @@ export interface EmptyBlockPlaceholderState {
   focused: boolean
   pickerActive?: boolean
   pickerType?: 'image' | 'video' | 'audio' | 'file' | 'document-link' | null
+  pickerPos?: number | null
 }
 
 export const emptyBlockPlaceholderKey = new PluginKey<EmptyBlockPlaceholderState>('emptyBlockPlaceholder')
@@ -27,7 +28,7 @@ export const EmptyBlockPlaceholder = Extension.create({
     return [new Plugin({
       key: emptyBlockPlaceholderKey,
       state: {
-        init: () => ({ focused: false, pickerActive: false, pickerType: null }),
+        init: () => ({ focused: false, pickerActive: false, pickerType: null, pickerPos: null }),
         apply(transaction, value) {
           const meta = transaction.getMeta(emptyBlockPlaceholderKey)
           if (!meta) return value
@@ -35,6 +36,7 @@ export const EmptyBlockPlaceholder = Extension.create({
             focused: meta.focused !== undefined ? meta.focused : value.focused,
             pickerActive: meta.pickerActive !== undefined ? meta.pickerActive : value.pickerActive,
             pickerType: meta.pickerType !== undefined ? meta.pickerType : value.pickerType,
+            pickerPos: meta.pickerPos !== undefined ? meta.pickerPos : value.pickerPos,
           }
         },
       },
@@ -98,22 +100,42 @@ export const EmptyBlockPlaceholder = Extension.create({
             }
           })
 
+          const pickerPlaceholder = pluginState?.pickerActive && pluginState.pickerType
+            ? pickerPlaceholderMap[pluginState.pickerType]
+            : null
+
+          let decoratedPickerPos: number | null = null
+
+          // If a picker is active with a specific target position, decorate that textblock
+          if (pickerPlaceholder && pluginState?.pickerPos !== null && pluginState?.pickerPos !== undefined) {
+            const safePos = Math.max(0, Math.min(pluginState.pickerPos, state.doc.content.size))
+            const $pos = state.doc.resolve(safePos)
+            const parentNode = $pos.parent
+            if (parentNode.isTextblock && parentNode.content.size === 0) {
+              const from = $pos.before($pos.depth)
+              const to = $pos.after($pos.depth)
+              decorations.push(Decoration.node(from, to, {
+                class: `${emptyBlockPlaceholderClass} mybook-picker-placeholder`,
+                'data-placeholder': pickerPlaceholder,
+              }))
+              decoratedPickerPos = from
+            }
+          }
+
           if (isEditorFocused && state.selection.empty) {
             const { $from } = state.selection
             const grandparent = $from.depth > 1 ? $from.node($from.depth - 1) : null
             if ($from.parent.type.name === 'paragraph' && $from.parent.content.size === 0 && !['tableCell', 'tableHeader'].includes(grandparent?.type.name ?? '')) {
               const pos = $from.before($from.depth)
-              const pickerPlaceholder = pluginState?.pickerActive && pluginState.pickerType
-                ? pickerPlaceholderMap[pluginState.pickerType]
-                : null
-
-              if (pickerPlaceholder) {
-                decorations.push(Decoration.node(pos, $from.after($from.depth), {
-                  class: `${emptyBlockPlaceholderClass} mybook-picker-placeholder`,
-                  'data-placeholder': pickerPlaceholder,
-                }))
-              } else {
-                decorations.push(Decoration.node(pos, $from.after($from.depth), { class: emptyBlockPlaceholderClass }))
+              if (pos !== decoratedPickerPos) {
+                if (pickerPlaceholder && decoratedPickerPos === null) {
+                  decorations.push(Decoration.node(pos, $from.after($from.depth), {
+                    class: `${emptyBlockPlaceholderClass} mybook-picker-placeholder`,
+                    'data-placeholder': pickerPlaceholder,
+                  }))
+                } else {
+                  decorations.push(Decoration.node(pos, $from.after($from.depth), { class: emptyBlockPlaceholderClass }))
+                }
               }
             }
           }
