@@ -660,7 +660,7 @@ export async function syncAttachmentsOnRenameOrMove(
 }
 
 export function documentMarkdown(
-  file: Pick<MyBookFile, 'id' | 'name' | 'content'> & { createdAt?: string; updatedAt?: string },
+  file: Pick<MyBookFile, 'id' | 'name' | 'content'> & { createdAt?: string; updatedAt?: string; writingLanguage?: string },
   dirHandle?: FileSystemDirectoryHandle | null
 ): Promise<string> | string {
   let json: JSONContent
@@ -677,6 +677,7 @@ export function documentMarkdown(
         documentId: file.id,
         createdAt: file.createdAt,
         updatedAt: file.updatedAt,
+        writingLanguage: file.writingLanguage,
       })
     )
   }
@@ -685,6 +686,7 @@ export function documentMarkdown(
     documentId: file.id,
     createdAt: file.createdAt,
     updatedAt: file.updatedAt,
+    writingLanguage: file.writingLanguage,
   })
 }
 
@@ -848,6 +850,7 @@ export async function scanAndHydrateLocalWorkspace(
               createdAt: fileCreatedAt,
               updatedAt: fileUpdatedAt,
               lastSyncedAt: null,
+              writingLanguage: parsed.metadata.writingLanguage,
               syncStatus: targetWorkspaceType === 'drive' ? 'pending' : 'local',
               isDeleted: false,
             }
@@ -872,6 +875,10 @@ export async function scanAndHydrateLocalWorkspace(
             encounteredFileIds.add(existingFile.id)
             if (hasUnsavedLocalEdits(existingFile.id)) {
               continue
+            }
+            if (parsed.metadata.writingLanguage && parsed.metadata.writingLanguage !== existingFile.writingLanguage) {
+              await db.files.update(existingFile.id, { writingLanguage: parsed.metadata.writingLanguage })
+              existingFile = { ...existingFile, writingLanguage: parsed.metadata.writingLanguage }
             }
             const hydratedString = JSON.stringify(hydratedDoc)
             const isContentIdentical = existingFile.content === hydratedString
@@ -1109,7 +1116,7 @@ export async function scanAndHydrateLocalWorkspace(
 }
 
 export async function writeLocalWorkspaceFile(
-  file: Pick<MyBookFile, 'id' | 'type' | 'name' | 'folderId' | 'content'> & { createdAt?: string; updatedAt?: string }
+  file: Pick<MyBookFile, 'id' | 'type' | 'name' | 'folderId' | 'content'> & { createdAt?: string; updatedAt?: string; writingLanguage?: string }
 ) {
   try {
     const root = await getWorkspaceEffectiveDirectory(null, true)

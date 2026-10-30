@@ -36,10 +36,12 @@ describe('localWorkspace service', () => {
         type: 'doc',
         content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Discussion points' }] }],
       }),
+      writingLanguage: 'en-IN',
     })
     expect(markdown).toContain('Discussion points')
     expect(markdown).toContain('document_id: "doc-uuid-123"')
     expect(markdown).toContain('title: "Meeting"')
+    expect(markdown).toContain('writing_language: "en-IN"')
   })
 
   it('converts empty document to clean frontmatter without automatic # Untitled heading', () => {
@@ -68,7 +70,7 @@ describe('localWorkspace service', () => {
           kind: 'file',
           name: 'Shopping.md',
           getFile: async () => ({
-            text: async () => '# Shopping\n\n- [ ] Milk\n- [ ] Apples',
+            text: async () => '---\nwriting_language: "hi-IN"\ntitle: "Shopping"\n---\n\n# Shopping\n\n- [ ] Milk\n- [ ] Apples',
             lastModified: Date.now(),
           }),
         } as unknown as FileSystemHandle,
@@ -107,6 +109,7 @@ describe('localWorkspace service', () => {
     expect(shoppingFile).toBeDefined()
     expect(shoppingFile?.type).toBe('document')
     expect(shoppingFile?.workspaceType).toBe('local')
+    expect(shoppingFile?.writingLanguage).toBe('hi-IN')
   })
 
   it('nests files into a subfolder named after vault if selected folder has different name', async () => {

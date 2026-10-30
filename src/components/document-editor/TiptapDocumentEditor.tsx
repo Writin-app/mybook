@@ -99,6 +99,7 @@ import { FindReplaceDialog } from './FindReplaceDialog'
 import { normalizeLinkUrl } from './linkUrl'
 import { ArrowPathIcon } from '@heroicons/react/24/outline'
 import { EmptyBlockPlaceholder, emptyBlockPlaceholderKey } from './emptyBlockPlaceholder'
+import { WritingAssistantPanel, type WritingAssistantPanelHandle } from '../../features/writing-assistant/WritingInsightsPanel'
 const emptyDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
 const emptyDocumentJson = JSON.stringify(emptyDocument)
 const documentViewModeStorageKey = 'mybook-document-view-mode'
@@ -1050,9 +1051,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const collaboration = useYjsDocumentSync(fileId, accountEmail)
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
   const { content, hasUnsavedChanges, hydratedFileId, isHydrated, replaceContent, save, setContent, status, waitForPendingSave } = useAutosave(file)
+  const saveRef = useRef(save)
+  saveRef.current = save
   const [title, setTitle] = useState('')
   const [titleFileId, setTitleFileId] = useState<string | null>(null)
   const [loadedId, setLoadedId] = useState<string | null>(null)
+  const loadedIdRef = useRef<string | null>(null)
   const [docxBlob, setDocxBlob] = useState<Blob | null>(null)
   const [docxMessage, setDocxMessage] = useState('')
   const [slashMenu, setSlashMenu] = useState<SlashMenuState | null>(null)
@@ -1068,6 +1072,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [resolvedConflictVersionId, setResolvedConflictVersionId] = useState<string | null>(null)
   const [isMoveToOpen, setIsMoveToOpen] = useState(false)
   const moreTriggerRef = useRef<HTMLButtonElement>(null)
+  const writingInsightsRef = useRef<WritingAssistantPanelHandle | null>(null)
   const duplicateDocumentRef = useRef<() => Promise<void>>(async () => undefined)
   const [documentLinkPicker, setDocumentLinkPicker] = useState<DocumentLinkPickerState | null>(null)
   const [documentLinkSelectedIndex, setDocumentLinkSelectedIndex] = useState<number>(0)
@@ -1345,6 +1350,21 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
   }, [file?.id, retryPendingPatch, setContent])
 
+  const flushContentSyncRef = useRef(flushContentSync)
+  flushContentSyncRef.current = flushContentSync
+
+  useEffect(() => {
+    return () => {
+      // Hand pending edits to autosave and persist them before the editor unmounts.
+      if (contentSyncTimerRef.current !== null && loadedIdRef.current) {
+        window.clearTimeout(contentSyncTimerRef.current)
+        contentSyncTimerRef.current = null
+        flushContentSyncRef.current()
+        void saveRef.current()
+      }
+    }
+  }, [])
+
   useEffect(() => {
     const handleFlush = () => {
       flushContentSync()
@@ -1360,8 +1380,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     window.addEventListener('offline', handleFlush)
     window.addEventListener('online', handleFlush)
     return () => {
-      // Hand pending edits to autosave before they are dropped (file switch or unmount).
-      if (contentSyncTimerRef.current !== null) flushContentSync()
       if (titleAutosaveTimerRef.current !== null) {
         window.clearTimeout(titleAutosaveTimerRef.current)
         titleAutosaveTimerRef.current = null
@@ -1784,7 +1802,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         'aria-label': 'Document content',
         autocorrect: 'off',
         autocapitalize: 'sentences',
-        spellcheck: 'false',
+        spellcheck: 'true',
       },
       transformPastedHTML: cleanPastedHtml,
       transformPastedText: cleanPastedText,
@@ -2292,6 +2310,15 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       // delayed echo that can race the next keystroke from the other pane.
       if (transaction.getMeta('remoteUpdate')) return
 
+      // Suppress content sync scheduling until the document has been fully loaded
+      // into the editor. The editor initialises with an empty placeholder document;
+      // any transactions that fire before the hydration effect sets the real content
+      // (loadedIdRef.current !== null) must not be treated as user edits. Without
+      // this guard the 100 ms debounce can fire while editorContentRef still holds
+      // the initial empty-paragraph JSON, causing that empty state to be persisted
+      // over the already-loaded document content in IndexedDB.
+      if (loadedIdRef.current === null) return
+
       lastTypingTimeRef.current = Date.now()
 
       if (contentSyncTimerRef.current !== null) {
@@ -2661,7 +2688,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       }
     }
     if (collaboration.enabled) {
-      if (loadedId !== file.id) setLoadedId(file.id)
+      if (loadedId !== file.id) { loadedIdRef.current = file.id; setLoadedId(file.id) }
       if (!collaboration.isSynced) return
       const liveContent = JSON.stringify(editor.getJSON())
       const liveIsBlank = editor.state.doc.textContent.trim() === '' && editor.state.doc.childCount <= 1
@@ -2825,6 +2852,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       }
       editorContentRef.current = initialContent
       lastImportedContentRef.current = null
+      loadedIdRef.current = file.id
       setLoadedId(file.id)
     }
   }, [collaboration.enabled, collaboration.isSynced, content, editor, file, hasUnsavedChanges, hasUnsavedTyping, hydratedFileId, isHydrated, loadedId, queuePendingRemotePatch, replaceContent, setContent, status])
@@ -3688,6 +3716,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                   {[75, 100, 125, 150].map((level) => <DropdownMenuCheckboxItem key={level} checked={zoom === level} onCheckedChange={() => setZoom(level)}>{level}%</DropdownMenuCheckboxItem>)}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
+              <DropdownMenuItem onClick={() => writingInsightsRef.current?.open()}>
+                Writing Assistant
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem disabled={isPageLocked} onClick={() => setIsFindReplaceOpen(true)}>
                 <span>Find and replace</span>
                 <kbd className="ml-auto hidden text-xs text-muted-foreground md:inline">{findShortcut}</kbd>
@@ -3733,6 +3765,17 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             </>
           )
         }
+      />
+      <WritingAssistantPanel
+        ref={writingInsightsRef}
+        editor={editor}
+        fileId={fileId}
+        isMobile={isMobile}
+        writingLanguage={file.writingLanguage}
+        onWritingLanguageChange={async (preferenceId) => {
+          const result = await fileRepository.setWritingLanguage(fileId, preferenceId)
+          if (!result.success) throw new Error(result.error ?? 'Could not save writing language.')
+        }}
       />
       <div ref={findBarAnchorRef} className="sticky top-[57px] md:top-[65px] z-50 h-0 overflow-visible">
         <FindReplaceDialog editor={editor} open={isFindReplaceOpen} onOpenChange={setIsFindReplaceOpen} />

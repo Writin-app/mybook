@@ -1,7 +1,7 @@
 import { useAuthStore } from '../stores/useAuthStore'
 import { db } from '../database/db'
 import type { JSONContent } from '@tiptap/core'
-import type { MyBookFolder, SyncEntityType, SyncQueueItem } from '../types/files'
+import type { MyBookFile, MyBookFolder, SyncEntityType, SyncQueueItem } from '../types/files'
 import { devLog } from '../utils/safeLog'
 import { hasUnsavedLocalEdits } from './localEditState'
 import { createConflictedCopyFile, recordRemoteConflict } from './syncConflicts'
@@ -477,7 +477,7 @@ export async function createDriveFileInFolder(name: string, content: string, mim
   return await result.json() as { id: string; name: string; webViewLink?: string; modifiedTime?: string }
 }
 
-export async function updateDriveFile(fileId: string, changes: { name?: string; content?: string; parentId?: string | null; mimeType?: string; trashed?: boolean; appProperties?: Record<string, string> }) {
+export async function updateDriveFile(fileId: string, changes: { name?: string; content?: string; parentId?: string | null; mimeType?: string; trashed?: boolean; appProperties?: Record<string, string> }): Promise<{ id: string; name: string; webViewLink?: string; modifiedTime?: string }> {
   const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
 
@@ -496,7 +496,7 @@ export async function updateDriveFile(fileId: string, changes: { name?: string; 
   }
 
   if (changes.content === undefined) {
-    parentParams.set('fields', 'id,name,webViewLink,parents,appProperties')
+    parentParams.set('fields', 'id,name,webViewLink,parents,appProperties,modifiedTime')
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?${parentParams.toString()}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -506,10 +506,10 @@ export async function updateDriveFile(fileId: string, changes: { name?: string; 
       const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
       throw new Error(body?.error?.message ?? 'Could not update the file in Google Drive.')
     }
-    return await response.json() as { id: string; name: string; webViewLink?: string }
+    return await response.json() as { id: string; name: string; webViewLink?: string; modifiedTime?: string }
   }
 
-  const query = new URLSearchParams({ uploadType: 'multipart', fields: 'id,name,webViewLink,parents,appProperties' })
+  const query = new URLSearchParams({ uploadType: 'multipart', fields: 'id,name,webViewLink,parents,appProperties,modifiedTime' })
   parentParams.forEach((value, key) => query.set(key, value))
   const boundary = 'mybook-update-boundary'
   const bodyParts = [
@@ -531,7 +531,7 @@ export async function updateDriveFile(fileId: string, changes: { name?: string; 
     throw new Error(body?.error?.message ?? 'Could not update the file in Google Drive.')
   }
 
-  return await response.json() as { id: string; name: string; webViewLink?: string }
+  return await response.json() as { id: string; name: string; webViewLink?: string; modifiedTime?: string }
 }
 
 export async function restoreDriveFile(fileId: string) {
@@ -864,9 +864,13 @@ export async function backupDocumentToDrive(input: {
       const docWithDriveAttachments = await syncDocumentAttachmentsToDrive(title, parsedContent, driveParentId)
 
       const { documentToMyBookMarkdown } = await import('../utils/mybookMarkdown')
-      const markdown = documentToMyBookMarkdown(title, docWithDriveAttachments, { documentId: file.id })
+      const writingLanguage = latest?.writingLanguage ?? file.writingLanguage
+      const markdown = documentToMyBookMarkdown(title, docWithDriveAttachments, { documentId: file.id, writingLanguage })
       const isFavorite = latest?.isFavorite ?? file.isFavorite
-      const result = await retryWithBackoff(() => uploadMarkdownFile(title, markdown, driveParentId, latest?.driveFileId ?? file.driveFileId, { isFavorite: isFavorite ? 'true' : 'false' }))
+      const result = await retryWithBackoff(() => uploadMarkdownFile(title, markdown, driveParentId, latest?.driveFileId ?? file.driveFileId, {
+        isFavorite: isFavorite ? 'true' : 'false',
+        ...(writingLanguage ? { writingLanguage } : {}),
+      }))
       const current = await db.files.get(file.id)
       const changedDuringUpload = !current || current.content !== content || current.name !== title || current.folderId !== (latest?.folderId ?? file.folderId) || current.isDeleted
       await db.files.update(file.id, changedDuringUpload ? {
@@ -1544,7 +1548,7 @@ async function readDriveFileAsLocalContent(file: DriveFile, localFileId: string)
       .replace(/\.docx$/i, '')
       .trim()
     const hydratedDoc = await hydrateDriveAttachments(cleanDocTitle, parentDriveId, parsed.document)
-    return { content: JSON.stringify(hydratedDoc), documentId: parsed.metadata.documentId }
+    return { content: JSON.stringify(hydratedDoc), documentId: parsed.metadata.documentId, writingLanguage: parsed.metadata.writingLanguage }
   }
   if (file.mimeType === GOOGLE_DOC_MIME || file.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || /\.docx$/i.test(file.name)) {
     const blob = file.mimeType === GOOGLE_DOC_MIME
@@ -1664,6 +1668,7 @@ export async function importDriveFilesToLocal(
       const driveModifiedTime = driveFile.modifiedTime ?? now
       let content = ''
       let portableDocumentId: string | undefined
+      let portableWritingLanguage: string | undefined
       const isRemoteNewer = new Date(driveModifiedTime).getTime() > new Date(existing?.updatedAt ?? 0).getTime()
       const hasLocalIntent = existing
         ? (
@@ -1677,6 +1682,7 @@ export async function importDriveFilesToLocal(
           const imported = await readDriveFileAsLocalContent(driveFile, localId)
           content = imported.content
           portableDocumentId = imported.documentId
+          portableWritingLanguage = imported.writingLanguage
         } catch {
           content = ''
         }
@@ -1686,6 +1692,7 @@ export async function importDriveFilesToLocal(
       }
       usedLocalFileIds.add(localId)
       const isFavorite = driveFile.appProperties?.isFavorite === 'true'
+      const writingLanguage = driveFile.appProperties?.writingLanguage ?? portableWritingLanguage
       if (existing) {
         const name = localFileName(driveFile.name, fileType)
         const type = existing.type ?? fileType
@@ -1701,7 +1708,7 @@ export async function importDriveFilesToLocal(
           nextContent !== existing.content ||
           existing.isDeleted ||
           Boolean(existing.isFavorite) !== isFavorite
-        const nextFileChanges = hasLocalIntent ? {
+        const nextFileChanges: Partial<MyBookFile> = hasLocalIntent ? {
           driveFileId: driveFile.id,
           workspaceType: 'drive' as const,
           type,
@@ -1722,6 +1729,7 @@ export async function importDriveFilesToLocal(
           isDeleted: false,
           isFavorite,
         }
+        if (!hasLocalIntent && writingLanguage !== undefined) nextFileChanges.writingLanguage = writingLanguage
         if (hasLocalIntent || userVisibleChanged || existing.driveFileId !== driveFile.id || existing.workspaceType !== 'drive' || !existing.lastSyncedAt || new Date(driveModifiedTime).getTime() > new Date(existing.lastSyncedAt).getTime() || existing.syncStatus !== 'backed-up' || existing.syncError) {
           await db.files.update(existing.id, nextFileChanges)
         }
@@ -1745,6 +1753,7 @@ export async function importDriveFilesToLocal(
           syncStatus: 'backed-up' as const,
           isDeleted: false,
           isFavorite,
+          ...(writingLanguage !== undefined ? { writingLanguage } : {}),
         }
         await db.files.add(newFile)
         byDriveId.set(driveFile.id, newFile)

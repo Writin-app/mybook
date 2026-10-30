@@ -3,10 +3,11 @@ import '@testing-library/jest-dom/vitest'
 import 'fake-indexeddb/auto'
 import { Editor } from '@tiptap/core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, act, cleanup } from '@testing-library/react'
+import { render, screen, waitFor, act, cleanup, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 import { db } from '../database/db'
+import { fileRepository } from '../database/repositories'
 import { TiptapDocumentEditor } from '../components/document-editor/TiptapDocumentEditor'
 import { mergeDocuments } from '../utils/documentMerge'
 import { createConflictedCopyFile } from './syncConflicts'
@@ -16,10 +17,15 @@ import * as workspaceStore from '../stores/useWorkspaceStore'
 import { useAuthStore } from '../stores/useAuthStore'
 
 let currentMockLiveFile: MyBookFile | undefined
+const mockLiveFilesById = new Map<string, MyBookFile>()
 
 vi.mock('dexie-react-hooks', () => ({
   useLiveQuery: (_fn: () => unknown, deps?: unknown[], defaultVal?: unknown) => {
     if (deps && deps.length === 1) {
+      const depKey = deps[0]
+      if (typeof depKey === 'string' && mockLiveFilesById.has(depKey)) {
+        return mockLiveFilesById.get(depKey)
+      }
       return currentMockLiveFile
     }
     return defaultVal ?? []
@@ -93,6 +99,7 @@ describe('Editor Syncing and Conflict Resolution Regression Suite', () => {
       })
     }
     window.scrollTo = vi.fn()
+    mockLiveFilesById.clear()
     await db.files.clear()
     await db.fileVersions.clear()
     await db.syncQueue.clear()
@@ -100,6 +107,7 @@ describe('Editor Syncing and Conflict Resolution Regression Suite', () => {
 
   afterEach(async () => {
     cleanup()
+    mockLiveFilesById.clear()
     vi.restoreAllMocks()
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50))
@@ -163,6 +171,39 @@ describe('Editor Syncing and Conflict Resolution Regression Suite', () => {
       const editor = pmEl?.editor
       expect(editor).toBeTruthy()
       if (!editor) throw new Error('Editor not found')
+
+      await waitFor(() => expect(editor.getText()).toBe('Starting text'))
+
+      const initialDocument = editor.state.doc.toJSON()
+      const transactionSpy = vi.fn()
+      editor.on('transaction', transactionSpy)
+      expect(pmEl).toHaveAttribute('spellcheck', 'true')
+      expect(pmEl).toHaveAttribute('autocorrect', 'off')
+      expect(pmEl).toHaveAttribute('autocapitalize', 'sentences')
+      expect(pmEl).toHaveAttribute('aria-label', 'Document content')
+      expect(pmEl).toHaveClass('tiptap', 'min-h-[65vh]', 'outline-none')
+      expect(pmEl?.querySelector('[spellcheck="false"]')).toBeNull()
+      expect(editor.state.doc.toJSON()).toEqual(initialDocument)
+      expect(transactionSpy).not.toHaveBeenCalled()
+
+      fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Writing Assistant' }))
+      expect(await screen.findByRole('heading', { name: 'Writing Assistant' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('tab', { name: 'Actions' }))
+      expect(screen.getByRole('heading', { name: 'Proofread' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('tab', { name: 'Overview' }))
+      vi.mocked(workspaceStore.shouldSyncWithDrive).mockReturnValue(false)
+      fireEvent.change(screen.getByRole('combobox', { name: 'Document writing language' }), { target: { value: 'en-IN' } })
+      await waitFor(async () => expect((await db.files.get(fileId))?.writingLanguage).toBe('en-IN'))
+      expect((await db.files.get(fileId))?.updatedAt).toBe(initialDoc.updatedAt)
+      expect(editor.state.doc.toJSON()).toEqual(initialDocument)
+      expect(transactionSpy).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+      expect(editor.getText()).toBe('Starting text')
+      expect(editor.state.doc.toJSON()).toEqual(initialDocument)
+      expect((document.querySelector('.ProseMirror') as (HTMLElement & { editor?: Editor }) | null)?.editor).toBe(editor)
+      expect(transactionSpy).not.toHaveBeenCalled()
+      editor.off('transaction', transactionSpy)
 
       // Simulate rapid continuous typing
       act(() => {
@@ -438,6 +479,648 @@ describe('Editor Syncing and Conflict Resolution Regression Suite', () => {
       const savedCopy = await db.files.get(conflictedCopy!.id)
       expect(savedCopy).toBeDefined()
       expect(savedCopy?.content).toBe(remoteDriveContent)
+
+      unmount()
+    })
+  })
+
+  describe('Editor Hydration and Empty-Content Persistence Race', () => {
+    /**
+     * Regression: Editor initialises with an internal empty paragraph. Extension
+     * or ProseMirror plugin transactions that fire before the document is loaded
+     * must not cause the empty state to be persisted over the real content.
+     */
+    it('does not overwrite IndexedDB with empty paragraph when extensions fire transactions before hydration', async () => {
+      const fileId = 'hydration-race-test'
+      const initialContent = createDocJson('Starting text')
+      const fileDoc: MyBookFile = {
+        id: fileId,
+        driveFileId: 'drive-hydration',
+        name: 'Hydration Doc',
+        type: 'document',
+        folderId: null,
+        content: initialContent,
+        baseContent: initialContent,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString(),
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+      currentMockLiveFile = fileDoc
+      await db.files.put(fileDoc)
+
+      const { unmount } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileId} />
+        </MemoryRouter>
+      )
+
+      // Wait for the editor to fully hydrate with real content
+      const pmEl = document.querySelector('.ProseMirror') as (HTMLElement & { editor?: Editor }) | null
+      const editor = pmEl?.editor
+      if (editor) {
+        await waitFor(() => expect(editor.getText()).toBe('Starting text'), { timeout: 3000 })
+      }
+
+      // Wait longer than both the contentSyncTimer (100 ms) and the autosave
+      // debounce (250 ms) to give any misfired empty-content save the time to land.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 500))
+      })
+
+      // IndexedDB must still contain the original content — not an empty paragraph
+      const saved = await db.files.get(fileId)
+      expect(saved).toBeDefined()
+      const savedDoc = JSON.parse(saved!.content)
+      // The saved content must contain the original text — never an empty paragraph
+      const text = savedDoc?.content?.[0]?.content?.[0]?.text ?? ''
+      expect(text).toBe('Starting text')
+
+      unmount()
+    })
+
+    it('opens an existing document and displays its content correctly', async () => {
+      const fileId = 'open-existing-content-test'
+      const initialContent = createDocJson('My existing document text')
+      const fileDoc: MyBookFile = {
+        id: fileId,
+        driveFileId: 'drive-existing',
+        name: 'Existing Doc',
+        type: 'document',
+        folderId: null,
+        content: initialContent,
+        baseContent: initialContent,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString(),
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+      currentMockLiveFile = fileDoc
+      await db.files.put(fileDoc)
+
+      const { unmount } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileId} />
+        </MemoryRouter>
+      )
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Page title/i)).toBeInTheDocument()
+      })
+
+      const pmEl = document.querySelector('.ProseMirror') as (HTMLElement & { editor?: Editor }) | null
+      const editor = pmEl?.editor
+      expect(editor).toBeTruthy()
+      if (!editor) throw new Error('Editor not found')
+
+      await waitFor(() => expect(editor.getText()).toBe('My existing document text'))
+
+      // DB content must be untouched
+      const saved = await db.files.get(fileId)
+      expect(JSON.parse(saved!.content)).toEqual(JSON.parse(initialContent))
+
+      unmount()
+    })
+
+    it('saves a legitimate user edit made immediately after the document opens', async () => {
+      const fileId = 'immediate-edit-after-open-test'
+      const initialContent = createDocJson('Initial content')
+      const fileDoc: MyBookFile = {
+        id: fileId,
+        driveFileId: 'drive-immediate',
+        name: 'Immediate Edit Doc',
+        type: 'document',
+        folderId: null,
+        content: initialContent,
+        baseContent: initialContent,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString(),
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+      currentMockLiveFile = fileDoc
+      await db.files.put(fileDoc)
+
+      const { unmount } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileId} />
+        </MemoryRouter>
+      )
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Page title/i)).toBeInTheDocument()
+      })
+
+      const pmEl = document.querySelector('.ProseMirror') as (HTMLElement & { editor?: Editor }) | null
+      const editor = pmEl?.editor
+      expect(editor).toBeTruthy()
+      if (!editor) throw new Error('Editor not found')
+
+      // Wait for hydration to complete
+      await waitFor(() => expect(editor.getText()).toBe('Initial content'))
+
+      // Simulate user typing immediately after the document opens
+      act(() => {
+        editor.commands.focus()
+        editor.commands.insertContent(' – added right away')
+      })
+
+      // Wait for contentSyncTimer (100 ms) + autosave debounce (250 ms) + persistence
+      await waitFor(async () => {
+        const saved = await db.files.get(fileId)
+        const savedText = JSON.parse(saved?.content ?? '{}')?.content?.[0]?.content?.[0]?.text ?? ''
+        expect(savedText).toContain('Initial content – added right away')
+      }, { timeout: 3000 })
+
+      unmount()
+    })
+
+    it('preserves an intentionally empty document as valid', async () => {
+      const fileId = 'intentional-empty-doc-test'
+      const emptyDocJson = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] })
+      const fileDoc: MyBookFile = {
+        id: fileId,
+        driveFileId: 'drive-empty',
+        name: 'Empty Doc',
+        type: 'document',
+        folderId: null,
+        content: emptyDocJson,
+        baseContent: emptyDocJson,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString(),
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+      currentMockLiveFile = fileDoc
+      await db.files.put(fileDoc)
+
+      const { unmount } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileId} />
+        </MemoryRouter>
+      )
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Page title/i)).toBeInTheDocument()
+      })
+
+      // Wait for any post-mount timers
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 500))
+      })
+
+      // The empty document must not cause any spurious re-writes
+      const saved = await db.files.get(fileId)
+      expect(saved).toBeDefined()
+      // The empty structure should remain intact (no unexpected content added)
+      const savedDoc = JSON.parse(saved!.content)
+      expect(savedDoc.type).toBe('doc')
+      expect(savedDoc.content).toHaveLength(1)
+      expect(savedDoc.content[0].type).toBe('paragraph')
+
+      unmount()
+    })
+
+    it('does not persist stale empty-editor content when switching documents rapidly', async () => {
+      const fileIdA = 'switch-doc-a'
+      const fileIdB = 'switch-doc-b'
+      const contentA = createDocJson('Document A content')
+      const contentB = createDocJson('Document B content')
+
+      const docA: MyBookFile = {
+        id: fileIdA,
+        driveFileId: 'drive-a',
+        name: 'Doc A',
+        type: 'document',
+        folderId: null,
+        content: contentA,
+        baseContent: contentA,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString(),
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+      const docB: MyBookFile = {
+        id: fileIdB,
+        driveFileId: 'drive-b',
+        name: 'Doc B',
+        type: 'document',
+        folderId: null,
+        content: contentB,
+        baseContent: contentB,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString(),
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+
+      await db.files.put(docA)
+      await db.files.put(docB)
+
+      // Open Doc A
+      currentMockLiveFile = docA
+      const { unmount: unmountA } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileIdA} />
+        </MemoryRouter>
+      )
+      await waitFor(() => expect(screen.getByLabelText(/Page title/i)).toBeInTheDocument())
+      unmountA()
+
+      cleanup()
+
+      // Open Doc B immediately after
+      currentMockLiveFile = docB
+      const { unmount: unmountB } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileIdB} />
+        </MemoryRouter>
+      )
+      await waitFor(() => expect(screen.getByLabelText(/Page title/i)).toBeInTheDocument())
+
+      const pmEl = document.querySelector('.ProseMirror') as (HTMLElement & { editor?: Editor }) | null
+      const editor = pmEl?.editor
+      if (editor) {
+        await waitFor(() => expect(editor.getText()).toBe('Document B content'))
+      }
+
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 500))
+      })
+
+      // Doc A must not have been overwritten with empty content
+      const savedA = await db.files.get(fileIdA)
+      if (savedA) {
+        const docAText = JSON.parse(savedA.content)?.content?.[0]?.content?.[0]?.text ?? ''
+        expect(docAText).toBe('Document A content')
+      }
+
+      // Doc B must have correct content
+      const savedB = await db.files.get(fileIdB)
+      expect(savedB).toBeDefined()
+      const docBText = JSON.parse(savedB!.content)?.content?.[0]?.content?.[0]?.text ?? ''
+      expect(docBText).toBe('Document B content')
+
+      unmountB()
+    })
+
+    it('persists pending edits when editor is closed/unmounted during pending debounce', async () => {
+      const fileId = 'close-pending-debounce-test'
+      const initialContent = createDocJson('Original doc text')
+      const fileDoc: MyBookFile = {
+        id: fileId,
+        driveFileId: 'drive-close-debounce',
+        name: 'Close Debounce Doc',
+        type: 'document',
+        folderId: null,
+        content: initialContent,
+        baseContent: initialContent,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString(),
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+      currentMockLiveFile = fileDoc
+      await db.files.put(fileDoc)
+
+      const { unmount } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileId} />
+        </MemoryRouter>
+      )
+
+      await waitFor(() => expect(screen.getByLabelText(/Page title/i)).toBeInTheDocument())
+      const pmEl = document.querySelector('.ProseMirror') as (HTMLElement & { editor?: Editor }) | null
+      const editor = pmEl?.editor
+      expect(editor).toBeTruthy()
+      await waitFor(() => expect(editor!.getText()).toBe('Original doc text'))
+
+      // Type an edit
+      act(() => {
+        editor!.commands.focus()
+        editor!.commands.insertContent(' with quick addition')
+      })
+
+      // Unmount immediately without waiting for the 250ms debounce
+      unmount()
+
+      // The unmount flush in useAutosave / TiptapDocumentEditor must have saved the edit
+      await waitFor(async () => {
+        const saved = await db.files.get(fileId)
+        const savedText = JSON.parse(saved?.content ?? '{}')?.content?.[0]?.content?.[0]?.text ?? ''
+        expect(savedText).toBe('Original doc text with quick addition')
+      }, { timeout: 3000 })
+    })
+
+    it('prevents stale callbacks from an old unmounted editor from writing into a new document', async () => {
+      const fileIdA = 'stale-cb-doc-a'
+      const fileIdB = 'stale-cb-doc-b'
+      const contentA = createDocJson('Doc A original')
+      const contentB = createDocJson('Doc B original')
+
+      const docA: MyBookFile = {
+        id: fileIdA,
+        driveFileId: 'drive-stale-a',
+        name: 'Doc A',
+        type: 'document',
+        folderId: null,
+        content: contentA,
+        baseContent: contentA,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString(),
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+      const docB: MyBookFile = {
+        id: fileIdB,
+        driveFileId: 'drive-stale-b',
+        name: 'Doc B',
+        type: 'document',
+        folderId: null,
+        content: contentB,
+        baseContent: contentB,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString(),
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+
+      await db.files.put(docA)
+      await db.files.put(docB)
+
+      currentMockLiveFile = docA
+      const { unmount: unmountA } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileIdA} />
+        </MemoryRouter>
+      )
+
+      await waitFor(() => expect(screen.getByLabelText(/Page title/i)).toBeInTheDocument())
+      const pmElA = document.querySelector('.ProseMirror') as (HTMLElement & { editor?: Editor }) | null
+      const editorA = pmElA?.editor
+      await waitFor(() => expect(editorA?.getText()).toBe('Doc A original'))
+
+      // Type into A
+      act(() => {
+        editorA?.commands.insertContent(' edit in A')
+      })
+
+      // Unmount A and mount B immediately
+      unmountA()
+      currentMockLiveFile = docB
+
+      const { unmount: unmountB } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileIdB} />
+        </MemoryRouter>
+      )
+
+      await waitFor(() => expect(screen.getByLabelText(/Page title/i)).toBeInTheDocument())
+      const pmElB = document.querySelector('.ProseMirror') as (HTMLElement & { editor?: Editor }) | null
+      const editorB = pmElB?.editor
+      await waitFor(() => expect(editorB?.getText()).toBe('Doc B original'))
+
+      // Wait for any trailing timers from A to expire
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 400))
+      })
+
+      // Doc B in DB must still be Doc B original, not corrupted by Doc A
+      const savedB = await db.files.get(fileIdB)
+      expect(savedB).toBeDefined()
+      const savedBText = JSON.parse(savedB!.content)?.content?.[0]?.content?.[0]?.text ?? ''
+      expect(savedBText).toBe('Doc B original')
+
+      unmountB()
+    })
+
+    it('isolates two documents open simultaneously in split view without cross-persistence', async () => {
+      const fileId1 = 'split-view-doc-1'
+      const fileId2 = 'split-view-doc-2'
+      const content1 = createDocJson('Left Pane Content')
+      const content2 = createDocJson('Right Pane Content')
+
+      const doc1: MyBookFile = {
+        id: fileId1,
+        driveFileId: 'drive-split-1',
+        name: 'Left Pane Doc',
+        type: 'document',
+        folderId: null,
+        content: content1,
+        baseContent: content1,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString(),
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+      const doc2: MyBookFile = {
+        id: fileId2,
+        driveFileId: 'drive-split-2',
+        name: 'Right Pane Doc',
+        type: 'document',
+        folderId: null,
+        content: content2,
+        baseContent: content2,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString(),
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+
+      await db.files.put(doc1)
+      await db.files.put(doc2)
+
+      mockLiveFilesById.set(fileId1, doc1)
+      mockLiveFilesById.set(fileId2, doc2)
+
+      const { unmount } = render(
+        <MemoryRouter>
+          <div data-testid="split-container">
+            <TiptapDocumentEditor fileId={fileId1} />
+            <TiptapDocumentEditor fileId={fileId2} />
+          </div>
+        </MemoryRouter>
+      )
+
+      await waitFor(() => {
+        const pmEls = document.querySelectorAll('.ProseMirror')
+        expect(pmEls.length).toBe(2)
+      })
+
+      const pmEls = document.querySelectorAll('.ProseMirror') as NodeListOf<HTMLElement & { editor?: Editor }>
+      const editor1 = pmEls[0]?.editor
+      const editor2 = pmEls[1]?.editor
+      expect(editor1).toBeTruthy()
+      expect(editor2).toBeTruthy()
+
+      await waitFor(() => {
+        expect(editor1!.getText()).toBe('Left Pane Content')
+        expect(editor2!.getText()).toBe('Right Pane Content')
+      })
+
+      // Type in left editor
+      act(() => {
+        editor1!.commands.focus()
+        editor1!.commands.insertContent(' [Left Edited]')
+      })
+
+      // Wait for debounce + save
+      await waitFor(async () => {
+        const saved1 = await db.files.get(fileId1)
+        const saved1Text = JSON.parse(saved1?.content ?? '{}')?.content?.[0]?.content?.[0]?.text ?? ''
+        expect(saved1Text).toBe('Left Pane Content [Left Edited]')
+      }, { timeout: 3000 })
+
+      // Right editor content in DB must be untouched
+      const saved2 = await db.files.get(fileId2)
+      const saved2Text = JSON.parse(saved2?.content ?? '{}')?.content?.[0]?.content?.[0]?.text ?? ''
+      expect(saved2Text).toBe('Right Pane Content')
+
+      unmount()
+    })
+
+    it('reopens a saved document and preserves the persisted content across editor instances', async () => {
+      const fileId = 'reopen-saved-doc-test'
+      const initialContent = createDocJson('Initial note version')
+      const fileDoc: MyBookFile = {
+        id: fileId,
+        driveFileId: 'drive-reopen-test',
+        name: 'Reopen Doc',
+        type: 'document',
+        folderId: null,
+        content: initialContent,
+        baseContent: initialContent,
+        mimeType: 'application/json',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString(),
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+      currentMockLiveFile = fileDoc
+      await db.files.put(fileDoc)
+
+      // First open
+      const { unmount: unmount1 } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileId} />
+        </MemoryRouter>
+      )
+
+      await waitFor(() => expect(screen.getByLabelText(/Page title/i)).toBeInTheDocument())
+      let pmEl = document.querySelector('.ProseMirror') as (HTMLElement & { editor?: Editor }) | null
+      let editor = pmEl?.editor
+      await waitFor(() => expect(editor?.getText()).toBe('Initial note version'))
+
+      // Edit and save
+      act(() => {
+        editor?.commands.focus()
+        editor?.commands.insertContent(' with revisions')
+      })
+
+      await waitFor(async () => {
+        const saved = await db.files.get(fileId)
+        const savedText = JSON.parse(saved?.content ?? '{}')?.content?.[0]?.content?.[0]?.text ?? ''
+        expect(savedText).toBe('Initial note version with revisions')
+      }, { timeout: 3000 })
+
+      unmount1()
+
+      // Update mock live file to reflect saved DB state
+      const updatedFile = (await db.files.get(fileId))!
+      currentMockLiveFile = updatedFile
+
+      // Second open: reopen the document
+      const { unmount: unmount2 } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileId} />
+        </MemoryRouter>
+      )
+
+      await waitFor(() => expect(screen.getByLabelText(/Page title/i)).toBeInTheDocument())
+      pmEl = document.querySelector('.ProseMirror') as (HTMLElement & { editor?: Editor }) | null
+      editor = pmEl?.editor
+      await waitFor(() => expect(editor?.getText()).toBe('Initial note version with revisions'))
+
+      // Verify DB remains intact after reopening
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 400))
+      })
+      const finalSaved = await db.files.get(fileId)
+      const finalSavedText = JSON.parse(finalSaved?.content ?? '{}')?.content?.[0]?.content?.[0]?.text ?? ''
+      expect(finalSavedText).toBe('Initial note version with revisions')
+
+      unmount2()
+    })
+
+    it('programmatic hydration does not trigger unintended persistence or overwrite', async () => {
+      const fileId = 'prog-hydration-test'
+      const initialContent = createDocJson('Starting content')
+      const fileDoc: MyBookFile = {
+        id: fileId,
+        driveFileId: 'drive-prog-hydration',
+        name: 'Hydration Persistence Test',
+        type: 'document',
+        folderId: null,
+        content: initialContent,
+        baseContent: initialContent,
+        mimeType: 'application/json',
+        createdAt: '2026-10-30T10:00:00.000Z',
+        updatedAt: '2026-10-30T10:00:00.000Z',
+        lastSyncedAt: '2026-10-30T10:00:00.000Z',
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      }
+      currentMockLiveFile = fileDoc
+      await db.files.put(fileDoc)
+
+      const updateSpy = vi.spyOn(fileRepository, 'update')
+
+      const { unmount } = render(
+        <MemoryRouter>
+          <TiptapDocumentEditor fileId={fileId} />
+        </MemoryRouter>
+      )
+
+      await waitFor(() => expect(screen.getByLabelText(/Page title/i)).toBeInTheDocument())
+      const pmEl = document.querySelector('.ProseMirror') as (HTMLElement & { editor?: Editor }) | null
+      const editor = pmEl?.editor
+      await waitFor(() => expect(editor?.getText()).toBe('Starting content'))
+
+      // Wait beyond the debounce and content sync timers
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 500))
+      })
+
+      // Pure hydration of existing content without user edits must not trigger repository updates
+      expect(updateSpy).not.toHaveBeenCalled()
+
+      // The DB document must retain its original content and updatedAt
+      const dbDoc = await db.files.get(fileId)
+      expect(dbDoc?.content).toBe(initialContent)
+      expect(dbDoc?.updatedAt).toBe('2026-10-30T10:00:00.000Z')
 
       unmount()
     })

@@ -8,6 +8,7 @@ export interface MyBookMarkdownMetadata {
   documentId?: string
   createdAt?: string
   updatedAt?: string
+  writingLanguage?: string
 }
 
 export interface MyBookMarkdownParseResult {
@@ -235,13 +236,14 @@ export function isMarkdownText(text: string): boolean {
 export function documentToMyBookMarkdown(
   title: string,
   json: JSONContent,
-  options: { documentId?: string | null; createdAt?: string | null; updatedAt?: string | null } = {}
+  options: { documentId?: string | null; createdAt?: string | null; updatedAt?: string | null; writingLanguage?: string | null } = {}
 ) {
   const safeTitle = title.trim() || 'Untitled'
   const body = (json.content ?? []).map((node) => blockMarkdown(node)).filter(Boolean).join('\n\n')
   const documentId = isValidPortableDocumentId(options.documentId) ? options.documentId.trim() : null
   const createdAt = options.createdAt ? options.createdAt.trim() : null
   const updatedAt = options.updatedAt ? options.updatedAt.trim() : null
+  const writingLanguage = options.writingLanguage ? options.writingLanguage.trim() : null
   return [
     FRONTMATTER_BOUNDARY,
     'mybook_version: 1',
@@ -249,6 +251,7 @@ export function documentToMyBookMarkdown(
     ...(documentId ? [`document_id: ${JSON.stringify(documentId)}`] : []),
     ...(createdAt ? [`created_at: ${JSON.stringify(createdAt)}`] : []),
     ...(updatedAt ? [`updated_at: ${JSON.stringify(updatedAt)}`] : []),
+    ...(writingLanguage ? [`writing_language: ${JSON.stringify(writingLanguage)}`] : []),
     `title: ${JSON.stringify(safeTitle)}`,
     FRONTMATTER_BOUNDARY,
     '',
@@ -1018,6 +1021,19 @@ function parseFrontmatter(markdown: string) {
       }
       if (value.trim()) metadata.updatedAt = value.trim()
       continue
+    }
+
+    const writingLanguageMatch = /^writing_language:\s*(.+?)\s*$/u.exec(line)
+    if (writingLanguageMatch) {
+      const raw = writingLanguageMatch[1] ?? ''
+      let value = raw
+      try {
+        const parsed = JSON.parse(raw)
+        if (typeof parsed === 'string') value = parsed
+      } catch {
+        value = raw.replace(/^['"]|['"]$/gu, '')
+      }
+      if (value.trim()) metadata.writingLanguage = value.trim()
     }
   }
   return { body: trimmed.slice(end + FRONTMATTER_BOUNDARY.length + 2).trimStart(), metadata }
