@@ -1,6 +1,6 @@
 import { db } from './db'
 import type { AppSetting, FileType, FileVersionSource, MyBookFile, MyBookFolder, SyncOperation, SyncQueueItem, WorkspaceType } from '../types/files'
-import { backupDocumentToDrive, backupSpreadsheetToDrive, ensureMyBookDriveFolder, ensureVisibleFolderInParent, permanentlyDeleteDriveFile, restoreDriveFile, restoreDriveFolder, syncDriveAttachmentsOnRenameOrMove, trashDriveFile, trashDriveFileAttachments, trashDriveFolder, updateDriveFolder } from '../services/googleDrive'
+import { backupDocumentToDrive, backupSpreadsheetToDrive, ensureMyBookDriveFolder, ensureVisibleFolderInParent, permanentlyDeleteDriveFile, restoreDriveFile, restoreDriveFolder, syncDriveAttachmentsOnRenameOrMove, trashDriveFile, trashDriveFileAttachments, trashDriveFolder, updateDriveFile, updateDriveFolder } from '../services/googleDrive'
 import { deleteLocalWorkspaceFile, deleteLocalWorkspaceFolder, ensureLocalWorkspaceFolder, getDeviceDirectoryHandle, readLocalWorkspaceFile, syncAttachmentsOnRenameOrMove, writeLocalWorkspaceFile } from '../services/localWorkspace'
 import { isLocalWorkspace, shouldSyncWithDrive } from '../stores/useWorkspaceStore'
 import { devLog } from '../utils/safeLog'
@@ -64,6 +64,46 @@ async function queueFileSync(fileId: string, operation: SyncOperation, errorMess
       return
     }
     await db.syncQueue.add({ id: crypto.randomUUID(), entityId: fileId, entityType: 'file', operation, status: 'pending', retryCount: 0, createdAt: now, updatedAt: now, errorMessage })
+  })
+}
+
+async function queueFileMetadataSync(fileId: string) {
+  await db.transaction('rw', db.syncQueue, async () => {
+    const items = await db.syncQueue
+      .filter((item) => item.entityType === 'file' && item.entityId === fileId && item.status !== 'completed')
+      .toArray()
+    const contentSync = items.find((item) => item.operation === 'create' || item.operation === 'update')
+    if (contentSync) {
+      // An existing content backup includes current file metadata. If it is
+      // already running, ask the queue processor to run it once more afterward.
+      if (contentSync.status === 'processing') {
+        await db.syncQueue.update(contentSync.id, { status: 'pending', updatedAt: new Date().toISOString() })
+      }
+      return
+    }
+
+    const metadataSync = items.find((item) => item.operation === 'metadata-update')
+    if (metadataSync) {
+      await db.syncQueue.update(metadataSync.id, {
+        status: 'pending',
+        errorMessage: null,
+        updatedAt: new Date().toISOString(),
+      })
+      return
+    }
+
+    const now = new Date().toISOString()
+    await db.syncQueue.add({
+      id: crypto.randomUUID(),
+      entityId: fileId,
+      entityType: 'file',
+      operation: 'metadata-update',
+      status: 'pending',
+      retryCount: 0,
+      createdAt: now,
+      updatedAt: now,
+      errorMessage: null,
+    })
   })
 }
 
@@ -259,6 +299,25 @@ async function syncFileItem(item: SyncQueueItem): Promise<SyncFileOutcome> {
     await restoreDriveFile(file.driveFileId)
     return 'completed'
   }
+  if (item.operation === 'metadata-update') {
+    if (!file.driveFileId || file.type !== 'document') return 'skipped'
+    const result = await updateDriveFile(file.driveFileId, {
+      appProperties: {
+        isFavorite: file.isFavorite ? 'true' : 'false',
+        writingLanguage: file.writingLanguage ?? 'automatic',
+      },
+    })
+    const pendingContentSync = await db.syncQueue
+      .filter((queueItem) => queueItem.entityType === 'file' && queueItem.entityId === file.id && queueItem.status !== 'completed')
+      .toArray()
+    const hasPendingContentSync = pendingContentSync.some((queueItem) => queueItem.operation === 'create' || queueItem.operation === 'update')
+    await db.files.update(file.id, {
+      ...(result.modifiedTime ? { lastSyncedAt: result.modifiedTime } : {}),
+      syncError: null,
+      ...(file.syncStatus === 'failed' && !hasPendingContentSync ? { syncStatus: 'backed-up' } : {}),
+    })
+    return 'completed'
+  }
 
   let targetFolderId = file.folderId
   if (targetFolderId) {
@@ -290,7 +349,8 @@ async function syncFileItem(item: SyncQueueItem): Promise<SyncFileOutcome> {
     current.content === fileToBackup.content &&
     current.name === fileToBackup.name &&
     current.folderId === fileToBackup.folderId &&
-    current.isFavorite === fileToBackup.isFavorite
+    current.isFavorite === fileToBackup.isFavorite &&
+    current.writingLanguage === fileToBackup.writingLanguage
 
   if (isStillLatest) {
     await db.files.update(fileToBackup.id, { syncError: null, syncStatus: 'backed-up' })
@@ -678,6 +738,26 @@ export const fileRepository = {
       return { success: true }
     } catch (error) {
       return failure(error, 'Could not update favorite.')
+    }
+  },
+  async setWritingLanguage(id: string, writingLanguage: string): Promise<RepositoryResult> {
+    try {
+      const file = await db.files.get(id)
+      if (!file) return { success: false, error: 'File could not be found.' }
+      if (!fileBelongsToActiveWorkspace(file)) return { success: false, error: 'File could not be found in this workspace.' }
+      if (file.type !== 'document') return { success: false, error: 'Writing language is only available for documents.' }
+      if (file.writingLanguage === writingLanguage) return { success: true }
+
+      const fileWithContent = await hydrateLocalFile(file)
+      await db.files.update(id, { writingLanguage })
+      await persistLocalFile({ ...(fileWithContent ?? file), writingLanguage })
+      if (shouldSyncWithDrive() && file.driveFileId) {
+        await queueFileMetadataSync(id)
+        processPendingDriveSyncInBackground()
+      }
+      return { success: true }
+    } catch (error) {
+      return failure(error, 'Could not update writing language.')
     }
   },
   async permanentlyDelete(id: string): Promise<RepositoryResult> {

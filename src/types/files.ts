@@ -26,6 +26,8 @@ export interface MyBookFile {
   isDeleted: boolean
   isFavorite?: boolean
   isLocked?: boolean
+  /** Product-level writing-language profile ID, or `automatic` for unresolved language. */
+  writingLanguage?: string
 }
 
 export interface SyncConflict {
@@ -63,7 +65,7 @@ export interface MyBookFolder {
 }
 
 export type SyncEntityType = 'file' | 'folder'
-export type SyncOperation = 'create' | 'update' | 'delete' | 'restore' | 'permanent-delete'
+export type SyncOperation = 'create' | 'update' | 'metadata-update' | 'delete' | 'restore' | 'permanent-delete'
 export type SyncQueueStatus = 'pending' | 'processing' | 'failed' | 'completed'
 
 export interface SyncQueueItem {

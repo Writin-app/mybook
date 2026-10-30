@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { db } from './db'
 import { clearAccountDriveCache, fileRepository, folderRepository, nextFileName, onClearAccountDriveCache, processPendingDriveFolderSync, processPendingDriveSync, queueLocalItemsForDriveBackup, uniqueFileName } from './repositories'
-import { backupDocumentToDrive, backupSpreadsheetToDrive, ensureMyBookDriveFolder, ensureVisibleFolderInParent, permanentlyDeleteDriveFile, restoreDriveFolder, trashDriveFolder } from '../services/googleDrive'
+import { backupDocumentToDrive, backupSpreadsheetToDrive, ensureMyBookDriveFolder, ensureVisibleFolderInParent, permanentlyDeleteDriveFile, restoreDriveFolder, trashDriveFolder, updateDriveFile } from '../services/googleDrive'
 import { keepLocalVersion, recordRemoteConflict } from '../services/syncConflicts'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 
@@ -15,6 +15,7 @@ vi.mock('../services/googleDrive', () => ({
   permanentlyDeleteDriveFile: vi.fn(),
   restoreDriveFile: vi.fn(), restoreDriveFolder: vi.fn(), trashDriveFile: vi.fn(), trashDriveFolder: vi.fn(),
   updateDriveFolder: vi.fn(),
+  updateDriveFile: vi.fn().mockResolvedValue({ id: 'drive-file', name: 'Note.md', modifiedTime: '2026-10-30T12:00:00.000Z' }),
 }))
 
 describe('IndexedDB repositories', () => {
@@ -24,6 +25,7 @@ describe('IndexedDB repositories', () => {
     vi.mocked(backupSpreadsheetToDrive).mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: true })
     vi.mocked(ensureMyBookDriveFolder).mockResolvedValue({ success: false, error: 'offline' })
     vi.mocked(ensureVisibleFolderInParent).mockReset()
+    vi.mocked(updateDriveFile).mockResolvedValue({ id: 'drive-file', name: 'Note.md', modifiedTime: '2026-10-30T12:00:00.000Z' })
     await db.delete()
     await db.open()
     vi.stubGlobal('navigator', { onLine: false })
@@ -577,6 +579,98 @@ describe('IndexedDB repositories', () => {
     await expect(fileRepository.setFavorite(file.id, false)).resolves.toEqual({ success: true })
     expect(await db.files.get(file.id)).toMatchObject({ isFavorite: false, updatedAt: originalUpdatedAt })
     expect(await db.syncQueue.toArray()).toHaveLength(0)
+  })
+
+  it('sets a local document language without changing content or recency', async () => {
+    useWorkspaceStore.setState({ mode: 'local' })
+    const file = (await fileRepository.create('document')).data!
+    const before = (await db.files.get(file.id))!
+
+    await expect(fileRepository.setWritingLanguage(file.id, 'hi-IN')).resolves.toEqual({ success: true })
+
+    expect(await db.files.get(file.id)).toMatchObject({
+      writingLanguage: 'hi-IN',
+      content: before.content,
+      updatedAt: before.updatedAt,
+    })
+    expect(await db.syncQueue.toArray()).toHaveLength(0)
+  })
+
+  it('preserves on-disk document content when setting language on a non-hydrated local file', async () => {
+    useWorkspaceStore.setState({ mode: 'local' })
+    const localWorkspace = await import('../services/localWorkspace')
+    const diskContent = '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Disk draft"}]}]}'
+    const readSpy = vi.spyOn(localWorkspace, 'readLocalWorkspaceFile').mockResolvedValue(diskContent)
+    const writeSpy = vi.spyOn(localWorkspace, 'writeLocalWorkspaceFile').mockResolvedValue()
+    const file = (await fileRepository.create('document')).data!
+    await db.files.update(file.id, { content: '' })
+
+    await fileRepository.setWritingLanguage(file.id, 'hi-IN')
+
+    expect(readSpy).toHaveBeenCalledWith(expect.objectContaining({ id: file.id }))
+    expect(writeSpy).toHaveBeenLastCalledWith(expect.objectContaining({ content: diskContent, writingLanguage: 'hi-IN' }))
+    readSpy.mockRestore()
+    writeSpy.mockRestore()
+  })
+
+  it('queues and coalesces Drive metadata changes without changing content or recency', async () => {
+    useWorkspaceStore.setState({ mode: 'drive' })
+    vi.stubGlobal('navigator', { onLine: false })
+    const file = (await fileRepository.create('document')).data!
+    const savedAt = '2026-09-01T00:00:00.000Z'
+    await db.syncQueue.clear()
+    await db.files.update(file.id, { driveFileId: 'drive-file', isFavorite: true, updatedAt: savedAt })
+
+    await fileRepository.setWritingLanguage(file.id, 'en-IN')
+    await fileRepository.setWritingLanguage(file.id, 'hi-Latn')
+
+    expect(await db.files.get(file.id)).toMatchObject({ content: file.content, updatedAt: savedAt, writingLanguage: 'hi-Latn' })
+    expect(await db.syncQueue.toArray()).toMatchObject([
+      { entityId: file.id, entityType: 'file', operation: 'metadata-update', status: 'pending' },
+    ])
+    expect(updateDriveFile).not.toHaveBeenCalled()
+  })
+
+  it('syncs writing language with a Drive metadata patch and records remote modified time', async () => {
+    useWorkspaceStore.setState({ mode: 'drive' })
+    vi.stubGlobal('navigator', { onLine: true })
+    const file = (await fileRepository.create('document')).data!
+    await db.syncQueue.clear()
+    await db.files.update(file.id, { driveFileId: 'drive-file', isFavorite: true, lastSyncedAt: '2026-09-01T00:00:00.000Z' })
+
+    await fileRepository.setWritingLanguage(file.id, 'hi-IN')
+    await processPendingDriveSync()
+
+    expect(updateDriveFile).toHaveBeenCalledWith('drive-file', {
+      appProperties: { isFavorite: 'true', writingLanguage: 'hi-IN' },
+    })
+    expect(await db.files.get(file.id)).toMatchObject({ writingLanguage: 'hi-IN', lastSyncedAt: '2026-10-30T12:00:00.000Z' })
+    expect(await db.syncQueue.toArray()).toMatchObject([{ operation: 'metadata-update', status: 'completed' }])
+  })
+
+  it('retries a failed metadata patch without clearing a document conflict', async () => {
+    useWorkspaceStore.setState({ mode: 'drive' })
+    vi.stubGlobal('navigator', { onLine: false })
+    const file = (await fileRepository.create('document')).data!
+    await db.syncQueue.clear()
+    const conflict = { remoteModifiedTime: '2026-10-29T12:00:00.000Z', versionId: 'remote-version', detectedAt: '2026-10-29T12:01:00.000Z' }
+    await db.files.update(file.id, { driveFileId: 'drive-file', syncStatus: 'backed-up', syncConflict: conflict })
+    vi.mocked(updateDriveFile)
+      .mockRejectedValueOnce(new Error('Temporary Drive failure'))
+      .mockResolvedValueOnce({ id: 'drive-file', name: 'Note.md', modifiedTime: '2026-10-30T12:00:00.000Z' })
+
+    await fileRepository.setWritingLanguage(file.id, 'en-GB')
+    vi.stubGlobal('navigator', { onLine: true })
+    await processPendingDriveSync()
+
+    expect(await db.syncQueue.toArray()).toMatchObject([{ operation: 'metadata-update', status: 'failed', retryCount: 1 }])
+    expect(await db.files.get(file.id)).toMatchObject({ syncConflict: conflict, content: file.content })
+
+    await processPendingDriveSync()
+
+    expect(await db.syncQueue.toArray()).toMatchObject([{ operation: 'metadata-update', status: 'completed' }])
+    expect(await db.files.get(file.id)).toMatchObject({ writingLanguage: 'en-GB', syncConflict: conflict, content: file.content })
+    expect(backupDocumentToDrive).not.toHaveBeenCalled()
   })
 
   it('favorites and unfavorites folders without changing recency or queueing sync', async () => {

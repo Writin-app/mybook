@@ -1488,6 +1488,16 @@ describe('MyBook Markdown round trips', () => {
     expect(parsed.metadata.updatedAt).toBe('2026-03-20T15:30:00.000Z')
   })
 
+  it('round trips optional writing-language metadata and keeps legacy files unresolved', () => {
+    const markdown = documentToMyBookMarkdown('Language Note', doc(paragraph(text('Hello'))), {
+      writingLanguage: 'hi-Latn',
+    })
+
+    expect(markdown).toContain('writing_language: "hi-Latn"')
+    expect(parseMyBookMarkdown(markdown).metadata.writingLanguage).toBe('hi-Latn')
+    expect(parseMyBookMarkdown('---\ntitle: "Legacy"\n---\n\nHello').metadata.writingLanguage).toBeUndefined()
+  })
+
   it('round trips a larger document without changing structure', () => {
     expectRoundTrip(doc(...Array.from({ length: 150 }, (_, index) => paragraph(text(`Paragraph ${index + 1}`)))))
   })

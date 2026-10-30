@@ -237,9 +237,9 @@ export function useAutosave(file: MyBookFile | undefined) {
   }, [save, safeSetStatus])
 
   const changeContent = (value: string) => {
+    contentRef.current = value
     if (!isMountedRef.current || typeof window === 'undefined') return
     setContent(value)
-    contentRef.current = value
     safeSetStatus('editing')
   }
 

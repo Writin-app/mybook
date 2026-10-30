@@ -10,6 +10,18 @@ import { VitePWA } from 'vite-plugin-pwa'
 import bookmarkMetadata from './server/bookmarkMetadata'
 
 export default defineConfig({
+  worker: {
+    format: 'es',
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('/node_modules/harper.js/') || id.includes('/node_modules/harper.js/node_modules/fflate/')) {
+            return 'harper-engine'
+          }
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': new URL('./src', import.meta.url).pathname,
@@ -59,7 +71,18 @@ export default defineConfig({
       navigateFallback: '/index.html',
       navigateFallbackDenylist: [/^\/api\//],
       globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+      globIgnores: ['**/proofreading.worker-*.js', '**/harper-engine-*.js', '**/__vite-browser-external-*.js'],
       runtimeCaching: [
+        {
+          urlPattern: ({ url }) => url.origin === (globalThis as unknown as { location: { origin: string } }).location.origin && /^\/assets\/(?:proofreading\.worker|harper-engine)-[\w-]+\.js$/.test(url.pathname),
+          handler: 'CacheFirst',
+          options: { cacheName: 'writin-harper-runtime' },
+        },
+        {
+          urlPattern: ({ url }) => url.origin === (globalThis as unknown as { location: { origin: string } }).location.origin && /^\/assets\/harper_wasm_bg-[\w-]+\.wasm$/.test(url.pathname),
+          handler: 'CacheFirst',
+          options: { cacheName: 'writin-harper-wasm' },
+        },
         { urlPattern: /^https:\/\/www\.googleapis\.com\/drive\//, handler: 'NetworkOnly' },
         { urlPattern: /^https:\/\/accounts\.google\.com\//, handler: 'NetworkOnly' },
       ],
