@@ -11,7 +11,7 @@ import { Button } from '../ui/button'
 import { BlockCommandMenu } from './SlashCommandMenu'
 import { commandMenuTop, type SlashCommand } from './slashCommands'
 import { safeSelectionForBlock } from './blockConversion'
-import { movableBlockAt } from './blockDrag'
+import { BLOCK_CONTAINERS, movableBlockAt } from './blockDrag'
 import { deleteColumnAt } from './extensions/Columns'
 import {
   gutterBoundsForTarget,
@@ -36,22 +36,29 @@ function targetAtBlockPos(editor: Editor, node: ProseMirrorNode, pos: number): B
   const blockElement = view.nodeDOM(clampedPos)
   const editorDomRect = view.dom.getBoundingClientRect()
   const fallbackWidth = Math.max(0, editorDomRect.width - 32)
-  const rect = blockElement instanceof Element
+  let rect = blockElement instanceof Element
     ? blockElement.getBoundingClientRect()
     : new DOMRect(coords.left, coords.top, Math.max(coords.right - coords.left, fallbackWidth), coords.bottom - coords.top)
+
+  if (node.type.name === 'toggleBlock' && blockElement instanceof Element) {
+    const summary = blockElement.querySelector<HTMLElement>('.mybook-toggle-summary')
+    if (summary) {
+      rect = summary.getBoundingClientRect()
+    }
+  }
   const $from = editor.state.doc.resolve(Math.min(pos + 1, editor.state.doc.content.size))
 
-  let columnDepth = -1
+  let containerDepth = -1
   for (let depth = $from.depth; depth > 0; depth -= 1) {
-    if ($from.node(depth).type.name === 'column') {
-      columnDepth = depth
+    if (BLOCK_CONTAINERS.has($from.node(depth).type.name)) {
+      containerDepth = depth
       break
     }
   }
 
   let topPos = pos
-  if (columnDepth !== -1 && $from.depth > columnDepth) {
-    topPos = $from.before(columnDepth + 1)
+  if (containerDepth !== -1 && $from.depth > containerDepth) {
+    topPos = $from.before(containerDepth + 1)
   } else if ($from.depth > 0) {
     topPos = $from.before(1)
   }
@@ -163,7 +170,20 @@ function findPointerTarget(editor: Editor, event: PointerEvent, clampToEditor = 
     : event.clientX
   const result = editor.view.posAtCoords({ left, top: event.clientY })
   if (!result) return null
-  return blockTargetAtResolvedPos(editor, result.pos)
+  const target = blockTargetAtResolvedPos(editor, result.pos)
+  if (target?.node.type.name === 'toggleBlock') {
+    const toggleDom = editor.view.nodeDOM(target.pos)
+    const summary = toggleDom instanceof Element ? toggleDom.querySelector<HTMLElement>('.mybook-toggle-summary') : null
+    if (summary) {
+      const summaryRect = summary.getBoundingClientRect()
+      if (event.clientY > summaryRect.bottom + 4) {
+        return findGutterTarget(editor, event)
+      }
+    } else if (event.target instanceof Element && !event.target.closest('.mybook-toggle-summary')) {
+      return findGutterTarget(editor, event)
+    }
+  }
+  return target
 }
 
 function isInsideTable(editor: Editor, pos: number) {
@@ -248,7 +268,7 @@ function deleteTarget(editor: Editor, target: BlockTarget) {
   let parentContainer: { node: ProseMirrorNode; pos: number } | null = null
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
     const typeName = $pos.node(depth).type.name
-    if (typeName === 'column' || typeName === 'toggleBlock' || typeName === 'callout') {
+    if (BLOCK_CONTAINERS.has(typeName)) {
       parentContainer = { node: $pos.node(depth), pos: $pos.before(depth) }
       break
     }
@@ -321,7 +341,7 @@ function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; si
   let sourceParentContainer: { node: ProseMirrorNode; pos: number } | null = null
   for (let depth = $sourcePos.depth; depth > 0; depth -= 1) {
     const typeName = $sourcePos.node(depth).type.name
-    if (typeName === 'column' || typeName === 'toggleBlock' || typeName === 'callout') {
+    if (BLOCK_CONTAINERS.has(typeName)) {
       sourceParentContainer = { node: $sourcePos.node(depth), pos: $sourcePos.before(depth) }
       break
     }
@@ -436,7 +456,8 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
         (rootRef.current?.contains(pointerNode) ||
           hoverBridgeRef.current?.contains(pointerNode) ||
           insertMenuRef.current?.contains(pointerNode) ||
-          actionsMenuRef.current?.contains(pointerNode))
+          actionsMenuRef.current?.contains(pointerNode) ||
+          (pointerNode instanceof Element && pointerNode.closest('.mybook-editor-block-gutter')))
       ) return
       setTarget(findPointerTarget(editor, event) ?? findGutterTarget(editor, event))
     }
@@ -444,7 +465,12 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
       if (event.pointerType === 'touch') return
       if (isInsertOpen || isActionsOpen || dragState) return
       const related = event.relatedTarget
-      if (related instanceof Node && (rootRef.current?.contains(related) || hoverBridgeRef.current?.contains(related))) return
+      if (
+        related instanceof Node &&
+        (rootRef.current?.contains(related) ||
+          hoverBridgeRef.current?.contains(related) ||
+          (related instanceof Element && related.closest('.mybook-editor-block-gutter')))
+      ) return
       setTarget(null)
     }
     updateGutterTargets()
@@ -593,7 +619,7 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
   const controlsTop = Math.max(menuBoundary, Math.min(top, maxControlsTop))
   const bridgeTop = Math.max(8, Math.min(controlsTop, validTarget?.rect.top ?? controlsTop))
   const bridgeLeft = Math.max(0, left)
-  const bridgeWidth = Math.max(0, (validTarget?.controlRect.left ?? left) - bridgeLeft)
+  const bridgeWidth = Math.max(0, Math.max(validTarget?.controlRect.left ?? left, validTarget?.rect.left ?? left) - bridgeLeft)
   const bridgeHeight = Math.max(32, validTarget?.rect.height ?? 32)
   const menuRect = new DOMRect(left, controlsTop, 56, 28)
   const insertMenuTop = commandMenuTop(menuRect, 352, 8, menuBoundary)
@@ -672,7 +698,12 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
           if (event.pointerType === 'touch') return
           if (isInsertOpen || isActionsOpen || dragState?.isDragging) return
           const related = event.relatedTarget
-          if (related instanceof Node && (editor.view.dom.contains(related) || rootRef.current?.contains(related))) return
+          if (
+            related instanceof Node &&
+            (editor.view.dom.contains(related) ||
+              rootRef.current?.contains(related) ||
+              (related instanceof Element && related.closest('.mybook-editor-block-gutter')))
+          ) return
           setTarget(null)
         }}
       />
@@ -685,7 +716,12 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
           if (event.pointerType === 'touch') return
           if (isInsertOpen || isActionsOpen || dragState?.isDragging) return
           const related = event.relatedTarget
-          if (related instanceof Node && (editor.view.dom.contains(related) || hoverBridgeRef.current?.contains(related))) return
+          if (
+            related instanceof Node &&
+            (editor.view.dom.contains(related) ||
+              hoverBridgeRef.current?.contains(related) ||
+              (related instanceof Element && related.closest('.mybook-editor-block-gutter')))
+          ) return
           setTarget(null)
         }}
       >
