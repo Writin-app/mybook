@@ -735,5 +735,83 @@ describe('EditorBlockControls', () => {
       expect(hoverBridge.style.left).toBe('72px')
       expect(hoverBridge.style.width).toBe('68px')
     })
+
+    it('positions block controls aligned with a child block when hovering just beside it in the toggle indentation margin', () => {
+      isMobileMock = false
+      editor = createTestEditor(
+        '<details data-type="toggle"><summary>Toggle</summary><div class="mybook-toggle-content"><p>Child paragraph</p></div></details>',
+      )
+
+      const toggleElement = editor.view.dom.querySelector('details.mybook-toggle')!
+      vi.spyOn(toggleElement, 'getBoundingClientRect').mockReturnValue({
+        left: 100,
+        right: 700,
+        top: 100,
+        bottom: 250,
+        width: 600,
+        height: 150,
+        x: 100,
+        y: 100,
+        toJSON: () => {},
+      })
+
+      const summaryElement = editor.view.dom.querySelector('.mybook-toggle-summary')!
+      vi.spyOn(summaryElement, 'getBoundingClientRect').mockReturnValue({
+        left: 100,
+        right: 700,
+        top: 100,
+        bottom: 130,
+        width: 600,
+        height: 30,
+        x: 100,
+        y: 100,
+        toJSON: () => {},
+      })
+
+      const childParagraph = editor.view.dom.querySelector('.mybook-toggle-content p')!
+      vi.spyOn(childParagraph, 'getBoundingClientRect').mockReturnValue({
+        left: 140,
+        right: 650,
+        top: 150,
+        bottom: 180,
+        width: 510,
+        height: 30,
+        x: 140,
+        y: 150,
+        toJSON: () => {},
+      })
+
+      // When posAtCoords is queried at (120, 160) - in the indentation margin between toggle left (100) and child paragraph (140):
+      // ProseMirror maps coordinates inside details to toggleBlock pos (pos: 0)
+      vi.spyOn(editor.view, 'posAtCoords').mockImplementation(({ left }) => {
+        if (left >= 140) return { pos: 2, inside: 2 }
+        if (left >= 100) return { pos: 0, inside: -1 }
+        return null
+      })
+
+      render(<EditorBlockControls editor={editor} onInsertBlock={vi.fn()} />)
+
+      // Hover directly at (120, 160) in the indentation margin beside the child block
+      act(() => {
+        document.dispatchEvent(new PointerEvent('pointermove', {
+          bubbles: true,
+          clientX: 120,
+          clientY: 160,
+          pointerType: 'mouse',
+        }))
+      })
+
+      const controls = document.querySelector('.mybook-editor-block-controls') as HTMLElement
+      expect(controls).not.toBeNull()
+      // Child paragraph controls at top: 150px, left: 140 - 68 = 72px (NOT top: 100px / left: 32px of parent toggle)
+      expect(controls.style.top).toBe('150px')
+      expect(controls.style.left).toBe('72px')
+
+      const hoverBridge = document.querySelector('.mybook-editor-block-hover-bridge') as HTMLElement
+      expect(hoverBridge).not.toBeNull()
+      expect(hoverBridge.style.top).toBe('150px')
+      expect(hoverBridge.style.left).toBe('72px')
+      expect(hoverBridge.style.width).toBe('68px')
+    })
   })
 })
