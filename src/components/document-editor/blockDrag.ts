@@ -1,6 +1,6 @@
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 
-const BLOCK_CONTAINERS = new Set(['column', 'toggleBlock', 'callout'])
+export const BLOCK_CONTAINERS = new Set(['column', 'toggleBlock', 'callout'])
 
 // Drag moves whole blocks: the top-level block, or the direct child when inside a container (column, toggleBlock, callout).
 export function movableBlockAt(doc: ProseMirrorNode, pos: number): { node: ProseMirrorNode; pos: number } | null {

@@ -11,7 +11,7 @@ import { Button } from '../ui/button'
 import { BlockCommandMenu } from './SlashCommandMenu'
 import { commandMenuTop, type SlashCommand } from './slashCommands'
 import { safeSelectionForBlock } from './blockConversion'
-import { movableBlockAt } from './blockDrag'
+import { BLOCK_CONTAINERS, movableBlockAt } from './blockDrag'
 import { deleteColumnAt } from './extensions/Columns'
 import {
   gutterBoundsForTarget,
@@ -41,17 +41,17 @@ function targetAtBlockPos(editor: Editor, node: ProseMirrorNode, pos: number): B
     : new DOMRect(coords.left, coords.top, Math.max(coords.right - coords.left, fallbackWidth), coords.bottom - coords.top)
   const $from = editor.state.doc.resolve(Math.min(pos + 1, editor.state.doc.content.size))
 
-  let columnDepth = -1
+  let containerDepth = -1
   for (let depth = $from.depth; depth > 0; depth -= 1) {
-    if ($from.node(depth).type.name === 'column') {
-      columnDepth = depth
+    if (BLOCK_CONTAINERS.has($from.node(depth).type.name)) {
+      containerDepth = depth
       break
     }
   }
 
   let topPos = pos
-  if (columnDepth !== -1 && $from.depth > columnDepth) {
-    topPos = $from.before(columnDepth + 1)
+  if (containerDepth !== -1 && $from.depth > containerDepth) {
+    topPos = $from.before(containerDepth + 1)
   } else if ($from.depth > 0) {
     topPos = $from.before(1)
   }
@@ -248,7 +248,7 @@ function deleteTarget(editor: Editor, target: BlockTarget) {
   let parentContainer: { node: ProseMirrorNode; pos: number } | null = null
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
     const typeName = $pos.node(depth).type.name
-    if (typeName === 'column' || typeName === 'toggleBlock' || typeName === 'callout') {
+    if (BLOCK_CONTAINERS.has(typeName)) {
       parentContainer = { node: $pos.node(depth), pos: $pos.before(depth) }
       break
     }
@@ -321,7 +321,7 @@ function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; si
   let sourceParentContainer: { node: ProseMirrorNode; pos: number } | null = null
   for (let depth = $sourcePos.depth; depth > 0; depth -= 1) {
     const typeName = $sourcePos.node(depth).type.name
-    if (typeName === 'column' || typeName === 'toggleBlock' || typeName === 'callout') {
+    if (BLOCK_CONTAINERS.has(typeName)) {
       sourceParentContainer = { node: $sourcePos.node(depth), pos: $sourcePos.before(depth) }
       break
     }
@@ -593,7 +593,7 @@ function EditorBlockControlsInner({ editor, onInsertBlock }: { editor: Editor; o
   const controlsTop = Math.max(menuBoundary, Math.min(top, maxControlsTop))
   const bridgeTop = Math.max(8, Math.min(controlsTop, validTarget?.rect.top ?? controlsTop))
   const bridgeLeft = Math.max(0, left)
-  const bridgeWidth = Math.max(0, (validTarget?.controlRect.left ?? left) - bridgeLeft)
+  const bridgeWidth = Math.max(0, Math.max(validTarget?.controlRect.left ?? left, validTarget?.rect.left ?? left) - bridgeLeft)
   const bridgeHeight = Math.max(32, validTarget?.rect.height ?? 32)
   const menuRect = new DOMRect(left, controlsTop, 56, 28)
   const insertMenuTop = commandMenuTop(menuRect, 352, 8, menuBoundary)
