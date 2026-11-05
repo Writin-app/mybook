@@ -307,7 +307,8 @@ describe('Stage 23.2.B.17.6 — Phase 2: Official Bergamot Worker Bridge & WASM 
   describe('3. Genuine Marian NMT WASM Unseen Inference Verification', () => {
     it('verifies that all 20 unseen translation results from real Marian NMT WASM pass safety and quality validation', () => {
       const resultsPath = path.resolve(
-        '/Users/apple/.gemini/antigravity/brain/6c8fcac1-8d11-46cd-a130-62be2d742049/stage23_2_b_17_6_phase2_unseen_translation_results.json'
+        __dirname,
+        'stage23_2_b_17_6_phase2_unseen_translation_results.json'
       )
       expect(fs.existsSync(resultsPath)).toBe(true)
 

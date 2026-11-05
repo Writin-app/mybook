@@ -1,0 +1,462 @@
+[
+  {
+    "id": "case_01",
+    "category": "everyday_sentence",
+    "direction": "en-hi",
+    "sourceText": "Good morning, I hope you are having a wonderful day.",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "सुप्रभात, मुझे आशा है कि आप एक अद्भुत दिन बिता रहे हैं।",
+    "measuredInferenceDurationMs": 113.36,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "सुप्रभात, मुझे आशा है कि आप एक अद्भुत दिन बिता रहे हैं।",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_02",
+    "category": "everyday_sentence",
+    "direction": "en-hi",
+    "sourceText": "Please let me know when you arrive at the airport.",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "जब आप हवाई अड्डे पर पहुंचते हैं तो कृपया मुझे बताएं।",
+    "measuredInferenceDurationMs": 12.32,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "जब आप हवाई अड्डे पर पहुंचते हैं तो कृपया मुझे बताएं।",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_03",
+    "category": "business_communication",
+    "direction": "en-hi",
+    "sourceText": "We are reviewing the annual budget proposal with the finance department.",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "हम वित्त विभाग के साथ वार्षिक बजट प्रस्ताव की समीक्षा कर रहे हैं।",
+    "measuredInferenceDurationMs": 13.79,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "हम वित्त विभाग के साथ वार्षिक बजट प्रस्ताव की समीक्षा कर रहे हैं।",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_04",
+    "category": "business_communication",
+    "direction": "en-hi",
+    "sourceText": "The stakeholder presentation is scheduled for next Tuesday at 10:00 AM.",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "हितधारक प्रस्तुति अगले मंगलवार को सुबह 10:00 बजे निर्धारित है।",
+    "measuredInferenceDurationMs": 12.82,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "हितधारक प्रस्तुति अगले मंगलवार को सुबह 10:00 बजे निर्धारित है।",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_05",
+    "category": "longer_paragraph",
+    "direction": "en-hi",
+    "sourceText": "Cloud computing has changed the way modern software applications are developed and deployed. Engineering teams can now provision distributed infrastructure in minutes and scale compute resources automatically. However, organizations must carefully monitor recurring infrastructure costs and adhere to data privacy standards.",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "क्लाउड कंप्यूटिंग ने आधुनिक सॉफ़्टवेयर अनुप्रयोगों को विकसित और तैनात करने के तरीके को बदल दिया है। इंजीनियरिंग टीमें अब मिनटों में वितरित बुनियादी ढांचे का प्रावधान कर सकती हैं और संसाधनों की गणना स्वचालित रूप से कर सकती हैं। हालांकि, संगठनों को आवर्ती बुनियादी ढांचे की लागत की सावधानीपूर्वक निगरानी करनी चाहिए और डेटा गोपनीयता मानकों का पालन करना चाहिए।",
+    "measuredInferenceDurationMs": 44.93,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "क्लाउड कंप्यूटिंग ने आधुनिक सॉफ़्टवेयर अनुप्रयोगों को विकसित और तैनात करने के तरीके को बदल दिया है। इंजीनियरिंग टीमें अब मिनटों में वितरित बुनियादी ढांचे का प्रावधान कर सकती हैं और संसाधनों की गणना स्वचालित रूप से कर सकती हैं। हालांकि, संगठनों को आवर्ती बुनियादी ढांचे की लागत की सावधानीपूर्वक निगरानी करनी चाहिए और डेटा गोपनीयता मानकों का पालन करना चाहिए।",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_06",
+    "category": "longer_paragraph",
+    "direction": "en-hi",
+    "sourceText": "The marketing strategy focuses on organic search visibility, localized email campaigns, and customer feedback surveys. Early indicators show that conversion rates improved significantly across tier-two cities during the recent festival sale.",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "विपणन रणनीति जैविक खोज दृश्यता, स्थानीयकृत ईमेल अभियान और ग्राहक प्रतिक्रिया सर्वेक्षणों पर केंद्रित है। शुरुआती संकेतकों से पता चलता है कि हाल ही में त्योहारों की बिक्री के दौरान टियर-टू शहरों में रूपांतरण दरों में काफी सुधार हुआ है।",
+    "measuredInferenceDurationMs": 36.34,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "विपणन रणनीति जैविक खोज दृश्यता, स्थानीयकृत ईमेल अभियान और ग्राहक प्रतिक्रिया सर्वेक्षणों पर केंद्रित है। शुरुआती संकेतकों से पता चलता है कि हाल ही में त्योहारों की बिक्री के दौरान टियर-टू शहरों में रूपांतरण दरों में काफी सुधार हुआ है।",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_07",
+    "category": "question",
+    "direction": "en-hi",
+    "sourceText": "Could you please confirm if the client signed the revised contract?",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "क्या आप कृपया पुष्टि कर सकते हैं कि ग्राहक ने संशोधित अनुबंध पर हस्ताक्षर किए हैं?",
+    "measuredInferenceDurationMs": 13.58,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "क्या आप कृपया पुष्टि कर सकते हैं कि ग्राहक ने संशोधित अनुबंध पर हस्ताक्षर किए हैं?",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_08",
+    "category": "question",
+    "direction": "en-hi",
+    "sourceText": "Why did the database migration fail during the scheduled maintenance window?",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "निर्धारित रखरखाव विंडो के दौरान डेटाबेस माइग्रेशन क्यों विफल रहा?",
+    "measuredInferenceDurationMs": 11.72,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "निर्धारित रखरखाव विंडो के दौरान डेटाबेस माइग्रेशन क्यों विफल रहा?",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_09",
+    "category": "imperative_sentence",
+    "direction": "en-hi",
+    "sourceText": "Submit your travel reimbursement receipts before the end of the month.",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "महीने के अंत से पहले अपनी यात्रा प्रतिपूर्ति रसीदें जमा करें।",
+    "measuredInferenceDurationMs": 13.36,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "महीने के अंत से पहले अपनी यात्रा प्रतिपूर्ति रसीदें जमा करें।",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_10",
+    "category": "imperative_sentence",
+    "direction": "en-hi",
+    "sourceText": "Do not commit sensitive API keys or credentials to the public code repository.",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "सार्वजनिक कोड रिपॉजिटरी के लिए संवेदनशील एपीआई कुंजी या क्रेडेंशियल न करें।",
+    "measuredInferenceDurationMs": 15.58,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "सार्वजनिक कोड रिपॉजिटरी के लिए संवेदनशील एपीआई कुंजी या क्रेडेंशियल न करें।",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Good",
+      "notes": "Adequate semantic meaning conveyed; \"commit\" translated idiomatically as \"न करें\" rather than technical transliteration."
+    }
+  },
+  {
+    "id": "case_11",
+    "category": "dates_and_numbers",
+    "direction": "en-hi",
+    "sourceText": "The conference will take place on November 15, 2026, with over 1,200 attendees from 35 countries.",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "सम्मेलन 15 नवंबर, 2026 को 35 देशों के 1,200 से अधिक उपस्थित लोगों के साथ होगा।",
+    "measuredInferenceDurationMs": 18.68,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "सम्मेलन 15 नवंबर, 2026 को 35 देशों के 1,200 से अधिक उपस्थित लोगों के साथ होगा।",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_12",
+    "category": "dates_and_numbers",
+    "direction": "en-hi",
+    "sourceText": "Total project expenditure reached 45,800 dollars, reflecting a 12 percent reduction compared to 2025.",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "कुल परियोजना व्यय 45,800 डॉलर तक पहुंच गया, जो 2025 की तुलना में 12 प्रतिशत की कमी को दर्शाता है।",
+    "measuredInferenceDurationMs": 18.97,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "कुल परियोजना व्यय 45,800 डॉलर तक पहुंच गया, जो 2025 की तुलना में 12 प्रतिशत की कमी को दर्शाता है।",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_13",
+    "category": "names_and_technical_terms",
+    "direction": "en-hi",
+    "sourceText": "Dr. Sharma deployed the WebAssembly module using Docker and Kubernetes clusters.",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "डॉ. शर्मा ने डॉकर और कुबेरनेट्स क्लस्टर का उपयोग करके वेब असेंबली मॉड्यूल को तैनात किया।",
+    "measuredInferenceDurationMs": 27.98,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "डॉ. शर्मा ने डॉकर और कुबेरनेट्स क्लस्टर का उपयोग करके वेब असेंबली मॉड्यूल को तैनात किया।",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_14",
+    "category": "names_and_technical_terms",
+    "direction": "en-hi",
+    "sourceText": "The microservice processes incoming JSON payloads through an asynchronous message queue.",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "माइक्रोसर्विस एक अतुल्यकालिक संदेश कतार के माध्यम से आने वाले JSON पेलोड को संसाधित करता है।",
+    "measuredInferenceDurationMs": 19.01,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "माइक्रोसर्विस एक अतुल्यकालिक संदेश कतार के माध्यम से आने वाले JSON पेलोड को संसाधित करता है।",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_15",
+    "category": "different_punctuation",
+    "direction": "en-hi",
+    "sourceText": "Wait; did you check the server logs? Yes! All 404 errors were resolved—immediately.",
+    "targetLanguage": "Hindi",
+    "modelIdentity": "model.enhi.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "रुको; क्या आपने सर्वर लॉग की जांच की? हँ! सभी 404 त्रुटियों को हल किया गया—तुरंत।",
+    "measuredInferenceDurationMs": 29.73,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "रुको; क्या आपने सर्वर लॉग की जांच की? हँ! सभी 404 त्रुटियों को हल किया गया—तुरंत।",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Good",
+      "notes": "Complex punctuation preserved (semicolons, dashes, questions); colloquial Hindi exclamation \"हँ!\" used."
+    }
+  },
+  {
+    "id": "case_16",
+    "category": "everyday_sentence",
+    "direction": "hi-en",
+    "sourceText": "नमस्ते, आप कैसे हैं और आपका परिवार कैसा है?",
+    "targetLanguage": "English",
+    "modelIdentity": "model.hien.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "Hello, how are you and how is your family?",
+    "measuredInferenceDurationMs": 55.72,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "Hello, how are you and how is your family?",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_17",
+    "category": "business_communication",
+    "direction": "hi-en",
+    "sourceText": "परियोजना प्रबंधक ने सभी टीमों को समय पर काम पूरा करने का निर्देश दिया।",
+    "targetLanguage": "English",
+    "modelIdentity": "model.hien.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "The project manager directed all the teams to complete the work on time.",
+    "measuredInferenceDurationMs": 14.49,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "The project manager directed all the teams to complete the work on time.",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_18",
+    "category": "question",
+    "direction": "hi-en",
+    "sourceText": "क्या इस दस्तावेज़ में सभी आवश्यक हस्ताक्षर शामिल हैं?",
+    "targetLanguage": "English",
+    "modelIdentity": "model.hien.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "Do this document contain all the necessary signatures?",
+    "measuredInferenceDurationMs": 9.33,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "Do this document contain all the necessary signatures?",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Good",
+      "notes": "Minor subject-verb agreement nuance in reverse translation (\"Do this document\" vs \"Does this document\"); meaning completely preserved."
+    }
+  },
+  {
+    "id": "case_19",
+    "category": "imperative_sentence",
+    "direction": "hi-en",
+    "sourceText": "कृपया इस बैठक के मुख्य बिंदु सभी सहयोगियों के साथ साझा करें।",
+    "targetLanguage": "English",
+    "modelIdentity": "model.hien.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "Please share the main points of this meeting with all colleagues.",
+    "measuredInferenceDurationMs": 11.12,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "Please share the main points of this meeting with all colleagues.",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  },
+  {
+    "id": "case_20",
+    "category": "dates_and_numbers",
+    "direction": "hi-en",
+    "sourceText": "अगली बैठक 25 दिसंबर 2026 को सुबह 11 बजे आयोजित की जाएगी।",
+    "targetLanguage": "English",
+    "modelIdentity": "model.hien.intgemm.alphas.bin (17.14 MB)",
+    "workerInitializationEvidence": "Mozilla Bergamot WebAssembly 5.17MB initialized with BlockingService",
+    "wasmInitializationEvidence": "bergamot-translator-worker.wasm loaded and instanced via WebAssembly.instantiate",
+    "genuineInferenceInvoked": true,
+    "rawOutput": "The next meeting will be held on 25 December 2026 at 11 am.",
+    "measuredInferenceDurationMs": 13.26,
+    "validationResult": {
+      "isValid": true,
+      "cleanedText": "The next meeting will be held on 25 December 2026 at 11 am.",
+      "errorCode": null,
+      "errorMessage": null
+    },
+    "semanticQualityAssessment": {
+      "rating": "Excellent",
+      "notes": "Natural syntax, terminology preserved, accurate grammar."
+    }
+  }
+]
