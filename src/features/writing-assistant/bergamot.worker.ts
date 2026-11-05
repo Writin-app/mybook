@@ -4,7 +4,7 @@ import type {
   WorkerRequest,
   WorkerResponse,
   ModelBuffers,
-} from '../../prototype/translation/types'
+} from './bergamotTypes'
 
 // State tracking within the dedicated translation worker
 let status: 'uninitialized' | 'initializing' | 'ready' | 'terminated' = 'uninitialized'

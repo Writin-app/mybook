@@ -19,7 +19,7 @@ import type {
   ModelDownloadProgress,
   TranslationDirection,
   TranslationModelStatus,
-} from '../../prototype/translation/types'
+} from './bergamotTypes'
 import { validateAndCleanGenerativeOutput } from './outputValidation'
 
 export type BergamotLifecycleState = TranslationModelStatus

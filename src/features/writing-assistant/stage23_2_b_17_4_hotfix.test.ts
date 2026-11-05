@@ -7,7 +7,7 @@ import {
   handleWorkerMessage,
   resetWorkerStateForTests,
 } from './bergamot.worker'
-import type { WorkerRequest, WorkerResponse } from '../../prototype/translation/types'
+import type { WorkerRequest, WorkerResponse } from './bergamotTypes'
 import {
   createHttpTransformationEngine,
 } from './httpTransformationEngine'

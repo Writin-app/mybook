@@ -117,6 +117,16 @@ export {
   type ModelAssetManagerOptions,
   type StorageEstimateResult,
 } from './modelAssetManager'
+export type {
+  TranslationDirection,
+  TranslationModelStatus,
+  TranslationErrorCode,
+  ModelBuffers,
+  WorkerRequest,
+  WorkerResponse,
+  ModelDownloadProgress,
+  TranslationMetrics,
+} from './bergamotTypes'
 export {
   LANGUAGE_PAIR_CAPABILITIES,
   validateTranslationRequest,

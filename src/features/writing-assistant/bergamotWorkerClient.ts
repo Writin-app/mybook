@@ -5,7 +5,7 @@ import type {
   WorkerRequest,
   WorkerResponse,
   ModelBuffers,
-} from '../../prototype/translation/types'
+} from './bergamotTypes'
 import { getBergamotWorkerUrl } from './modelAssetManager'
 
 export interface BergamotWorkerClientOptions {

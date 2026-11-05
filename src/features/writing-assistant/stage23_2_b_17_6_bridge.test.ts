@@ -4,7 +4,7 @@ import {
   BergamotWorkerClient,
   BergamotWorkerError,
 } from './bergamotWorkerClient'
-import type { ModelBuffers } from '../../prototype/translation/types'
+import type { ModelBuffers } from './bergamotTypes'
 import { validateAndCleanGenerativeOutput } from './outputValidation'
 import fs from 'node:fs'
 import path from 'node:path'

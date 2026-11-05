@@ -7,7 +7,7 @@ import {
   type DetailedLanguageClassification,
 } from './translationCapabilityRegistry'
 import { modelAssetManager } from './modelAssetManager'
-import type { TranslationDirection } from '../../prototype/translation/types'
+import type { TranslationDirection } from './bergamotTypes'
 
 export interface TranslationActionViewProps {
   sourceText: string

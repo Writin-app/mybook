@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
-import type { WorkerResponse } from '../../prototype/translation/types'
+import type { WorkerResponse } from './bergamotTypes'
 import { handleWorkerMessage, resetWorkerStateForTests } from './bergamot.worker'
 import { validateAndCleanGenerativeOutput } from './outputValidation'
 import { classifyTextLanguage } from './translationCapabilityRegistry'

@@ -13,7 +13,7 @@ import {
   computeBufferSha256,
   type ModelFilePaths,
 } from './modelAssetManager'
-import type { TranslationDirection } from '../../prototype/translation/types'
+import type { TranslationDirection } from './bergamotTypes'
 import zlib from 'node:zlib'
 import fs from 'node:fs'
 import path from 'node:path'

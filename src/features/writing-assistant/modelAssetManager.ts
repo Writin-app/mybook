@@ -1,4 +1,4 @@
-import type { TranslationDirection, ModelBuffers, ModelDownloadProgress } from '../../prototype/translation/types'
+import type { TranslationDirection, ModelBuffers, ModelDownloadProgress } from './bergamotTypes'
 
 export interface ModelFilePaths {
   model: string
