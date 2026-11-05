@@ -199,4 +199,35 @@ describe('AboutPage', () => {
     // Button label toggled
     expect(screen.getByLabelText(/Switch to/i)).toBeInTheDocument()
   })
+
+  it('renders third-party software and open-source licenses section with Bergamot attribution', () => {
+    render(
+      <MemoryRouter initialEntries={['/about']}>
+        <AboutPage />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByRole('heading', { name: /Software Licenses & Notices/i })).toBeInTheDocument()
+    expect(screen.getByText(/Mozilla Bergamot Translator & WebAssembly Runtime/i)).toBeInTheDocument()
+    expect(screen.getByText(/Firefox Translations Neural Translation Models/i)).toBeInTheDocument()
+    expect(screen.getByText(/Marian NMT & IntGEMM/i)).toBeInTheDocument()
+    expect(screen.getByText(/Google SentencePiece/i)).toBeInTheDocument()
+
+    // EU Grant notice check
+    expect(screen.getByText(/Project Bergamot has received funding from the European Union's Horizon 2020/i)).toBeInTheDocument()
+    expect(screen.getByText(/grant agreement No\. 825303/i)).toBeInTheDocument()
+
+    // Bundled license links and upstream repo links
+    const bundledLicenseLinks = screen.getAllByRole('link', { name: /Bundled License File →/i })
+    expect(bundledLicenseLinks.length).toBeGreaterThan(0)
+    expect(bundledLicenseLinks[0]).toHaveAttribute('href', '/bergamot/LICENSE.txt')
+
+    const sourceRepoLink = screen.getByRole('link', { name: /Source Repository →/i })
+    expect(sourceRepoLink).toHaveAttribute('href', 'https://github.com/browsermt/bergamot-translator')
+
+    // Navigation links
+    const licenseNavLinks = screen.getAllByRole('link', { name: 'Licenses' })
+    expect(licenseNavLinks.length).toBeGreaterThan(0)
+    expect(licenseNavLinks[0]).toHaveAttribute('href', '#licenses')
+  })
 })

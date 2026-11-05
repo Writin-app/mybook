@@ -22,6 +22,17 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('/node_modules/@mlc-ai/web-llm/')) {
+            return 'webllm'
+          }
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': new URL('./src', import.meta.url).pathname,
@@ -71,7 +82,17 @@ export default defineConfig({
       navigateFallback: '/index.html',
       navigateFallbackDenylist: [/^\/api\//],
       globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-      globIgnores: ['**/proofreading.worker-*.js', '**/harper-engine-*.js', '**/__vite-browser-external-*.js'],
+      globIgnores: [
+        '**/proofreading.worker-*.js',
+        '**/harper-engine-*.js',
+        '**/__vite-browser-external-*.js',
+        '**/webllm-*.js',
+        '**/bergamot.worker-*.js',
+        '**/bergamot-*.wasm',
+        '**/models/**',
+        '**/*.bin*',
+        '**/*.spm*',
+      ],
       runtimeCaching: [
         {
           urlPattern: ({ url }) => url.origin === (globalThis as unknown as { location: { origin: string } }).location.origin && /^\/assets\/(?:proofreading\.worker|harper-engine)-[\w-]+\.js$/.test(url.pathname),

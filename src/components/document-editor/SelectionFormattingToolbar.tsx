@@ -4,6 +4,7 @@ import {
   CodeIcon,
   Link02Icon,
   MoreHorizontalIcon,
+  SparklesIcon,
   TextBoldIcon,
   TextItalicIcon,
   TextStrikethroughIcon,
@@ -15,6 +16,8 @@ import type { Editor } from '@tiptap/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { TextSelection } from '@tiptap/pm/state'
 
+import type { TransformationEngine } from '../../features/writing-assistant/contracts'
+import { SelectionAiPopover } from '../../features/writing-assistant/SelectionAiPopover'
 import { BlockCommandMenu } from './SlashCommandMenu'
 import { tableColors } from './extensions/TableCellStyles'
 import { filterSlashCommands, type SlashCommand } from './slashCommands'
@@ -32,6 +35,8 @@ const textColors = [
   { name: 'Red', value: '#dc2626' },
   { name: 'Purple', value: '#7e22ce' },
 ] as const
+
+export const SELECTION_TOOLBAR_WIDTH = 490
 
 function selectionPosition(editor: Editor): ToolbarPosition | null {
   const { selection, doc } = editor.state
@@ -63,7 +68,7 @@ function selectionPosition(editor: Editor): ToolbarPosition | null {
     top = Math.max(start.bottom, end.bottom) + 8
   }
   top = Math.max(minTop, Math.min(top, maxTop))
-  const toolbarWidth = 436
+  const toolbarWidth = SELECTION_TOOLBAR_WIDTH
   const maxLeft = (typeof window !== 'undefined' ? window.innerWidth : 1024) - toolbarWidth - 8
   const left = Math.max(8, Math.min(Math.min(start.left, end.left), maxLeft))
   return { left, top }
@@ -85,26 +90,48 @@ function ToolButton({ label, active, children, onClick }: { label: string; activ
   )
 }
 
-export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, linkEditorOpen = false }: { editor: Editor; onInsertBlock: (commandId: string) => void; onEditLink: () => void; linkEditorOpen?: boolean }) {
+export interface SelectionFormattingToolbarProps {
+  editor: Editor
+  onInsertBlock: (commandId: string) => void
+  onEditLink: () => void
+  linkEditorOpen?: boolean
+  fileId?: string
+  languageId?: string
+  customEngine?: TransformationEngine
+}
+
+export function SelectionFormattingToolbar({
+  editor,
+  onInsertBlock,
+  onEditLink,
+  linkEditorOpen = false,
+  fileId,
+  languageId,
+  customEngine,
+}: SelectionFormattingToolbarProps) {
   const [position, setPosition] = useState<ToolbarPosition | null>(null)
   const [colorMenu, setColorMenu] = useState<ColorMenu>(null)
   const [blockMenuOpen, setBlockMenuOpen] = useState(false)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const [aiMenuOpen, setAiMenuOpen] = useState(false)
   const [moreSelectedIndex, setMoreSelectedIndex] = useState(0)
   const savedRange = useRef<{ from: number; to: number } | null>(null)
 
   const linkEditorOpenRef = useRef(linkEditorOpen)
   linkEditorOpenRef.current = linkEditorOpen
 
+  const aiMenuOpenRef = useRef(aiMenuOpen)
+  aiMenuOpenRef.current = aiMenuOpen
+
   useEffect(() => {
     const update = () => {
-      if (linkEditorOpenRef.current) return
+      if (linkEditorOpenRef.current || aiMenuOpenRef.current) return
       const selection = editor.state.selection
       if (!selection.empty && editor.isFocused) savedRange.current = { from: selection.from, to: selection.to }
       setPosition(selectionPosition(editor))
     }
     const updateOnScroll = () => {
-      if (!linkEditorOpenRef.current) setPosition(selectionPosition(editor))
+      if (!linkEditorOpenRef.current && !aiMenuOpenRef.current) setPosition(selectionPosition(editor))
     }
     update()
     editor.on('selectionUpdate', update)
@@ -128,6 +155,7 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
       setColorMenu(null)
       setBlockMenuOpen(false)
       setMoreMenuOpen(false)
+      setAiMenuOpen(false)
     }
   }, [position])
 
@@ -154,6 +182,7 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
     setColorMenu(null)
     setBlockMenuOpen(false)
     setMoreMenuOpen(false)
+    setAiMenuOpen(false)
     onEditLink()
   }
   const applyColor = (kind: Exclude<ColorMenu, null>, value: string | null) => {
@@ -201,8 +230,21 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
   }, [moreMenuOpen, moreCommands, moreSelectedIndex, runMoreCommand])
 
   useEffect(() => {
-    if (!linkEditorOpen) setPosition(selectionPosition(editor))
-  }, [editor, linkEditorOpen])
+    if (!aiMenuOpen) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setAiMenuOpen(false)
+        restoreSelection()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
+  }, [aiMenuOpen, restoreSelection])
+
+  useEffect(() => {
+    if (!linkEditorOpen && !aiMenuOpen) setPosition(selectionPosition(editor))
+  }, [editor, linkEditorOpen, aiMenuOpen])
 
   const toolbarRef = useRef<HTMLDivElement>(null)
   const isOpen = position !== null
@@ -212,7 +254,15 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null
       if (!target || toolbarRef.current?.contains(target) || editor.view.dom.contains(target)) return
-      if (target instanceof Element && target.closest('.mybook-inline-link-toolbar')) return
+      if (
+        target instanceof Element &&
+        (target.closest('.mybook-inline-link-toolbar') || target.closest('[data-selection-ai-popover="true"]'))
+      ) {
+        return
+      }
+      if (aiMenuOpenRef.current) {
+        setAiMenuOpen(false)
+      }
       const { selection } = editor.state
       if (selection.empty) return
       editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, selection.to)))
@@ -238,6 +288,7 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
   const openBlockOnTop = spaceBelow < 260 && spaceAbove > spaceBelow
   const openColorOnTop = spaceBelow < 260 && spaceAbove > spaceBelow
   const openMoreOnTop = spaceBelow < 340 && spaceAbove > spaceBelow
+  const openAiOnTop = spaceBelow < 380 && spaceAbove > spaceBelow
   const moreMaxHeight = Math.min(384, Math.max(160, (openMoreOnTop ? spaceAbove : spaceBelow) - 16))
 
   return (
@@ -252,8 +303,19 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
       onMouseDown={(event) => event.preventDefault()}
     >
       <div className="relative">
-        <button type="button" aria-label="Block style" aria-expanded={blockMenuOpen} onClick={() => { setBlockMenuOpen((open) => !open); setColorMenu(null) }} className="flex h-7 min-w-20 items-center justify-center gap-1.5 rounded-[6px] bg-[var(--app-subtle)] px-2 text-xs font-medium hover:bg-[var(--app-subtle)]/80">
-          {blockStyle}<HugeiconsIcon icon={ArrowDown01Icon} size={14} className="text-muted-foreground" />
+        <button
+          type="button"
+          aria-label="Block style"
+          aria-expanded={blockMenuOpen}
+          onClick={() => {
+            setBlockMenuOpen((open) => !open)
+            setColorMenu(null)
+            setAiMenuOpen(false)
+          }}
+          className="flex h-7 min-w-20 items-center justify-center gap-1.5 rounded-[6px] bg-[var(--app-subtle)] px-2 text-xs font-medium hover:bg-[var(--app-subtle)]/80"
+        >
+          {blockStyle}
+          <HugeiconsIcon icon={ArrowDown01Icon} size={14} className="text-muted-foreground" />
         </button>
         {blockMenuOpen ? (
           <div role="menu" aria-label="Block style" className={`absolute left-0 z-50 w-56 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openBlockOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
@@ -266,13 +328,43 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
         ) : null}
       </div>
       <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
+      <div className="relative">
+        <button
+          type="button"
+          aria-label="AI actions"
+          aria-expanded={aiMenuOpen}
+          onClick={() => {
+            setAiMenuOpen((open) => !open)
+            setColorMenu(null)
+            setBlockMenuOpen(false)
+            setMoreMenuOpen(false)
+          }}
+          className={`flex h-7 items-center gap-1 rounded-[6px] px-2 text-xs font-medium text-purple-600 dark:text-purple-400 transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
+            aiMenuOpen ? 'bg-[var(--app-subtle)]' : ''
+          }`}
+        >
+          <HugeiconsIcon icon={SparklesIcon} size={14} className="shrink-0" />
+          <span>AI</span>
+        </button>
+        {aiMenuOpen ? (
+          <SelectionAiPopover
+            editor={editor}
+            fileId={fileId}
+            languageId={languageId}
+            customEngine={customEngine}
+            onClose={() => setAiMenuOpen(false)}
+            placement={openAiOnTop ? 'top' : 'bottom'}
+          />
+        ) : null}
+      </div>
+      <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
       <ToolButton label="Bold" active={editor.isActive('bold')} onClick={() => { restoreSelection(); editor.chain().focus().toggleBold().run() }}><HugeiconsIcon icon={TextBoldIcon} size={16} /></ToolButton>
       <ToolButton label="Underline" active={editor.isActive('underline')} onClick={() => { restoreSelection(); editor.chain().focus().toggleUnderline().run() }}><HugeiconsIcon icon={TextUnderlineIcon} size={16} /></ToolButton>
       <ToolButton label="Italic" active={editor.isActive('italic')} onClick={() => { restoreSelection(); editor.chain().focus().toggleItalic().run() }}><HugeiconsIcon icon={TextItalicIcon} size={16} /></ToolButton>
       <ToolButton label="Strikethrough" active={editor.isActive('strike')} onClick={() => { restoreSelection(); editor.chain().focus().toggleStrike().run() }}><HugeiconsIcon icon={TextStrikethroughIcon} size={16} /></ToolButton>
       <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
       <div className="relative">
-        <ToolButton label="Text color" active={editor.isActive('textColor')} onClick={() => { setColorMenu((current) => current === 'text' ? null : 'text'); setBlockMenuOpen(false) }}>
+        <ToolButton label="Text color" active={editor.isActive('textColor')} onClick={() => { setColorMenu((current) => current === 'text' ? null : 'text'); setBlockMenuOpen(false); setAiMenuOpen(false) }}>
           <span className="flex h-5 flex-col items-center justify-center text-sm font-medium leading-none">A<span className="mt-0.5 h-0.5 w-3 rounded-full" style={{ backgroundColor: editor.getAttributes('textColor').color ?? 'currentColor' }} /></span>
         </ToolButton>
         {colorMenu === 'text' ? (
@@ -282,7 +374,7 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
         ) : null}
       </div>
       <div className="relative">
-        <ToolButton label="Highlight" active={editor.isActive('highlight')} onClick={() => { setColorMenu((current) => current === 'highlight' ? null : 'highlight'); setBlockMenuOpen(false) }}>
+        <ToolButton label="Highlight" active={editor.isActive('highlight')} onClick={() => { setColorMenu((current) => current === 'highlight' ? null : 'highlight'); setBlockMenuOpen(false); setAiMenuOpen(false) }}>
           <span className="flex size-4 items-center justify-center rounded border border-current text-[10px] font-bold" style={{ backgroundColor: editor.getAttributes('highlight').color ?? 'transparent' }}>H</span>
         </ToolButton>
         {colorMenu === 'highlight' ? (
@@ -298,7 +390,7 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock, onEditLink, 
       <ToolButton label="Inline code" active={editor.isActive('code')} onClick={() => { restoreSelection(); editor.chain().focus().toggleCode().run() }}><HugeiconsIcon icon={CodeIcon} size={16} /></ToolButton>
       <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
       <div className="relative">
-        <ToolButton label="More options" active={moreMenuOpen} onClick={() => { setMoreMenuOpen((open) => !open); setColorMenu(null); setBlockMenuOpen(false) }}><HugeiconsIcon icon={MoreHorizontalIcon} size={16} /></ToolButton>
+        <ToolButton label="More options" active={moreMenuOpen} onClick={() => { setMoreMenuOpen((open) => !open); setColorMenu(null); setBlockMenuOpen(false); setAiMenuOpen(false) }}><HugeiconsIcon icon={MoreHorizontalIcon} size={16} /></ToolButton>
         {moreMenuOpen ? (
           <div
             data-command-menu-scroller="true"

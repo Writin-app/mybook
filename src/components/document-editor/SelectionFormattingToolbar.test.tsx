@@ -6,7 +6,7 @@ import { TextSelection } from '@tiptap/pm/state'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { SelectionFormattingToolbar } from './SelectionFormattingToolbar'
+import { SELECTION_TOOLBAR_WIDTH, SelectionFormattingToolbar } from './SelectionFormattingToolbar'
 
 describe('SelectionFormattingToolbar', () => {
   let editor: Editor | null = null
@@ -239,7 +239,34 @@ describe('SelectionFormattingToolbar', () => {
     const toolbar = screen.getByRole('toolbar', { name: 'Selected text formatting' })
     expect(toolbar).toBeTruthy()
     const leftStyle = parseFloat(toolbar.style.left)
-    // Clamped so toolbar (width ~436) does not overflow the 1000px window
-    expect(leftStyle).toBe(1000 - 436 - 8)
+    // Clamped so toolbar (width ~490 with AI button) does not overflow the 1000px window
+    expect(leftStyle).toBe(1000 - SELECTION_TOOLBAR_WIDTH - 8)
+  })
+
+  it('renders AI actions button and toggles AI popover', () => {
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit],
+      content: '<p>Sample text to analyze</p>',
+    })
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({ left: 50, right: 100, top: 100, bottom: 120 })
+    vi.spyOn(editor, 'isFocused', 'get').mockReturnValue(true)
+
+    render(<SelectionFormattingToolbar editor={editor} onInsertBlock={() => undefined} onEditLink={() => undefined} />)
+    act(() => {
+      editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 1, 10)))
+    })
+
+    const aiButton = screen.getByRole('button', { name: 'AI actions' })
+    expect(aiButton).toBeTruthy()
+    expect(screen.queryByRole('dialog', { name: 'Contextual AI Actions' })).toBeNull()
+
+    // Click to open
+    fireEvent.click(aiButton)
+    expect(screen.getByRole('dialog', { name: 'Contextual AI Actions' })).toBeTruthy()
+
+    // Press Escape to close
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Contextual AI Actions' })).toBeNull()
   })
 })

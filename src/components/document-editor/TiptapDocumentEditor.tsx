@@ -48,6 +48,7 @@ import { getFolderPath } from '../files/FolderBreadcrumb'
 import { ChecklistActionsMenu } from './ChecklistActionsMenu'
 import { DocumentToolbar } from './DocumentToolbar'
 import { SelectionFormattingToolbar } from './SelectionFormattingToolbar'
+import { MobileSelectionAiBar } from './MobileSelectionAiBar'
 import { EditorBlockControls, type BlockTarget } from './EditorBlockControls'
 import { useHoverBlockControlsAvailable } from '../../hooks/useHoverBlockControls'
 import { EditorStatus } from './EditorStatus'
@@ -4138,7 +4139,23 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         onCreateFolder={(name, parentId) => folderRepository.create(name, parentId)}
       />
       {inlineLinkToolbar ? <InlineLinkToolbar key={`${inlineLinkToolbar.range.from}-${inlineLinkToolbar.range.to}-${inlineLinkToolbar.startInEdit ? 'edit' : 'hover'}`} toolbar={inlineLinkToolbar} onAction={runInlineLinkAction} onClose={closeInlineLinkToolbar} /> : null}
-      {!isPageLocked && !isMobile ? <SelectionFormattingToolbar editor={editor} onInsertBlock={(commandId) => insertBlock(commandId)} onEditLink={openSelectionLinkEditor} linkEditorOpen={Boolean(inlineLinkToolbar?.startInEdit)} /> : null}
+      {!isPageLocked && !isMobile ? (
+        <SelectionFormattingToolbar
+          editor={editor}
+          onInsertBlock={(commandId) => insertBlock(commandId)}
+          onEditLink={openSelectionLinkEditor}
+          linkEditorOpen={Boolean(inlineLinkToolbar?.startInEdit)}
+          fileId={file.id}
+          languageId={file.writingLanguage}
+        />
+      ) : null}
+      {!isPageLocked && isMobile ? (
+        <MobileSelectionAiBar
+          editor={editor}
+          fileId={file.id}
+          languageId={file.writingLanguage}
+        />
+      ) : null}
       {!isPageLocked && isHoverBlockControlsAvailable ? <EditorBlockControls editor={editor} onInsertBlock={insertBlock} /> : null}
       {!isPageLocked ? <TableActionsMenu editor={editor} /> : null}
       {!isPageLocked ? <ChecklistActionsMenu editor={editor} /> : null}

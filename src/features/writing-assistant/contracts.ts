@@ -48,6 +48,7 @@ export type TransformationResult =
       snapshotId: string
       sourceText: string
       proposedText: string
+      explanation?: string
     }
   | {
       status: 'unsupported' | 'unavailable' | 'cancelled' | 'error' | 'stale'
@@ -56,6 +57,28 @@ export type TransformationResult =
       snapshotId: string
       reason: string
     }
+
+export type GenerativeActionId =
+  | 'improve-writing'
+  | 'summarize'
+  | 'translate'
+  | 'shorten'
+  | 'expand'
+  | 'shorten-expand'
+  | 'change-tone'
+  | 'continue-writing'
+  | 'ask-ai'
+  | 'correct'
+
+export type GenerationScope = 'selected' | 'document'
+
+export interface GenerationContext extends EngineContext {
+  actionId: GenerativeActionId
+  scope: GenerationScope
+  range?: { from: number; to: number }
+  instruction?: string
+  options?: Record<string, unknown>
+}
 
 export interface EngineAvailability {
   available: boolean
@@ -85,3 +108,14 @@ export type AnalysisOutcome =
       status: 'unsupported' | 'unavailable' | 'error' | 'stale'
       reason: string
     })
+
+export interface TransformationEngine extends WritingEngine {
+  transform: (context: GenerationContext, signal?: AbortSignal) => Promise<{ proposedText: string; explanation?: string }>
+}
+
+export interface GenerationRequest {
+  capability: WritingCapability
+  context: GenerationContext
+  signal?: AbortSignal
+  isCurrent: () => boolean
+}

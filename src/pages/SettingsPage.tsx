@@ -392,7 +392,10 @@ export function SettingsPage() {
         <p className="mt-2 text-sm leading-6 text-muted-foreground">This application is provided for personal use. Keep independent copies of important information and review Google permissions before connecting an account.</p>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--app-border)] pt-4">
           <p className="text-sm text-muted-foreground">Writin version {APP_VERSION}</p>
-          <AppButton variant="secondary" onPress={() => navigate('/about')}>About Writin & Features</AppButton>
+          <div className="flex flex-wrap items-center gap-2">
+            <AppButton variant="secondary" onPress={() => navigate('/about#licenses')}>Third-Party Licenses</AppButton>
+            <AppButton variant="secondary" onPress={() => navigate('/about')}>About Writin & Features</AppButton>
+          </div>
         </div>
       </section>
       <section aria-labelledby="diagnostics-heading" className="rounded-2xl bg-muted/70 p-4">
