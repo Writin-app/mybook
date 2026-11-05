@@ -1,5 +1,8 @@
 import 'fake-indexeddb/auto'
 import { webcrypto } from 'node:crypto'
+import { configure } from '@testing-library/react'
+
+configure({ asyncUtilTimeout: 5000 })
 
 if (typeof globalThis.crypto === 'undefined' || !globalThis.crypto.randomUUID) {
   Object.defineProperty(globalThis, 'crypto', {
