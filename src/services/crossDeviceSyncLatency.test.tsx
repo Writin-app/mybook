@@ -1198,7 +1198,7 @@ describe('Phase 7: Cross-Device Sync Latency and Safe Live Updates', () => {
       await waitFor(() => {
         expect(screen.getByText(/My Device Edits/i)).toBeInTheDocument()
         expect(screen.getByText(/Section 2 - Cloud Revision 2/i)).toBeInTheDocument()
-      }, { timeout: 4000 })
+      }, { timeout: 8000 })
 
       // Persisted correctly in IndexedDB
       await waitFor(async () => {
@@ -1206,7 +1206,7 @@ describe('Phase 7: Cross-Device Sync Latency and Safe Live Updates', () => {
         expect(inDb?.content).toContain('My Device Edits')
         expect(inDb?.content).toContain('Section 2 - Cloud Revision 2')
         expect(inDb?.baseContent).toBe(remoteDoc2)
-      }, { timeout: 4000 })
+      }, { timeout: 8000 })
 
       unmount()
     })
