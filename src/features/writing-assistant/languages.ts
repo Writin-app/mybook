@@ -115,3 +115,71 @@ export function getEngineLanguageTag(preference: DocumentWritingLanguagePreferen
   if (preference.mode === 'automatic') return 'und'
   return getWritingLanguageProfile(preference.profileId)?.languageTag ?? 'und'
 }
+
+/**
+ * Canonical mapping from supported language identifiers, BCP 47 tags,
+ * and common variations to human-readable target language names.
+ */
+export const CANONICAL_TARGET_LANGUAGE_MAP: Readonly<Record<string, string>> = {
+  en: 'English',
+  'en-us': 'English',
+  'en-gb': 'English',
+  'en-in': 'English',
+  english: 'English',
+
+  hi: 'Hindi',
+  'hi-in': 'Hindi',
+  hindi: 'Hindi',
+
+  'hi-latn': 'Roman Hindi',
+  'roman hindi': 'Roman Hindi',
+
+  'mixed-hi-en': 'Hinglish',
+  hinglish: 'Hinglish',
+
+  es: 'Spanish',
+  'es-es': 'Spanish',
+  'es-mx': 'Spanish',
+  spanish: 'Spanish',
+
+  fr: 'French',
+  'fr-fr': 'French',
+  'fr-ca': 'French',
+  french: 'French',
+
+  de: 'German',
+  'de-de': 'German',
+  'de-at': 'German',
+  'de-ch': 'German',
+  german: 'German',
+
+  ja: 'Japanese',
+  'ja-jp': 'Japanese',
+  japanese: 'Japanese',
+}
+
+/**
+ * Resolves a language code (e.g. 'hi', 'es', 'fr') or language name into a canonical,
+ * human-readable English language name (e.g. 'Hindi', 'Spanish', 'French').
+ *
+ * Requirements:
+ * - Accepts supported codes ('en', 'hi', 'es', 'fr', 'de', 'ja') and aliases.
+ * - Preserves already resolved human-readable names (e.g. 'Spanish' remains 'Spanish').
+ * - Preserves unrecognized identifiers as-is without silently defaulting to English or Hindi.
+ * - Handles missing, null, or invalid values safely by returning undefined.
+ */
+export function resolveTargetLanguageName(value?: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+
+  const lower = trimmed.toLowerCase()
+  const mapped = CANONICAL_TARGET_LANGUAGE_MAP[lower]
+  if (mapped) {
+    return mapped
+  }
+
+  // Preserve already specified human-readable names or unknown identifiers as-is
+  // without silently converting to English or Hindi
+  return trimmed
+}

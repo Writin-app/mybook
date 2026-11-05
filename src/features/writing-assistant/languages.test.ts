@@ -4,6 +4,7 @@ import {
   getEngineLanguageTag,
   getWritingLanguageProfile,
   normalizeDocumentWritingLanguagePreference,
+  resolveTargetLanguageName,
   WRITING_LANGUAGE_PROFILES,
 } from './languages'
 
@@ -51,5 +52,55 @@ describe('writing language profiles', () => {
     expect(getEngineLanguageTag({ mode: 'automatic' })).toBe('und')
     expect(getEngineLanguageTag({ mode: 'manual', profileId: 'mixed-hi-en' })).toBe('und')
     expect(getEngineLanguageTag({ mode: 'manual', profileId: 'en-IN' })).toBe('en-IN')
+  })
+})
+
+describe('resolveTargetLanguageName', () => {
+  it('resolves supported language codes to canonical English names', () => {
+    expect(resolveTargetLanguageName('hi')).toBe('Hindi')
+    expect(resolveTargetLanguageName('en')).toBe('English')
+    expect(resolveTargetLanguageName('es')).toBe('Spanish')
+    expect(resolveTargetLanguageName('fr')).toBe('French')
+    expect(resolveTargetLanguageName('de')).toBe('German')
+    expect(resolveTargetLanguageName('ja')).toBe('Japanese')
+  })
+
+  it('resolves BCP-47 regional subtags and lowercase variations', () => {
+    expect(resolveTargetLanguageName('hi-IN')).toBe('Hindi')
+    expect(resolveTargetLanguageName('en-US')).toBe('English')
+    expect(resolveTargetLanguageName('en-GB')).toBe('English')
+    expect(resolveTargetLanguageName('es-ES')).toBe('Spanish')
+    expect(resolveTargetLanguageName('fr-FR')).toBe('French')
+    expect(resolveTargetLanguageName('de-DE')).toBe('German')
+    expect(resolveTargetLanguageName('ja-JP')).toBe('Japanese')
+    expect(resolveTargetLanguageName('hindi')).toBe('Hindi')
+    expect(resolveTargetLanguageName('SPANISH')).toBe('Spanish')
+  })
+
+  it('preserves already resolved human-readable language names', () => {
+    expect(resolveTargetLanguageName('English')).toBe('English')
+    expect(resolveTargetLanguageName('Hindi')).toBe('Hindi')
+    expect(resolveTargetLanguageName('Spanish')).toBe('Spanish')
+    expect(resolveTargetLanguageName('French')).toBe('French')
+    expect(resolveTargetLanguageName('German')).toBe('German')
+    expect(resolveTargetLanguageName('Japanese')).toBe('Japanese')
+    expect(resolveTargetLanguageName('Roman Hindi')).toBe('Roman Hindi')
+    expect(resolveTargetLanguageName('Hinglish')).toBe('Hinglish')
+  })
+
+  it('does not silently map unknown language identifiers to Hindi or English', () => {
+    expect(resolveTargetLanguageName('it')).toBe('it')
+    expect(resolveTargetLanguageName('pt-BR')).toBe('pt-BR')
+    expect(resolveTargetLanguageName('Esperanto')).toBe('Esperanto')
+    expect(resolveTargetLanguageName('custom_dialect')).toBe('custom_dialect')
+  })
+
+  it('handles missing, empty, and invalid values safely', () => {
+    expect(resolveTargetLanguageName(undefined)).toBeUndefined()
+    expect(resolveTargetLanguageName(null)).toBeUndefined()
+    expect(resolveTargetLanguageName('')).toBeUndefined()
+    expect(resolveTargetLanguageName('   ')).toBeUndefined()
+    expect(resolveTargetLanguageName(123)).toBeUndefined()
+    expect(resolveTargetLanguageName({})).toBeUndefined()
   })
 })

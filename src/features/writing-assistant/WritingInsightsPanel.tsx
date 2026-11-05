@@ -11,7 +11,8 @@ import { AssistantOrchestrator } from './orchestrator'
 import type { EngineContext } from './contracts'
 import type { TextMatch, WritingAnalysis } from './types'
 import { buildProseMirrorTextMap, mapDocumentRangeToText, mapTextRangeToDocument } from './proseMirrorTextMap'
-import type { ProofreadFinding, ProofreadWorkerRequest, ProofreadWorkerResponse } from './proofreadingTypes'
+import { ProofreadFinding, ProofreadWorkerRequest, ProofreadWorkerResponse } from './proofreadingTypes'
+import { GenerativeActionsSection } from './GenerativeActionsSection'
 import {
   getEngineLanguageTag,
   getWritingLanguageProfile,
@@ -775,34 +776,42 @@ function WritingAssistantActions({
   ]
 
   return (
-    <section aria-labelledby="writing-assistant-actions-title" className="space-y-4 rounded-lg border border-[var(--app-border)] bg-[var(--app-subtle)] p-4">
-      <div>
-        <h2 id="writing-assistant-actions-title" className="text-base font-semibold text-foreground">Proofread</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Local spelling and writing checks for supported English dialects. Your text is not sent to a service.</p>
-      </div>
-      {!supported ? <p role="status" className="rounded-lg border border-[var(--app-border)] p-3 text-sm text-muted-foreground">Proofread is unavailable for this language. Choose English (India), English (UK), or English (US) in the language setting. Writin will not apply English rules to this document.</p> : (
-        <>
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-foreground">Text to check</legend>
-            <label className="flex items-center gap-2 text-sm"><input type="radio" name="proofread-scope" value="selected" checked={scopeChoice === 'selected'} onChange={() => setScopeChoice('selected')} />Selected text</label>
-            <label className="flex items-center gap-2 text-sm"><input type="radio" name="proofread-scope" value="document" checked={scopeChoice === 'document'} onChange={() => setScopeChoice('document')} />Entire document</label>
-          </fieldset>
-          <Button type="button" onClick={run} disabled={!isActive || proofreadStatus === 'loading'}>{proofreadStatus === 'loading' ? 'Proofreading…' : 'Run Proofread'}</Button>
-          {proofreadStatus === 'loading' ? <Button type="button" variant="ghost" onClick={() => stop('idle', 'Proofread cancelled.')}>Cancel</Button> : null}
-          {scopeLabel ? <p className="text-xs text-muted-foreground">{scopeLabel}</p> : null}
-          {message ? <p role="status" className="rounded-lg border border-[var(--app-border)] p-3 text-sm text-muted-foreground">{message}</p> : null}
-          {timings ? <p className="text-xs text-muted-foreground">Engine setup {Math.round(timings.initMs)} ms · analysis {Math.round(timings.analysisMs)} ms</p> : null}
-          {findings.length ? <div className="space-y-4">{categories.map(({ key, label }) => {
-            const categoryFindings = findings.filter((finding) => finding.category === key)
-            if (!categoryFindings.length) return null
-            return <section key={key} aria-label={label} className="space-y-2"><h3 className="text-sm font-semibold text-foreground">{label} ({categoryFindings.length})</h3><ul className="space-y-2">{categoryFindings.map((finding) => {
-              const opened = activeFindingId === finding.id
-              const options = suggestionsByFinding[finding.id]
-              return <li key={`${finding.id}:${finding.start}`} className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-sm"><button type="button" className="w-full text-left font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-expanded={opened} onClick={() => openFinding(finding)}><span className="break-words">{finding.text}</span><span className="sr-only">, characters {finding.start} to {finding.end}</span></button><p className="mt-1 text-muted-foreground">{finding.message}</p>{opened ? <div className="mt-3 space-y-2"><p className="text-xs text-muted-foreground">Source range: {finding.start}–{finding.end}</p>{options === undefined ? <p role="status" className="text-xs text-muted-foreground">Getting suggestions…</p> : options.map((replacement, index) => <div key={`${replacement}:${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded bg-[var(--app-subtle)] p-2"><span className="break-words">{replacement || '(delete text)'}</span><Button type="button" size="sm" onClick={() => accept(finding, replacement)}>Accept</Button></div>)}<Button type="button" size="sm" variant="ghost" onClick={() => setActiveFindingId(null)}>Ignore</Button></div> : null}</li>
-            })}</ul></section>
-          })}</div> : null}
-        </>
-      )}
-    </section>
+    <div className="space-y-6">
+      <GenerativeActionsSection
+        editor={editor}
+        fileId={fileId}
+        languageId={languageId}
+      />
+
+      <section aria-labelledby="writing-assistant-actions-title" className="space-y-4 rounded-lg border border-[var(--app-border)] bg-[var(--app-subtle)] p-4">
+        <div>
+          <h2 id="writing-assistant-actions-title" className="text-base font-semibold text-foreground">Proofread</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Local spelling and writing checks for supported English dialects. Your text is not sent to a service.</p>
+        </div>
+        {!supported ? <p role="status" className="rounded-lg border border-[var(--app-border)] p-3 text-sm text-muted-foreground">Proofread is unavailable for this language. Choose English (India), English (UK), or English (US) in the language setting. Writin will not apply English rules to this document.</p> : (
+          <>
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium text-foreground">Text to check</legend>
+              <label className="flex items-center gap-2 text-sm"><input type="radio" name="proofread-scope" value="selected" checked={scopeChoice === 'selected'} onChange={() => setScopeChoice('selected')} />Selected text</label>
+              <label className="flex items-center gap-2 text-sm"><input type="radio" name="proofread-scope" value="document" checked={scopeChoice === 'document'} onChange={() => setScopeChoice('document')} />Entire document</label>
+            </fieldset>
+            <Button type="button" onClick={run} disabled={!isActive || proofreadStatus === 'loading'}>{proofreadStatus === 'loading' ? 'Proofreading…' : 'Run Proofread'}</Button>
+            {proofreadStatus === 'loading' ? <Button type="button" variant="ghost" onClick={() => stop('idle', 'Proofread cancelled.')}>Cancel</Button> : null}
+            {scopeLabel ? <p className="text-xs text-muted-foreground">{scopeLabel}</p> : null}
+            {message ? <p role="status" className="rounded-lg border border-[var(--app-border)] p-3 text-sm text-muted-foreground">{message}</p> : null}
+            {timings ? <p className="text-xs text-muted-foreground">Engine setup {Math.round(timings.initMs)} ms · analysis {Math.round(timings.analysisMs)} ms</p> : null}
+            {findings.length ? <div className="space-y-4">{categories.map(({ key, label }) => {
+              const categoryFindings = findings.filter((finding) => finding.category === key)
+              if (!categoryFindings.length) return null
+              return <section key={key} aria-label={label} className="space-y-2"><h3 className="text-sm font-semibold text-foreground">{label} ({categoryFindings.length})</h3><ul className="space-y-2">{categoryFindings.map((finding) => {
+                const opened = activeFindingId === finding.id
+                const options = suggestionsByFinding[finding.id]
+                return <li key={`${finding.id}:${finding.start}`} className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-sm"><button type="button" className="w-full text-left font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-expanded={opened} onClick={() => openFinding(finding)}><span className="break-words">{finding.text}</span><span className="sr-only">, characters {finding.start} to {finding.end}</span></button><p className="mt-1 text-muted-foreground">{finding.message}</p>{opened ? <div className="mt-3 space-y-2"><p className="text-xs text-muted-foreground">Source range: {finding.start}–{finding.end}</p>{options === undefined ? <p role="status" className="text-xs text-muted-foreground">Getting suggestions…</p> : options.map((replacement, index) => <div key={`${replacement}:${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded bg-[var(--app-subtle)] p-2"><span className="break-words">{replacement || '(delete text)'}</span><Button type="button" size="sm" onClick={() => accept(finding, replacement)}>Accept</Button></div>)}<Button type="button" size="sm" variant="ghost" onClick={() => setActiveFindingId(null)}>Ignore</Button></div> : null}</li>
+              })}</ul></section>
+            })}</div> : null}
+          </>
+        )}
+      </section>
+    </div>
   )
 }
