@@ -106,4 +106,14 @@ describe('SettingsPage', () => {
       expect(screen.getByRole('heading', { name: /App version & updates/i })).toBeInTheDocument()
     })
   })
+
+  it('navigates to third-party licenses section in about page when clicking Third-Party Licenses', () => {
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>)
+
+    const licensesBtn = screen.getByRole('button', { name: /Third-Party Licenses/i })
+    expect(licensesBtn).toBeInTheDocument()
+
+    fireEvent.click(licensesBtn)
+    expect(mockNavigate).toHaveBeenCalledWith('/about#licenses')
+  })
 })

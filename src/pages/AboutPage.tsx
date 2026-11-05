@@ -268,6 +268,9 @@ export function AboutPage() {
             <a href="#faq" className="transition hover:text-foreground">
               FAQ
             </a>
+            <a href="#licenses" className="transition hover:text-foreground">
+              Licenses
+            </a>
           </nav>
 
           <div className="flex items-center gap-3">
@@ -364,6 +367,13 @@ export function AboutPage() {
                 className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted"
               >
                 FAQ
+              </a>
+              <a
+                href="#licenses"
+                onClick={() => setMobileMenuOpen(false)}
+                className="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted"
+              >
+                Licenses
               </a>
               <div className="mt-2 pt-3 border-t border-[var(--app-border)]">
                 {isUserLoggedIn ? (
@@ -1356,7 +1366,225 @@ export function AboutPage() {
         </div>
       </section>
 
-      {/* 9. Sleek Minimal Footer */}
+      {/* 9. Third-Party Software & Open-Source Attributions Section */}
+      <section
+        id="licenses"
+        aria-labelledby="licenses-heading"
+        className="relative z-10 border-t border-[var(--app-border)] bg-card/60 py-16 backdrop-blur-sm sm:py-20"
+      >
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary">
+              <ShieldCheckIcon className="size-3.5" />
+              <span>Open Source & Third-Party Attributions</span>
+            </div>
+            <h2 id="licenses-heading" className="mt-3 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+              Software Licenses & Notices
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Writin is proprietary software. Certain capabilities—including client-side offline machine translation—incorporate open-source software libraries, pretrained neural models, and vocabulary artifacts. Each third-party component is governed by its own independent open-source license (such as MPL-2.0, Apache-2.0, or MIT). Pursuant to Section 3.3 of the Mozilla Public License 2.0, Writin distributes these components as part of a Larger Work: the Covered Software files remain subject to their respective open licenses, while Writin&apos;s proprietary application code remains governed by Writin&apos;s proprietary terms. The formal legal interpretation of Larger Work interactions across jurisdictions is subject to ongoing review.
+            </p>
+          </div>
+
+          <div className="mt-10 grid gap-6 md:grid-cols-2">
+            {/* Card 1: Mozilla Bergamot Machine Translation Engine */}
+            <div className="rounded-2xl border border-[var(--app-border)] bg-background/80 p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-semibold text-foreground">
+                    Mozilla Bergamot Translator &amp; WebAssembly Runtime
+                  </h3>
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                    @browsermt/bergamot-translator v0.4.9 (Commit 4917c11)
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-0.5 font-mono text-xs font-semibold text-primary">
+                  MPL-2.0
+                </span>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                Cross-platform C++ translation engine compiled to WebAssembly for client-side offline inference. Copyright &copy; 2019–2022 Mozilla Corporation, University of Edinburgh, Charles University, University of Sheffield, University of Tartu, and contributors.
+              </p>
+              <div className="mt-3 rounded-xl border border-primary/15 bg-primary/5 p-3 text-[11px] leading-relaxed text-muted-foreground">
+                <strong className="font-semibold text-foreground">EU Horizon 2020 Grant Notice:</strong> Project Bergamot has received funding from the European Union&apos;s Horizon 2020 research and innovation programme under grant agreement No. 825303.
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs font-medium">
+                <a
+                  href="https://github.com/browsermt/bergamot-translator"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-primary hover:underline"
+                >
+                  Source Repository &rarr;
+                </a>
+                <span className="text-muted-foreground/40">&middot;</span>
+                <a
+                  href="/bergamot/LICENSE.txt"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-primary hover:underline"
+                >
+                  Bundled License File &rarr;
+                </a>
+                <span className="text-muted-foreground/40">&middot;</span>
+                <a
+                  href="https://www.mozilla.org/en-US/MPL/2.0/"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-primary hover:underline"
+                >
+                  MPL-2.0 Terms &rarr;
+                </a>
+              </div>
+            </div>
+
+            {/* Card 2: Neural Translation Models (en-hi & hi-en) */}
+            <div className="rounded-2xl border border-[var(--app-border)] bg-background/80 p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-semibold text-foreground">
+                    Firefox Translations Neural Translation Models
+                  </h3>
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                    English &harr; Hindi (IntGEMM 8-bit quantized weights)
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-0.5 font-mono text-xs font-semibold text-primary">
+                  MPL-2.0
+                </span>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                Trained Marian NMT checkpoints, 8-bit quantized matrix weights, FastAlign lexical shortlists, and subword vocabularies developed by the Mozilla Firefox Translations project for client-side translation.
+              </p>
+              <div className="mt-3 rounded-xl border border-[var(--app-border)] bg-muted/40 p-3 text-[11px] leading-relaxed text-muted-foreground">
+                <strong className="font-semibold text-foreground">Redistributed Assets:</strong>
+                <ul className="mt-1 list-disc pl-4 space-y-0.5">
+                  <li><code className="font-mono">model.enhi.intgemm.alphas.bin.gz</code> &amp; <code className="font-mono">model.hien.intgemm.alphas.bin.gz</code></li>
+                  <li><code className="font-mono">lex.50.50.enhi.s2t.bin.gz</code> &amp; <code className="font-mono">lex.50.50.hien.s2t.bin.gz</code></li>
+                  <li><code className="font-mono">vocab.enhi.spm.gz</code> &amp; <code className="font-mono">vocab.hien.spm.gz</code></li>
+                </ul>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs font-medium">
+                <a
+                  href="https://github.com/mozilla/firefox-translations-models"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-primary hover:underline"
+                >
+                  Model Repository &rarr;
+                </a>
+                <span className="text-muted-foreground/40">&middot;</span>
+                <a
+                  href="https://github.com/mozilla/translations"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-primary hover:underline"
+                >
+                  Training Pipelines &rarr;
+                </a>
+              </div>
+            </div>
+
+            {/* Card 3: Marian NMT & IntGEMM Core */}
+            <div className="rounded-2xl border border-[var(--app-border)] bg-background/80 p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-semibold text-foreground">
+                    Marian NMT &amp; IntGEMM
+                  </h3>
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                    Neural Machine Translation &amp; 8-bit GEMM Engine
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-secondary/80 px-2.5 py-0.5 font-mono text-xs font-semibold text-secondary-foreground">
+                  MIT / Apache-2.0
+                </span>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                Fast Neural Machine Translation in C++ (Marian) and 8-bit integer matrix multiplication library for CPUs (IntGEMM). Copyright &copy; 2016–2022 Marcin Junczys-Dowmunt, Roman Grundkiewicz, Kenneth Heafield, Mozilla Corporation, and contributors.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs font-medium">
+                <a
+                  href="https://github.com/marian-nmt/marian-dev"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-primary hover:underline"
+                >
+                  Marian Source &rarr;
+                </a>
+                <span className="text-muted-foreground/40">&middot;</span>
+                <a
+                  href="https://github.com/kpu/intgemm"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-primary hover:underline"
+                >
+                  IntGEMM Source &rarr;
+                </a>
+                <span className="text-muted-foreground/40">&middot;</span>
+                <a
+                  href="/bergamot/LICENSE.txt"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-primary hover:underline"
+                >
+                  Bundled License File &rarr;
+                </a>
+              </div>
+            </div>
+
+            {/* Card 4: Google SentencePiece */}
+            <div className="rounded-2xl border border-[var(--app-border)] bg-background/80 p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-semibold text-foreground">
+                    Google SentencePiece
+                  </h3>
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                    Subword Tokenization &amp; Vocabulary Modeling
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-secondary/80 px-2.5 py-0.5 font-mono text-xs font-semibold text-secondary-foreground">
+                  Apache-2.0
+                </span>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                Unsupervised text tokenizer and detokenizer mainly for Neural Network-based text generation systems where the vocabulary size is predetermined prior to the neural model training. Copyright 2016 Google Inc.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs font-medium">
+                <a
+                  href="https://github.com/google/sentencepiece"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-primary hover:underline"
+                >
+                  SentencePiece Source &rarr;
+                </a>
+                <span className="text-muted-foreground/40">&middot;</span>
+                <a
+                  href="https://www.apache.org/licenses/LICENSE-2.0"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-primary hover:underline"
+                >
+                  Apache 2.0 Terms &rarr;
+                </a>
+                <span className="text-muted-foreground/40">&middot;</span>
+                <a
+                  href="/bergamot/LICENSE.txt"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-primary hover:underline"
+                >
+                  Bundled License File &rarr;
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 10. Sleek Minimal Footer */}
       <footer className="relative z-10 border-t border-[var(--app-border)] bg-muted/40 py-10 text-xs text-muted-foreground">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col items-center justify-between gap-4 sm:flex-row">
           <div className="flex items-center gap-2.5">
@@ -1377,6 +1605,9 @@ export function AboutPage() {
             </a>
             <a href="#faq" className="hover:text-foreground transition">
               FAQ
+            </a>
+            <a href="#licenses" className="hover:text-foreground transition">
+              Licenses
             </a>
             <Link to="/privacy" className="hover:text-foreground transition">
               Privacy
