@@ -41,7 +41,11 @@ describe('DateTimePicker', () => {
   it('shows an inline @ mention and opens the calendar with editable start fields', async () => {
     renderPicker()
     expect(screen.getByText(/^@/u)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /date and time/i }))
+    const trigger = screen.getByRole('button', { name: /date and time/i })
+    expect(trigger.className).toContain('text-[length:inherit]')
+    expect(trigger.className).toContain('text-inherit')
+    expect(trigger.className).not.toContain('text-muted-foreground')
+    fireEvent.click(trigger)
     expect(await screen.findByRole('grid')).toBeTruthy()
     expect(screen.getByLabelText('Start date')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Choose month' })).toBeTruthy()
