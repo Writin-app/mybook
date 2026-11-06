@@ -257,16 +257,19 @@ describe('SelectionFormattingToolbar', () => {
       editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 1, 10)))
     })
 
-    const aiButton = screen.getByRole('button', { name: 'AI actions' })
+    const aiButton = screen.getByRole('button', { name: 'Writin Assist' })
     expect(aiButton).toBeTruthy()
-    expect(screen.queryByRole('dialog', { name: 'Contextual AI Actions' })).toBeNull()
+    const toolbar = screen.getByRole('toolbar', { name: 'Selected text formatting' })
+    const buttonLabels = Array.from(toolbar.querySelectorAll('button')).map((button) => button.getAttribute('aria-label') ?? button.textContent)
+    expect(buttonLabels.indexOf('Writin Assist')).toBe(buttonLabels.indexOf('More options') - 1)
+    expect(screen.queryByRole('dialog', { name: 'Writin Assist' })).toBeNull()
 
     // Click to open
     fireEvent.click(aiButton)
-    expect(screen.getByRole('dialog', { name: 'Contextual AI Actions' })).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Writin Assist' })).toBeTruthy()
 
     // Press Escape to close
     fireEvent.keyDown(document, { key: 'Escape' })
-    expect(screen.queryByRole('dialog', { name: 'Contextual AI Actions' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Writin Assist' })).toBeNull()
   })
 })

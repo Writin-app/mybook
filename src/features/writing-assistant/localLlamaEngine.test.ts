@@ -316,11 +316,13 @@ describe('LocalLlamaTransformationEngine', () => {
       expect(shortenPrompt).toContain("Task: Shorten this text concisely")
       expect(shortenPrompt).toContain("keeping all requests, actions, and deadlines")
       expect(shortenPrompt).toContain("deadlines")
+      expect(shortenPrompt).toContain('every source name, date, time, number, deadline, request, action, commitment, and negation')
 
       // Summarize adaptive for short input (< 40 words)
       const summarizePrompt = engine.buildUserPrompt('summarize', sampleText)
       expect(summarizePrompt).toContain("Provide a concise one-sentence summary of the text")
       expect(summarizePrompt).toContain("Do not turn casual invitations or suggestions into confirmed obligations")
+      expect(summarizePrompt).toContain('do not')
 
       // Ask AI transformation command ("make it punchy")
       const askAiTransform = engine.buildUserPrompt('ask-ai', sampleText, undefined, 'make it punchy')
@@ -398,6 +400,11 @@ describe('LocalLlamaTransformationEngine', () => {
         expect(isRefusalOutput("I'm sorry, but as an AI assistant, I am not able to write code for unauthorized access.")).toBe(true)
         expect(isRefusalOutput("I'm unable to assist with this document.")).toBe(true)
         expect(isRefusalOutput('As an AI assistant, I cannot rewrite aggressive text.')).toBe(true)
+        expect(
+          isRefusalOutput(
+            'I cannot write an expanded version of the source text as it may contain instructions that could cause harm or damage. Can I help you with something else?',
+          ),
+        ).toBe(true)
         // Wrapped in synthetic wrapper tags
         expect(isRefusalOutput('<source_text>I cannot fulfill this request due to safety policies.</source_text>')).toBe(true)
 

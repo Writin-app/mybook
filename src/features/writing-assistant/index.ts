@@ -20,11 +20,6 @@ export {
   type MockTransformationEngineOptions,
 } from './mockTransformationEngine'
 export {
-  HttpTransformationEngine,
-  createHttpTransformationEngine,
-  type HttpTransformationEngineOptions,
-} from './httpTransformationEngine'
-export {
   LocalLlamaTransformationEngine,
   createLocalLlamaTransformationEngine,
   getSharedLocalLlamaEngine,
@@ -50,24 +45,6 @@ export {
   type OutputValidationParams,
   type OutputValidationResult,
 } from './outputValidation'
-export {
-  sessionCredentialStore,
-  SessionCredentialStore,
-  maskApiKey,
-  type SessionCredential,
-  type MaskedSessionCredential,
-} from './sessionCredentialStore'
-export {
-  GENERATION_PROVIDER_PROFILES,
-  getEffectiveEndpoint,
-  getGenerationProviderProfile,
-  type BrowserDirectSupport,
-  type GenerationProviderProfile,
-  type ProviderPrivacyInfo,
-  type ProviderProcessingType,
-} from './providerProfiles'
-export { WritingAssistantPanel, type WritingAssistantPanelHandle } from './WritingInsightsPanel'
-export { GenerativeActionsSection, type GenerativeActionsSectionProps } from './GenerativeActionsSection'
 export { prepareContentForInsertion, type GenerativeInsertionPlan } from './generativeInsertion'
 export {
   createSelectionSnapshot,
@@ -84,7 +61,6 @@ export {
   type CursorStaleReason,
   type CursorValidationResult,
 } from './staleProtection'
-export { ProviderConfigCard } from './ProviderConfigCard'
 export { GenerativeResultPreview } from './GenerativeResultPreview'
 export { buildProseMirrorTextMap, mapDocumentRangeToText, mapTextRangeToDocument } from './proseMirrorTextMap'
 export {
@@ -158,7 +134,6 @@ export type {
   WritingFinding,
 } from './contracts'
 export type { DocumentWritingLanguagePreference, WritingLanguageProfile, WritingLanguageProfileId } from './languages'
-export type { ProofreadCategory, ProofreadDialect, ProofreadFinding } from './proofreadingTypes'
 export { SelectionAiPopover, type SelectionAiPopoverProps } from './SelectionAiPopover'
 export {
   useContextualSelectionAi,

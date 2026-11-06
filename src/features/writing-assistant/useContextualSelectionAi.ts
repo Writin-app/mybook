@@ -5,18 +5,11 @@ import type { GenerativeActionId, TransformationEngine, WritingCapability } from
 import { BergamotEngineError, getSharedBergamotEngine } from './bergamotEngine'
 import { detectTextScript } from './translationCapabilityRegistry'
 import { EngineRegistry } from './engineRegistry'
-import { createHttpTransformationEngine } from './httpTransformationEngine'
 import {
   assertProviderIsolation,
   getAiRoutingDiagnostics,
-  getEffectiveEndpoint,
-  getGenerationProviderProfile,
-  getPreferredAiProvider,
   logAiRoutingDiagnostic,
-  setPreferredAiProvider,
-  subscribePreferredAiProvider,
 } from './providerProfiles'
-import { sessionCredentialStore } from './sessionCredentialStore'
 import {
   ContextWindowExceededError,
   getSharedLocalLlamaEngine,
@@ -28,6 +21,7 @@ import {
 } from './localLlamaEngine'
 import { AssistantOrchestrator } from './orchestrator'
 import { validateAndCleanGenerativeOutput } from './outputValidation'
+import { clearInlineAiSuggestion, setInlineAiSuggestion } from './InlineAiSuggestion'
 import {
   createSelectionSnapshot,
   validateAndPrepareSelectionInsertion,
@@ -49,25 +43,26 @@ export interface ContextualAiOptions {
 }
 
 export const SELECTION_AI_ACTIONS: Array<{
-  id: GenerativeActionId
+  id: GenerativeActionId | 'adjust'
   label: string
   description: string
 }> = [
-  { id: 'correct', label: 'Correct', description: 'Fix grammar, spelling, and phrasing' },
-  { id: 'summarize', label: 'Summarize', description: 'Create a concise summary of the selection' },
-  { id: 'translate', label: 'Translate…', description: 'Translate selection to another language' },
-  { id: 'shorten', label: 'Shorten', description: 'Make selection more concise and direct' },
-  { id: 'expand', label: 'Expand', description: 'Add more detail and depth to selection' },
-  { id: 'change-tone', label: 'Change Tone…', description: 'Adjust tone to professional, casual, etc.' },
-  { id: 'continue-writing', label: 'Continue Writing', description: 'Generate continuation from selection' },
-  { id: 'ask-ai', label: 'Ask AI…', description: 'Ask a question or enter a custom prompt' },
+  { id: 'improve-writing', label: 'Rewrite', description: 'Improve clarity and flow while keeping the meaning.' },
+  { id: 'summarize', label: 'Summarize', description: 'Keep the main points in a shorter version.' },
+  { id: 'adjust', label: 'Adjust…', description: 'Change the tone or make it shorter or longer.' },
+  { id: 'ask-ai', label: 'Write with Writin Assist…', description: 'Tell Writin Assist what to do with this text.' },
 ]
+
+export const SELECTION_TRANSLATE_ACTION = {
+  label: 'Translate',
+  description: 'Translate the selected text into another language.',
+} as const
 
 export const SELECTION_TONE_OPTIONS = [
   { id: 'professional', label: 'Professional' },
-  { id: 'casual', label: 'Casual' },
-  { id: 'direct', label: 'Direct & Concise' },
   { id: 'friendly', label: 'Friendly' },
+  { id: 'casual', label: 'Casual' },
+  { id: 'direct', label: 'Direct' },
   { id: 'academic', label: 'Academic' },
 ] as const
 
@@ -111,17 +106,11 @@ export function useContextualSelectionAi({
   const [streamingText, setStreamingText] = useState('')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [hasConsent, setHasConsent] = useState(() => hasPersistedLocalConsent())
-  const [preferredProvider, setPreferredProvider] = useState(() => getPreferredAiProvider())
+  const preferredProvider = 'local'
   const [pendingAction, setPendingAction] = useState<{
     actionId: GenerativeActionId
     options?: ContextualAiOptions
   } | null>(null)
-
-  useEffect(() => {
-    return subscribePreferredAiProvider((newId) => {
-      setPreferredProvider(newId)
-    })
-  }, [])
 
   const [downloadProgress, setDownloadProgress] = useState<{
     state: string
@@ -136,6 +125,21 @@ export function useContextualSelectionAi({
 
   const snapshotRef = useRef<SelectionSnapshot | null>(null)
   snapshotRef.current = snapshot
+
+  useEffect(() => {
+    if ((status === 'preview' || status === 'loading') && activeActionId !== 'translate' && snapshot?.range) {
+      setInlineAiSuggestion(editor, {
+        from: snapshot.range.from,
+        to: snapshot.range.to,
+        sourceText: snapshot.sourceText,
+        proposedText: status === 'preview' ? proposedText : '',
+        isLoading: status === 'loading',
+      })
+    } else {
+      clearInlineAiSuggestion(editor)
+    }
+    return () => clearInlineAiSuggestion(editor)
+  }, [activeActionId, editor, proposedText, snapshot, status])
 
   const abortControllerRef = useRef<AbortController | null>(null)
   const requestIdRef = useRef(0)
@@ -195,40 +199,15 @@ export function useContextualSelectionAi({
         rawEngine = customEngine
       } else if (isTranslation) {
         rawEngine = getSharedBergamotEngine()
-      } else if (preferredProvider === 'local') {
+      } else {
         if (detectTextScript(currentSnapshot.sourceText) === 'Devanagari') {
           setStatus('error')
           setErrorMessage(
-            'On-device writing transformations are currently supported for English text. To transform Hindi text, please configure a cloud AI provider in AI Settings.'
+            'On-device writing tools currently support English text. Choose English text or translate the selection first.'
           )
           return
         }
         rawEngine = getSharedLocalLlamaEngine()
-      } else {
-        const cred = sessionCredentialStore.getCredential(preferredProvider)
-        const profile = getGenerationProviderProfile(preferredProvider)
-        const effectiveEndpoint = getEffectiveEndpoint(preferredProvider, cred?.endpointUrl)
-        const isAcknowledged = sessionCredentialStore.isDisclosureAcknowledged(preferredProvider, effectiveEndpoint)
-
-        if (!isAcknowledged) {
-          setStatus('error')
-          setErrorMessage(
-            `${profile?.displayName ?? preferredProvider} requires privacy disclosure acknowledgement in AI Settings before connecting to ${effectiveEndpoint || 'an external service'}.`,
-          )
-          return
-        }
-
-        if (profile?.privacy.requiresApiKey && !cred?.apiKey) {
-          setStatus('error')
-          setErrorMessage(`Please configure your API key for ${profile.displayName} in AI Settings.`)
-          return
-        }
-
-        assertProviderIsolation(preferredProvider, effectiveEndpoint)
-        rawEngine = createHttpTransformationEngine({
-          providerId: preferredProvider,
-          credentialStore: sessionCredentialStore,
-        })
       }
 
       const diag = getAiRoutingDiagnostics(
@@ -240,7 +219,7 @@ export function useContextualSelectionAi({
       logAiRoutingDiagnostic(diag)
       assertProviderIsolation(preferredProvider)
 
-      const localEngine = !isTranslation && preferredProvider === 'local' ? asLocalLlamaEngine(rawEngine) : null
+      const localEngine = !isTranslation && !customEngine ? asLocalLlamaEngine(rawEngine) : null
 
       if (localEngine && localEngine.getStatus().state !== 'ready') {
         try {
@@ -475,13 +454,6 @@ export function useContextualSelectionAi({
     setErrorMessage(null)
   }, [])
 
-  const switchToOnDeviceProvider = useCallback(() => {
-    setPreferredAiProvider('local')
-    setPreferredProvider('local')
-    setStatus('idle')
-    setErrorMessage(null)
-  }, [])
-
   return {
     status,
     activeActionId,
@@ -502,7 +474,6 @@ export function useContextualSelectionAi({
     handleRegenerate,
     handleRetry: handleRegenerate,
     preferredProvider,
-    switchToOnDeviceProvider,
     reset,
   }
 }

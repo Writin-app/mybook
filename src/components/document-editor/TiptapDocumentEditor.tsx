@@ -48,10 +48,11 @@ import { getFolderPath } from '../files/FolderBreadcrumb'
 import { ChecklistActionsMenu } from './ChecklistActionsMenu'
 import { DocumentToolbar } from './DocumentToolbar'
 import { SelectionFormattingToolbar } from './SelectionFormattingToolbar'
-import { MobileSelectionAiBar } from './MobileSelectionAiBar'
+import { MobileSelectionAiBar, type MobileSelectionAiBarHandle } from './MobileSelectionAiBar'
 import { EditorBlockControls, type BlockTarget } from './EditorBlockControls'
 import { useHoverBlockControlsAvailable } from '../../hooks/useHoverBlockControls'
 import { EditorStatus } from './EditorStatus'
+import { DocumentTextCounts } from './DocumentTextCounts'
 import { BookmarkBlock, bookmarkBlockNode } from './extensions/BookmarkBlock'
 import { Callout, calloutNode } from './extensions/Callout'
 import { CodeBlock } from './extensions/CodeBlock'
@@ -81,6 +82,7 @@ import { EditorKeyboardShortcuts } from './extensions/EditorKeyboardShortcuts'
 import { BlockMarkdownShortcuts } from './extensions/BlockMarkdownShortcuts'
 import { BlockAutoCapitalize, capitalizeFirstLetter } from './extensions/BlockAutoCapitalize'
 import { SearchHighlight } from './extensions/SearchHighlight'
+import { InlineAiSuggestion } from '../../features/writing-assistant/InlineAiSuggestion'
 import { convertSelectedBlocks, isFormatCommand } from './blockConversion'
 import { matchesEditorMenuShortcut } from './editorMenuShortcuts'
 import { DocumentLinkProvider } from './DocumentLinkContext'
@@ -100,7 +102,6 @@ import { FindReplaceDialog } from './FindReplaceDialog'
 import { normalizeLinkUrl } from './linkUrl'
 import { ArrowPathIcon } from '@heroicons/react/24/outline'
 import { EmptyBlockPlaceholder, emptyBlockPlaceholderKey } from './emptyBlockPlaceholder'
-import { WritingAssistantPanel, type WritingAssistantPanelHandle } from '../../features/writing-assistant/WritingInsightsPanel'
 const emptyDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
 const emptyDocumentJson = JSON.stringify(emptyDocument)
 const documentViewModeStorageKey = 'mybook-document-view-mode'
@@ -1073,7 +1074,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [resolvedConflictVersionId, setResolvedConflictVersionId] = useState<string | null>(null)
   const [isMoveToOpen, setIsMoveToOpen] = useState(false)
   const moreTriggerRef = useRef<HTMLButtonElement>(null)
-  const writingInsightsRef = useRef<WritingAssistantPanelHandle | null>(null)
+  const mobileSelectionAiRef = useRef<MobileSelectionAiBarHandle | null>(null)
   const duplicateDocumentRef = useRef<() => Promise<void>>(async () => undefined)
   const [documentLinkPicker, setDocumentLinkPicker] = useState<DocumentLinkPickerState | null>(null)
   const [documentLinkSelectedIndex, setDocumentLinkSelectedIndex] = useState<number>(0)
@@ -1794,6 +1795,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       BlockMarkdownShortcuts,
       BlockAutoCapitalize,
       SearchHighlight,
+      InlineAiSuggestion,
       ...(collaboration.extension ? [collaboration.extension] : []),
     ],
     content: collaboration.enabled ? undefined : emptyDocument,
@@ -3717,9 +3719,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                   {[75, 100, 125, 150].map((level) => <DropdownMenuCheckboxItem key={level} checked={zoom === level} onCheckedChange={() => setZoom(level)}>{level}%</DropdownMenuCheckboxItem>)}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
-              <DropdownMenuItem onClick={() => writingInsightsRef.current?.open()}>
-                Writing Assistant
-              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem disabled={isPageLocked} onClick={() => setIsFindReplaceOpen(true)}>
                 <span>Find and replace</span>
@@ -3766,17 +3765,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             </>
           )
         }
-      />
-      <WritingAssistantPanel
-        ref={writingInsightsRef}
-        editor={editor}
-        fileId={fileId}
-        isMobile={isMobile}
-        writingLanguage={file.writingLanguage}
-        onWritingLanguageChange={async (preferenceId) => {
-          const result = await fileRepository.setWritingLanguage(fileId, preferenceId)
-          if (!result.success) throw new Error(result.error ?? 'Could not save writing language.')
-        }}
       />
       <div ref={findBarAnchorRef} className="sticky top-[57px] md:top-[65px] z-50 h-0 overflow-visible">
         <FindReplaceDialog editor={editor} open={isFindReplaceOpen} onOpenChange={setIsFindReplaceOpen} />
@@ -4151,6 +4139,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       ) : null}
       {!isPageLocked && isMobile ? (
         <MobileSelectionAiBar
+          ref={mobileSelectionAiRef}
           editor={editor}
           fileId={file.id}
           languageId={file.writingLanguage}
@@ -4205,7 +4194,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           onEmbedContent={handleEmbedContent}
         />
       ) : null}
-      {!isPageLocked ? <DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} onEditLink={openSelectionLinkEditor} variant="mobile" /> : null}
+      {!isPageLocked ? <DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} onEditLink={openSelectionLinkEditor} onOpenAiActions={() => mobileSelectionAiRef.current?.open()} variant="mobile" /> : null}
+      <DocumentTextCounts editor={editor} />
       <DeleteFileDialog
         isOpen={isDeleteDialogOpen}
         fileName={documentTitle}

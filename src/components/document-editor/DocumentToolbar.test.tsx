@@ -47,6 +47,25 @@ describe('DocumentToolbar', () => {
     expect(screen.getByRole('button', { name: 'Hide keyboard' })).toBeTruthy()
   })
 
+  it('provides AI actions from the mobile action toolbar', () => {
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit, Underline, TaskList, TaskItem, TableKit],
+      content: '<p>Hello world</p>',
+    })
+    const onOpenAiActions = vi.fn()
+
+    render(<DocumentToolbar editor={editor} variant="mobile" onOpenAiActions={onOpenAiActions} />)
+
+    act(() => {
+      editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 1, 6)))
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'AI actions' }))
+
+    expect(onOpenAiActions).toHaveBeenCalledOnce()
+  })
+
   it('switches to format toolbar on Aa click and switches back on back click', () => {
     editor = new Editor({
       element: document.body.appendChild(document.createElement('div')),

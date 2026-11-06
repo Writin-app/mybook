@@ -21,6 +21,7 @@ import {
   QuoteDownIcon,
   Redo03Icon,
   Search01Icon,
+  SparklesIcon,
   TableIcon,
   TextBoldIcon,
   TextColorIcon,
@@ -257,6 +258,7 @@ function ToolbarControls({
   onInsertImage,
   onInsertBlock,
   onEditLink,
+  onOpenAiActions,
   keyboardOffset = 0,
 }: {
   editor: Editor
@@ -266,6 +268,7 @@ function ToolbarControls({
   onInsertImage?: () => void
   onInsertBlock?: (commandId: string) => void
   onEditLink?: () => void
+  onOpenAiActions?: () => void
   keyboardOffset?: number
 }) {
   const setLink = () => {
@@ -698,6 +701,7 @@ function ToolbarControls({
                     }}
                     isMobile
                   />
+                  <ToolButton label="AI actions" hugeIcon={SparklesIcon} disabled={editor.state.selection.empty} onPress={() => onOpenAiActions?.()} isMobile />
                   <ToolButton
                     label="Replace block"
                     hugeIcon={ArrowReloadHorizontalIcon}
@@ -825,6 +829,8 @@ function ToolbarControls({
                     }}
                     isMobile
                   />
+
+                  <ToolButton label="AI actions" hugeIcon={SparklesIcon} disabled={editor.state.selection.empty} onPress={() => onOpenAiActions?.()} isMobile />
 
                   <span aria-hidden="true" className="mx-0.5 h-3.5 w-px flex-none bg-[var(--app-border)]" />
 
@@ -1072,6 +1078,7 @@ export function DocumentToolbar({
   onInsertImage,
   onInsertBlock,
   onEditLink,
+  onOpenAiActions,
   variant = 'mobile',
   keyboardOffset: propKeyboardOffset,
 }: {
@@ -1080,6 +1087,7 @@ export function DocumentToolbar({
   onInsertImage?: () => void
   onInsertBlock?: (commandId: string) => void
   onEditLink?: () => void
+  onOpenAiActions?: () => void
   variant?: 'desktop' | 'mobile'
   keyboardOffset?: number
 }) {
@@ -1119,6 +1127,7 @@ export function DocumentToolbar({
       onInsertImage={onInsertImage}
       onInsertBlock={onInsertBlock}
       onEditLink={onEditLink}
+      onOpenAiActions={onOpenAiActions}
       variant="mobile"
       keyboardOffset={keyboardOffset}
     />

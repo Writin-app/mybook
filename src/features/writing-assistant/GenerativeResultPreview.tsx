@@ -14,6 +14,7 @@ interface GenerativeResultPreviewProps {
   onRegenerate: () => void
   onDiscard: () => void
   onCopy?: () => void
+  compact?: boolean
 }
 
 export function GenerativeResultPreview({
@@ -28,6 +29,7 @@ export function GenerativeResultPreview({
   onRegenerate,
   onDiscard,
   onCopy,
+  compact = false,
 }: GenerativeResultPreviewProps) {
   const [copied, setCopied] = useState(false)
   const [isApplying, setIsApplying] = useState(false)
@@ -84,14 +86,14 @@ export function GenerativeResultPreview({
     <div
       role="region"
       aria-label="Generation Result Preview"
-      className="space-y-4 rounded-lg border border-[var(--app-border)] bg-[var(--app-subtle)] p-4 text-sm"
+      className={`space-y-3 rounded-xl border border-[var(--app-border)] ${compact ? 'bg-[var(--app-surface)] p-3 shadow-sm' : 'bg-[var(--app-subtle)] p-4'} text-sm`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-border)] pb-3">
+      <div className={`flex flex-wrap items-center justify-between gap-2 ${compact ? '' : 'border-b border-[var(--app-border)] pb-3'}`}>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-semibold text-foreground">{actionTitle}</span>
-          <span className="rounded-full bg-[var(--app-surface)] border border-[var(--app-border)] px-2 py-0.5 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{actionTitle}</span>
+          {!compact ? <span className="rounded-full bg-[var(--app-surface)] border border-[var(--app-border)] px-2 py-0.5 text-xs text-muted-foreground">
             {scopeLabel}
-          </span>
+          </span> : null}
           {isContinueWriting ? (
             <span className="rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200 border border-blue-300 dark:border-blue-800 px-2 py-0.5 text-xs font-medium">
               Insertion / Append
@@ -103,7 +105,7 @@ export function GenerativeResultPreview({
         ) : null}
       </div>
 
-      {isContinueWriting ? (
+      {!compact && isContinueWriting ? (
         <div
           role="note"
           aria-label="Continuation notice"
@@ -113,7 +115,13 @@ export function GenerativeResultPreview({
         </div>
       ) : null}
 
-      {isStale ? (
+      {!compact && !isTranslation && !isContinueWriting ? (
+        <p role="note" className="rounded-md border border-blue-200 bg-blue-50/70 p-2.5 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-200">
+          Check names, dates, and important details. Accept to apply the changes, or discard to keep your text unchanged.
+        </p>
+      ) : null}
+
+      {!compact && isStale ? (
         <div
           role="alert"
           className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
@@ -125,7 +133,14 @@ export function GenerativeResultPreview({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3">
+      {compact ? (
+        <>
+          <p className="border-t border-[var(--app-border)] pt-2.5 text-sm leading-5 text-foreground whitespace-pre-wrap break-words">{proposedText}</p>
+          <p role="note" className="text-xs text-muted-foreground">
+            Check names, dates, and important details before accepting.
+          </p>
+        </>
+      ) : <div className="grid grid-cols-1 gap-3">
         <section aria-label="Original text" className="space-y-1">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span className="font-medium">{originalSectionTitle}</span>
@@ -146,9 +161,9 @@ export function GenerativeResultPreview({
             {proposedText}
           </div>
         </section>
-      </div>
+      </div>}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--app-border)] pt-3">
+      <div className={`flex flex-wrap items-center justify-between gap-2 ${compact ? '' : 'border-t border-[var(--app-border)] pt-3'}`}>
         <div className="flex items-center gap-2">
           <Button
             type="button"
@@ -159,7 +174,7 @@ export function GenerativeResultPreview({
           >
             {isApplying ? 'Inserting…' : acceptButtonText}
           </Button>
-          <Button
+          {!compact ? <Button
             type="button"
             variant="outline"
             size="sm"
@@ -168,7 +183,7 @@ export function GenerativeResultPreview({
             aria-label={isTranslation ? 'Copy translation' : 'Copy generated text'}
           >
             {copied ? 'Copied!' : 'Copy'}
-          </Button>
+          </Button> : null}
           <Button
             type="button"
             variant="outline"

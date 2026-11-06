@@ -27,6 +27,7 @@ import { APP_VERSION } from '../config/app'
 import { useAppStore } from '../stores/useAppStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { toast } from '../components/ui/toast'
+import { LocalAiPreferencesSection } from '../features/writing-assistant/LocalAiPreferencesSection'
 
 export function SettingsPage() {
   const { email, logout, reconnect } = useAuthStore()
@@ -214,6 +215,7 @@ export function SettingsPage() {
           Use {theme === 'light' ? 'dark' : 'light'} theme
         </AppButton>
       </section>
+      <LocalAiPreferencesSection />
       <section aria-labelledby="account-heading" className="rounded-2xl bg-muted/70 p-4">
         <h2 id="account-heading" className="text-base font-semibold leading-6">Account</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">
