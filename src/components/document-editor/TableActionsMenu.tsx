@@ -283,8 +283,33 @@ function clearTableSelectionToCell(editor: Editor, cellPos: number) {
   const targetPos = Math.min(Math.max(0, cellPos + 1), max)
   const resolved = editor.state.doc.resolve(targetPos)
   const selection = TextSelection.findFrom(resolved, 1) || TextSelection.create(editor.state.doc, targetPos)
-  editor.view.dispatch(editor.state.tr.setSelection(selection))
+  editor.view.dispatch(editor.state.tr.setSelection(selection).scrollIntoView())
   editor.view.focus()
+
+  try {
+    const cellDom = editor.view.domAtPos(targetPos).node
+    const cellElement = (cellDom instanceof Element ? cellDom : cellDom.parentElement)?.closest('td, th') as HTMLElement | null
+    const wrapper = cellElement?.closest('.tableWrapper') as HTMLElement | null
+    if (cellElement) {
+      if (wrapper && (wrapper.dataset.fixedRows === 'true' || wrapper.style.maxHeight)) {
+        const cellRect = cellElement.getBoundingClientRect()
+        const wrapperRect = wrapper.getBoundingClientRect()
+        if (cellRect.width > 0 || cellRect.height > 0) {
+          const stickyHeader = wrapper.querySelector('thead th, tr:first-child > th') as HTMLElement | null
+          const headerHeight = stickyHeader ? stickyHeader.getBoundingClientRect().height : 0
+
+          if (cellRect.bottom > wrapperRect.bottom) {
+            wrapper.scrollTop += (cellRect.bottom - wrapperRect.bottom) + 8
+          } else if (cellRect.top < wrapperRect.top + headerHeight && cellRect.bottom >= wrapperRect.top) {
+            wrapper.scrollTop -= (wrapperRect.top + headerHeight - cellRect.top) + 8
+          }
+        }
+      }
+      cellElement.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+  } catch {
+    // Ignore DOM lookup errors during transactions
+  }
 }
 
 function runMenuAction(editor: Editor, geometry: TableGeometry, selection: SelectionState, label: string) {
@@ -794,7 +819,21 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
     editor.chain().focus().addRowAfter().run()
     const nextGeometry = geometryFromEditor(editor)
     if (nextGeometry) {
+      syncFixedRowsViewport(editor, nextGeometry)
       clearTableSelectionToCell(editor, cellPosFor(nextGeometry, nextGeometry.map.height - 1, 0))
+      const isFixed = isFixedRowsEnabled(editor, nextGeometry) || nextGeometry.wrapper.dataset.fixedRows === 'true'
+      if (isFixed) {
+        nextGeometry.wrapper.scrollTop = nextGeometry.wrapper.scrollHeight
+      }
+      window.requestAnimationFrame(() => {
+        if (isFixed) {
+          nextGeometry.wrapper.scrollTop = nextGeometry.wrapper.scrollHeight
+        }
+        const rows = nextGeometry.table.querySelectorAll('tr')
+        const lastRow = rows[nextGeometry.map.height - 1]
+        const firstCell = lastRow?.children[0] as HTMLElement | undefined
+        firstCell?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      })
     }
   }
 
@@ -804,7 +843,21 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
     editor.chain().focus().addRowAfter().run()
     const nextGeometry = geometryFromEditor(editor)
     if (nextGeometry) {
+      syncFixedRowsViewport(editor, nextGeometry)
       clearTableSelectionToCell(editor, cellPosFor(nextGeometry, nextGeometry.map.height - 1, nextGeometry.map.width - 1))
+      const isFixed = isFixedRowsEnabled(editor, nextGeometry) || nextGeometry.wrapper.dataset.fixedRows === 'true'
+      if (isFixed) {
+        nextGeometry.wrapper.scrollTop = nextGeometry.wrapper.scrollHeight
+      }
+      window.requestAnimationFrame(() => {
+        if (isFixed) {
+          nextGeometry.wrapper.scrollTop = nextGeometry.wrapper.scrollHeight
+        }
+        const rows = nextGeometry.table.querySelectorAll('tr')
+        const lastRow = rows[nextGeometry.map.height - 1]
+        const lastCell = lastRow?.children[nextGeometry.map.width - 1] as HTMLElement | undefined
+        lastCell?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      })
     }
   }
 

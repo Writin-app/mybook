@@ -21,8 +21,11 @@ import { SelectionAiPopover } from '../../features/writing-assistant/SelectionAi
 import { BlockCommandMenu } from './SlashCommandMenu'
 import { tableColors } from './extensions/TableCellStyles'
 import { filterSlashCommands, type SlashCommand } from './slashCommands'
+import {
+  selectionPosition,
+  type ToolbarPosition,
+} from './selectionToolbarPosition'
 
-type ToolbarPosition = { left: number; top: number }
 type ColorMenu = 'text' | 'highlight' | null
 
 const textColors = [
@@ -35,44 +38,6 @@ const textColors = [
   { name: 'Red', value: '#dc2626' },
   { name: 'Purple', value: '#7e22ce' },
 ] as const
-
-export const SELECTION_TOOLBAR_WIDTH = 570
-
-function selectionPosition(editor: Editor): ToolbarPosition | null {
-  const { selection, doc } = editor.state
-  if (!(selection instanceof TextSelection) || selection.empty || !editor.isFocused || editor.isActive('codeBlock')) return null
-  const { from, to } = selection
-  if (from < 0 || to > doc.content.size) return null
-  let start: { left: number; top: number; bottom: number; right: number }
-  let end: { left: number; top: number; bottom: number; right: number }
-  try {
-    start = editor.view.coordsAtPos(from)
-    end = editor.view.coordsAtPos(to)
-  } catch {
-    return null
-  }
-  if (!Number.isFinite(start.left) || !Number.isFinite(end.right)) return null
-
-  const viewportHeight = typeof window !== 'undefined'
-    ? (window.visualViewport && window.visualViewport.height > 0
-        ? window.visualViewport.offsetTop + window.visualViewport.height
-        : window.innerHeight)
-    : 768
-  const header = typeof document !== 'undefined' ? document.querySelector<HTMLElement>('.mybook-document-editor > header') : null
-  const headerBottom = header?.getBoundingClientRect().bottom ?? 0
-  const minTop = Math.max(8, headerBottom + 8)
-  const maxTop = Math.max(minTop, viewportHeight - 44)
-
-  let top = Math.min(start.top, end.top) - 44
-  if (top < minTop) {
-    top = Math.max(start.bottom, end.bottom) + 8
-  }
-  top = Math.max(minTop, Math.min(top, maxTop))
-  const toolbarWidth = SELECTION_TOOLBAR_WIDTH
-  const maxLeft = (typeof window !== 'undefined' ? window.innerWidth : 1024) - toolbarWidth - 8
-  const left = Math.max(8, Math.min(Math.min(start.left, end.left), maxLeft))
-  return { left, top }
-}
 
 function ToolButton({ label, active, children, onClick }: { label: string; active?: boolean; children: React.ReactNode; onClick: () => void }) {
   return (

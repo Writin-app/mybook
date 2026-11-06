@@ -6,7 +6,8 @@ import { TextSelection } from '@tiptap/pm/state'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { SELECTION_TOOLBAR_WIDTH, SelectionFormattingToolbar } from './SelectionFormattingToolbar'
+import { SelectionFormattingToolbar } from './SelectionFormattingToolbar'
+import { SELECTION_TOOLBAR_WIDTH, selectionPosition } from './selectionToolbarPosition'
 
 describe('SelectionFormattingToolbar', () => {
   let editor: Editor | null = null
@@ -271,5 +272,93 @@ describe('SelectionFormattingToolbar', () => {
     // Press Escape to close
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: 'Writin Assist' })).toBeNull()
+  })
+
+  it('adjusts position when selecting text in the last cell of a table to avoid Add Column and Add Row buttons', () => {
+    window.innerWidth = 1200
+    window.innerHeight = 800
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit, TableKit],
+      content: '<table><tbody><tr><td><p>First cell</p></td><td><p>Last cell</p></td></tr></tbody></table>',
+    })
+
+    const table = editor.view.dom.querySelector('table') as HTMLElement
+    vi.spyOn(table, 'getBoundingClientRect').mockReturnValue({
+      left: 100,
+      right: 700,
+      top: 150,
+      bottom: 250,
+      width: 600,
+      height: 100,
+      x: 100,
+      y: 150,
+      toJSON: () => {},
+    })
+
+    // Selection in the last cell: coords near right edge of table
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({ left: 620, right: 680, top: 200, bottom: 220 })
+    vi.spyOn(editor, 'isFocused', 'get').mockReturnValue(true)
+
+    let lastCellPos = 0
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === 'Last cell') {
+        lastCellPos = pos
+        return false
+      }
+    })
+
+    render(<SelectionFormattingToolbar editor={editor} onInsertBlock={() => undefined} onEditLink={() => undefined} />)
+    act(() => {
+      editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, lastCellPos, lastCellPos + 9)))
+    })
+
+    const pos = selectionPosition(editor)
+    expect(pos).not.toBeNull()
+
+    // Add Column button sits at visibleTableRight + 4 = 704
+    // Toolbar right edge must not overlap Add Column button
+    expect(pos!.left + SELECTION_TOOLBAR_WIDTH).toBeLessThanOrEqual(704)
+    // Toolbar left must remain >= 8 within viewport
+    expect(pos!.left).toBeGreaterThanOrEqual(8)
+  })
+
+  it('shifts below Add Row button if selection in table would collide with Add Row or Corner buttons', () => {
+    window.innerWidth = 1200
+    window.innerHeight = 800
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit, TableKit],
+      content: '<table><tbody><tr><td><p>Top cell</p></td></tr></tbody></table>',
+    })
+
+    const table = editor.view.dom.querySelector('table') as HTMLElement
+    vi.spyOn(table, 'getBoundingClientRect').mockReturnValue({
+      left: 100,
+      right: 500,
+      top: 10,
+      bottom: 50,
+      width: 400,
+      height: 40,
+      x: 100,
+      y: 10,
+      toJSON: () => {},
+    })
+
+    // Selection near the top of the viewport (top = 15, so top - 44 < minTop)
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({ left: 120, right: 180, top: 15, bottom: 35 })
+    vi.spyOn(editor, 'isFocused', 'get').mockReturnValue(true)
+
+    render(<SelectionFormattingToolbar editor={editor} onInsertBlock={() => undefined} onEditLink={() => undefined} />)
+    act(() => {
+      editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 4, 8)))
+    })
+
+    const pos = selectionPosition(editor)
+    expect(pos).not.toBeNull()
+
+    // Add Row zone is effectiveRowBottom + 8 (58) to effectiveRowBottom + 44 (94)
+    // Toolbar should be placed below the Add Row zone
+    expect(pos!.top).toBeGreaterThanOrEqual(94)
   })
 })
