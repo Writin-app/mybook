@@ -10,6 +10,7 @@ import { resolveTargetLanguageName } from './languages'
 import { cleanModelWrapperArtifacts } from './outputValidation'
 
 export const DEFAULT_LOCAL_LLAMA_MODEL_ID = 'Llama-3.2-1B-Instruct-q4f16_1-MLC'
+export const LOCAL_AI_MODEL_DISPLAY_NAME = 'Llama 3.2 1B'
 export const LOCAL_LLAMA_CONTEXT_WINDOW_LIMIT = 4096
 export const SYSTEM_PROMPT_TOKEN_OVERHEAD = 250
 
@@ -113,7 +114,7 @@ export function isRefusalOutput(text: string): boolean {
     )
 
   const hasSafetyContext =
-    /\b(?:safety\s+(?:guidelines?|polic(?:y|ies)|filters?|rules?)|content\s+polic(?:y|ies)|acceptable\s+use|terms\s+of\s+(?:service|use)|ethical\s+guidelines?|my\s+rules|against\s+my\s+instructions|harmful\b|malicious\b|malware\b|phishing\b|cyber[\s-]*attacks?\b|attacks?\s+on\s+(?:the\s+)?(?:system|network|infrastructure)|illegal\b|unauthorized\s+access|exploits?\b|exploiting\b|weapons?\b|hacks?\b|hacking\b|exfiltrat(?:e|ing|ion)?\b|keylog(?:ger|ging)?\b)\b/i.test(
+    /\b(?:safety\s+(?:guidelines?|polic(?:y|ies)|filters?|rules?)|content\s+polic(?:y|ies)|acceptable\s+use|terms\s+of\s+(?:service|use)|ethical\s+guidelines?|my\s+rules|against\s+my\s+instructions|harm(?:ful)?\b|damage\b|malicious\b|malware\b|phishing\b|cyber[\s-]*attacks?\b|attacks?\s+on\s+(?:the\s+)?(?:system|network|infrastructure)|illegal\b|unauthorized\s+access|exploits?\b|exploiting\b|weapons?\b|hacks?\b|hacking\b|exfiltrat(?:e|ing|ion)?\b|keylog(?:ger|ging)?\b)\b/i.test(
       snippet,
     )
 
@@ -1035,6 +1036,13 @@ export function buildTaskInstruction(
       task =
         "Improve clarity, grammar, and flow while strictly preserving the original meaning, facts, and perspective. Return ONLY the transformed text directly."
       break
+  }
+
+  if (
+    ['correct', 'improve-writing', 'shorten', 'summarize', 'expand', 'shorten-expand', 'change-tone', 'ask-ai'].includes(actionId) &&
+    !(actionId === 'ask-ai' && isInformationalQuery(userInstruction ?? ''))
+  ) {
+    task += ' Preserve every source name, date, time, number, deadline, request, action, commitment, and negation such as “do not”. Keep the original meaning; do not invent supporting context.'
   }
 
   // If specific extra guidance was provided for a non-ask-ai action (e.g. improve-writing with instruction)

@@ -1232,3 +1232,31 @@
   stroke-dasharray: 6 6;
   animation: beam-dash 2s linear infinite;
 }
+
+.mybook-ai-suggestion-removed {
+  color: var(--muted-foreground);
+  opacity: 0.68;
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+}
+
+.mybook-ai-suggestion-added {
+  border-radius: 0.15em;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  white-space: pre-wrap;
+}
+
+.mybook-ai-suggestion-loading {
+  color: transparent;
+  border-radius: 0.2em;
+  background: linear-gradient(100deg, color-mix(in srgb, var(--muted-foreground) 12%, transparent) 25%, color-mix(in srgb, var(--muted-foreground) 25%, transparent) 40%, color-mix(in srgb, var(--muted-foreground) 12%, transparent) 60%);
+  background-size: 240% 100%;
+  animation: mybook-ai-skeleton 1.3s ease-in-out infinite;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+@keyframes mybook-ai-skeleton {
+  to { background-position-x: -240%; }
+}

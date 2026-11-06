@@ -7,11 +7,20 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createMockTransformationEngine } from './mockTransformationEngine'
+import { InlineAiSuggestion } from './InlineAiSuggestion'
 import { SelectionAiPopover } from './SelectionAiPopover'
 import { SELECTION_AI_ACTIONS } from './useContextualSelectionAi'
 import { modelAssetManager } from './modelAssetManager'
 
 describe('SelectionAiPopover', () => {
+  it('offers the simplified writing actions and keeps translation separate', () => {
+    expect(SELECTION_AI_ACTIONS.map((action) => action.label)).toEqual([
+      'Rewrite',
+      'Summarize',
+      'Adjust…',
+      'Write with Writin Assist…',
+    ])
+  })
   let editor: Editor | null = null
 
   beforeEach(() => {
@@ -27,29 +36,37 @@ describe('SelectionAiPopover', () => {
   function setupEditor(content = '<p>The quick brown fox jumps over the lazy dog.</p>') {
     editor = new Editor({
       element: document.body.appendChild(document.createElement('div')),
-      extensions: [StarterKit],
+      extensions: [StarterKit, InlineAiSuggestion],
       content,
     })
     return editor
   }
 
-  it('renders all 7 primary AI actions when open', () => {
+  it('renders the four writing actions, descriptions, and separate Translate action', () => {
     const ed = setupEditor()
     const onClose = vi.fn()
 
     render(<SelectionAiPopover editor={ed} onClose={onClose} />)
 
-    expect(screen.getByRole('dialog', { name: 'Contextual AI Actions' })).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Writin Assist' })).toBeTruthy()
 
     for (const action of SELECTION_AI_ACTIONS) {
       expect(screen.getByText(action.label)).toBeTruthy()
+      expect(screen.getByText(action.description)).toBeTruthy()
     }
+    expect(screen.getByText('Translate')).toBeTruthy()
   })
 
   it('executes summarize action and allows accepting the result', async () => {
     const ed = setupEditor()
+    vi.spyOn(ed.view, 'coordsAtPos').mockReturnValue({ left: 100, right: 250, top: 300, bottom: 320 })
+    vi.spyOn(ed.view.dom, 'getBoundingClientRect').mockReturnValue({
+      x: 40, y: 100, left: 40, right: 940, top: 100, bottom: 500, width: 900, height: 400,
+      toJSON: () => ({}),
+    } as DOMRect)
     const mockEngine = createMockTransformationEngine({
       supportedCapabilities: ['rewrite', 'translation'],
+      delayMs: 60,
       transformFn: () => 'A fast fox leapt.',
       explanation: 'Summarized text',
     })
@@ -73,10 +90,25 @@ describe('SelectionAiPopover', () => {
     const summarizeBtn = screen.getByRole('button', { name: /Summarize/i })
     fireEvent.click(summarizeBtn)
 
+    await waitFor(() => expect(ed.view.dom.querySelector('.mybook-ai-suggestion-loading')).toBeTruthy())
+    expect(screen.queryByRole('dialog', { name: 'Writin Assist' })).toBeNull()
+    expect(ed.getText()).toBe('The quick brown fox jumps over the lazy dog.')
+
     // Wait for preview
     await waitFor(() => {
-      expect(screen.getByText('A fast fox leapt.')).toBeTruthy()
+      expect(screen.getByRole('region', { name: 'Generation Result Preview' })).toBeTruthy()
     })
+
+    const reviewPopover = screen.getByRole('region', { name: 'Writin Assist review' })
+    expect(reviewPopover).toHaveStyle({ position: 'fixed', left: '490px', top: '292px' })
+    expect(screen.queryByRole('dialog', { name: 'Writin Assist' })).toBeNull()
+
+    expect(
+      Array.from(ed.view.dom.querySelectorAll('.mybook-ai-suggestion-added'))
+        .map((node) => node.textContent)
+        .join(''),
+    ).toContain('fast')
+    expect(ed.getText()).toBe('The quick brown fox jumps over the lazy dog.')
 
     // Click Accept
     const acceptBtn = screen.getByRole('button', { name: /Accept/i })
@@ -114,7 +146,7 @@ describe('SelectionAiPopover', () => {
     fireEvent.click(screen.getByRole('button', { name: /Summarize/i }))
 
     await waitFor(() => {
-      expect(screen.getByText('A fast fox leapt.')).toBeTruthy()
+      expect(screen.getByRole('region', { name: 'Generation Result Preview' })).toBeTruthy()
     })
 
     // Click Discard
@@ -151,7 +183,7 @@ describe('SelectionAiPopover', () => {
     fireEvent.click(screen.getByRole('button', { name: /Summarize/i }))
 
     await waitFor(() => {
-      expect(screen.getByText('A fast fox leapt.')).toBeTruthy()
+      expect(screen.getByRole('region', { name: 'Generation Result Preview' })).toBeTruthy()
     })
 
     // In the meantime, mutate the document
@@ -197,7 +229,7 @@ describe('SelectionAiPopover', () => {
     )
 
     // Click Translate...
-    fireEvent.click(screen.getByRole('button', { name: /Translate…/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^Translate/i }))
 
     // Language options should be visible
     expect(screen.getByLabelText('Select target language')).toBeTruthy()
@@ -240,13 +272,13 @@ describe('SelectionAiPopover', () => {
       />
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /Change Tone…/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Adjust/i }))
     expect(screen.getByText('Professional')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: /Professional/i }))
 
     await waitFor(() => {
-      expect(screen.getByText('An expeditious vulpine.')).toBeTruthy()
+      expect(screen.getByRole('region', { name: 'Generation Result Preview' })).toBeTruthy()
     })
 
     expect(passedTone).toBe('professional')
@@ -277,16 +309,20 @@ describe('SelectionAiPopover', () => {
       />
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /Ask AI…/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Write with Writin Assist/i }))
 
-    const input = screen.getByPlaceholderText(/Turn this into 3 bullet points/i)
+    const composer = screen.getByRole('region', { name: 'Write with Writin Assist' })
+    expect(composer).toHaveStyle({ position: 'fixed' })
+    expect(screen.queryByRole('dialog', { name: 'Writin Assist' })).toBeNull()
+
+    const input = screen.getByPlaceholderText(/Write with Writin Assist/i)
     fireEvent.change(input, { target: { value: 'Make it passive voice' } })
 
-    const submitBtn = screen.getByRole('button', { name: /Generate/i })
+    const submitBtn = screen.getByRole('button', { name: /Send prompt to Writin Assist/i })
     fireEvent.click(submitBtn)
 
     await waitFor(() => {
-      expect(screen.getByText('Inverted fox statement.')).toBeTruthy()
+      expect(screen.getByRole('region', { name: 'Generation Result Preview' })).toBeTruthy()
     })
 
     expect(passedInstruction).toBe('Make it passive voice')
@@ -316,7 +352,7 @@ describe('SelectionAiPopover', () => {
     fireEvent.click(screen.getByRole('button', { name: /Summarize/i }))
 
     await waitFor(() => {
-      expect(screen.getByText('A fast fox leapt.')).toBeTruthy()
+      expect(screen.getByRole('region', { name: 'Generation Result Preview' })).toBeTruthy()
     })
 
     act(() => {

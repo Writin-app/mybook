@@ -36,7 +36,7 @@ const textColors = [
   { name: 'Purple', value: '#7e22ce' },
 ] as const
 
-export const SELECTION_TOOLBAR_WIDTH = 490
+export const SELECTION_TOOLBAR_WIDTH = 570
 
 function selectionPosition(editor: Editor): ToolbarPosition | null {
   const { selection, doc } = editor.state
@@ -327,37 +327,6 @@ export function SelectionFormattingToolbar({
           </div>
         ) : null}
       </div>
-      <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
-      <div className="relative">
-        <button
-          type="button"
-          aria-label="AI actions"
-          aria-expanded={aiMenuOpen}
-          onClick={() => {
-            setAiMenuOpen((open) => !open)
-            setColorMenu(null)
-            setBlockMenuOpen(false)
-            setMoreMenuOpen(false)
-          }}
-          className={`flex h-7 items-center gap-1 rounded-[6px] px-2 text-xs font-medium text-purple-600 dark:text-purple-400 transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
-            aiMenuOpen ? 'bg-[var(--app-subtle)]' : ''
-          }`}
-        >
-          <HugeiconsIcon icon={SparklesIcon} size={14} className="shrink-0" />
-          <span>AI</span>
-        </button>
-        {aiMenuOpen ? (
-          <SelectionAiPopover
-            editor={editor}
-            fileId={fileId}
-            languageId={languageId}
-            customEngine={customEngine}
-            onClose={() => setAiMenuOpen(false)}
-            placement={openAiOnTop ? 'top' : 'bottom'}
-          />
-        ) : null}
-      </div>
-      <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
       <ToolButton label="Bold" active={editor.isActive('bold')} onClick={() => { restoreSelection(); editor.chain().focus().toggleBold().run() }}><HugeiconsIcon icon={TextBoldIcon} size={16} /></ToolButton>
       <ToolButton label="Underline" active={editor.isActive('underline')} onClick={() => { restoreSelection(); editor.chain().focus().toggleUnderline().run() }}><HugeiconsIcon icon={TextUnderlineIcon} size={16} /></ToolButton>
       <ToolButton label="Italic" active={editor.isActive('italic')} onClick={() => { restoreSelection(); editor.chain().focus().toggleItalic().run() }}><HugeiconsIcon icon={TextItalicIcon} size={16} /></ToolButton>
@@ -388,6 +357,36 @@ export function SelectionFormattingToolbar({
       <ToolButton label="Link" active={editor.isActive('link')} onClick={openLinkEditor}><HugeiconsIcon icon={Link02Icon} size={16} /></ToolButton>
       <ToolButton label="Checklist" active={editor.isActive('taskList')} onClick={() => { restoreSelection(); editor.chain().focus().toggleTaskList().run() }}><HugeiconsIcon icon={CheckListIcon} size={16} /></ToolButton>
       <ToolButton label="Inline code" active={editor.isActive('code')} onClick={() => { restoreSelection(); editor.chain().focus().toggleCode().run() }}><HugeiconsIcon icon={CodeIcon} size={16} /></ToolButton>
+      <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
+      <div className="relative">
+        <button
+          type="button"
+          aria-label="Writin Assist"
+          aria-expanded={aiMenuOpen}
+          onClick={() => {
+            setAiMenuOpen((open) => !open)
+            setColorMenu(null)
+            setBlockMenuOpen(false)
+            setMoreMenuOpen(false)
+          }}
+          className={`flex h-7 items-center gap-1 rounded-[6px] px-2 text-xs font-medium text-purple-600 dark:text-purple-400 transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
+            aiMenuOpen ? 'bg-[var(--app-subtle)]' : ''
+          }`}
+        >
+          <HugeiconsIcon icon={SparklesIcon} size={14} className="shrink-0" />
+          <span>Writin Assist</span>
+        </button>
+        {aiMenuOpen ? (
+          <SelectionAiPopover
+            editor={editor}
+            fileId={fileId}
+            languageId={languageId}
+            customEngine={customEngine}
+            onClose={() => setAiMenuOpen(false)}
+            placement={openAiOnTop ? 'top' : 'bottom'}
+          />
+        ) : null}
+      </div>
       <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
       <div className="relative">
         <ToolButton label="More options" active={moreMenuOpen} onClick={() => { setMoreMenuOpen((open) => !open); setColorMenu(null); setBlockMenuOpen(false); setAiMenuOpen(false) }}><HugeiconsIcon icon={MoreHorizontalIcon} size={16} /></ToolButton>
