@@ -93,7 +93,6 @@ export const Columns = Node.create({
         // Check if this is the last column in columns
         const columnIndex = $from.index(columnsDepth)
         const isLastColumn = columnIndex === columnsNode.childCount - 1
-        if (!isLastColumn) return false
 
         // Check if current block is an empty paragraph at the end of the column
         const currentBlock = $from.parent
@@ -106,8 +105,27 @@ export const Columns = Node.create({
         if (!isLastBlockInColumn) return false
 
         const blockPos = $from.before($from.depth)
-        const insertAfterPos = columnsPos + columnsNode.nodeSize
         const tr = state.tr
+
+        if (!isLastColumn) {
+          if (columnNode.childCount > 1) {
+            tr.delete(blockPos, blockPos + currentBlock.nodeSize)
+          }
+          let nextColPos = columnsPos + 1
+          for (let i = 0; i <= columnIndex; i += 1) {
+            nextColPos += columnsNode.child(i).nodeSize
+          }
+          const mappedNextColPos = tr.mapping.map(nextColPos)
+          const targetSelection = TextSelection.findFrom(tr.doc.resolve(mappedNextColPos + 1), 1)
+          if (targetSelection) {
+            tr.setSelection(targetSelection)
+            view.dispatch(tr.scrollIntoView())
+            return true
+          }
+          return false
+        }
+
+        const insertAfterPos = columnsPos + columnsNode.nodeSize
         if (columnNode.childCount > 1) {
           tr.delete(blockPos, blockPos + currentBlock.nodeSize)
         }

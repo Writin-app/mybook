@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { EmptyBlockPlaceholder, emptyBlockPlaceholderKey } from './emptyBlockPlaceholder'
+import { Columns, Column } from './extensions/Columns'
 
 describe('EmptyBlockPlaceholder plugin', () => {
   it('preserves heading placeholder and only sets picker placeholder on the active paragraph', () => {
@@ -127,6 +128,57 @@ describe('EmptyBlockPlaceholder plugin', () => {
     // Paragraph 3 (pos 13..15) must not have "Add a video"
     const p3Deco = decoList.find((d) => d.from > 10)
     expect(p3Deco?.type.attrs?.['data-placeholder']).not.toBe('Add a video')
+
+    editor.destroy()
+  })
+
+  it('only shows column placeholder when column is completely empty, never duplicating for multiple paragraphs', () => {
+    const editor = new Editor({
+      extensions: [StarterKit, Columns, Column, EmptyBlockPlaceholder],
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'columns',
+            attrs: { count: 2 },
+            content: [
+              {
+                type: 'column',
+                content: [
+                  { type: 'paragraph' },
+                  { type: 'paragraph' },
+                ],
+              },
+              {
+                type: 'column',
+                content: [
+                  { type: 'paragraph' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    })
+
+    const plugin = emptyBlockPlaceholderKey.get(editor.state)
+    expect(plugin).toBeDefined()
+
+    const getDecoList = () => {
+      const decos = plugin ? plugin.props.decorations?.call(plugin, editor.state) : null
+      return (decos as unknown as { find: () => Array<{ type: { attrs: Record<string, string> }; from: number; to: number }> } | null)?.find() ?? []
+    }
+
+    const decoList = getDecoList()
+
+    // Column 1 has 2 paragraphs: neither should receive the "Column 1" placeholder
+    const col1Placeholders = decoList.filter((d) => d.type.attrs?.['data-placeholder'] === 'Column 1')
+    expect(col1Placeholders.length).toBe(0)
+
+    // Column 2 has 1 paragraph: it should receive the "Column 2" placeholder
+    const col2Placeholders = decoList.filter((d) => d.type.attrs?.['data-placeholder'] === 'Column 2')
+    expect(col2Placeholders.length).toBe(1)
+    expect(col2Placeholders[0]?.type.attrs['class']).toContain('mybook-column-placeholder')
 
     editor.destroy()
   })

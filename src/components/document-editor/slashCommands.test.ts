@@ -306,6 +306,17 @@ describe('slashCommands', () => {
     expect(columnsNode?.child(0).type.name).toBe('column')
     expect(columnsNode?.child(1).type.name).toBe('column')
 
+    // Cursor must focus on the first column instead of the last column
+    const { $from } = editor.state.selection
+    let colIndex = -1
+    for (let d = $from.depth; d > 0; d -= 1) {
+      if ($from.node(d).type.name === 'column') {
+        colIndex = $from.index(d - 1)
+        break
+      }
+    }
+    expect(colIndex).toBe(0)
+
     editor.destroy()
     element.remove()
   })

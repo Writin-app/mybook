@@ -1,7 +1,8 @@
 import type { Editor } from '@tiptap/react'
+import { TextSelection } from '@tiptap/pm/state'
 
 import { calloutNode } from './extensions/Callout'
-import { columnsNode } from './extensions/Columns'
+import { columnsNode, type ColumnCount } from './extensions/Columns'
 import { databaseBlockNode } from './extensions/DatabaseBlock'
 import { dateTimeBlockNode } from './extensions/DateTimeBlock'
 import { tableOfContentsNode } from './extensions/TableOfContents'
@@ -203,17 +204,16 @@ export function runSlashCommand(
   else if (commandId === 'numbered') chain.toggleOrderedList().run()
   else if (commandId === 'task') chain.toggleTaskList().run()
   else if (commandId === 'callout') chain.insertContent(calloutNode()).run()
-  else if (commandId === 'columns-2') {
-    if (!isInsideColumns(editor)) chain.insertContent(columnsNode(2)).run()
-  }
-  else if (commandId === 'columns-3') {
-    if (!isInsideColumns(editor)) chain.insertContent(columnsNode(3)).run()
-  }
-  else if (commandId === 'columns-4') {
-    if (!isInsideColumns(editor)) chain.insertContent(columnsNode(4)).run()
-  }
-  else if (commandId === 'columns-5') {
-    if (!isInsideColumns(editor)) chain.insertContent(columnsNode(5)).run()
+  else if (commandId === 'columns-2' || commandId === 'columns-3' || commandId === 'columns-4' || commandId === 'columns-5') {
+    if (!isInsideColumns(editor)) {
+      const count = Number(commandId.replace('columns-', '')) as ColumnCount
+      const insertPos = range.from
+      chain.insertContent(columnsNode(count)).run()
+      const targetSelection = TextSelection.findFrom(editor.state.doc.resolve(Math.min(insertPos, editor.state.doc.content.size)), 1)
+      if (targetSelection) {
+        editor.view.dispatch(editor.state.tr.setSelection(targetSelection).scrollIntoView())
+      }
+    }
   }
   else if (commandId === 'toggle' || commandId === 'toggle-h1' || commandId === 'toggle-h2' || commandId === 'toggle-h3' || commandId === 'toggle-h4') {
     if (!isConversion && range.from < range.to) {
