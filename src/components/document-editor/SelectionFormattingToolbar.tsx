@@ -79,6 +79,7 @@ export function SelectionFormattingToolbar({
   const [blockMenuOpen, setBlockMenuOpen] = useState(false)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
   const [aiMenuOpen, setAiMenuOpen] = useState(false)
+  const [aiActive, setAiActive] = useState(false)
   const [moreSelectedIndex, setMoreSelectedIndex] = useState(0)
   const savedRange = useRef<{ from: number; to: number } | null>(null)
 
@@ -236,6 +237,23 @@ export function SelectionFormattingToolbar({
     return () => document.removeEventListener('pointerdown', handlePointerDown)
   }, [editor, isOpen])
 
+  if (aiActive && aiMenuOpen) {
+    return (
+      <SelectionAiPopover
+        editor={editor}
+        fileId={fileId}
+        languageId={languageId}
+        customEngine={customEngine}
+        onClose={() => {
+          setAiMenuOpen(false)
+          setAiActive(false)
+        }}
+        onActiveStateChange={setAiActive}
+        placement="top"
+      />
+    )
+  }
+
   if (!position) return null
 
   const viewportHeight = typeof window !== 'undefined'
@@ -347,7 +365,11 @@ export function SelectionFormattingToolbar({
             fileId={fileId}
             languageId={languageId}
             customEngine={customEngine}
-            onClose={() => setAiMenuOpen(false)}
+            onClose={() => {
+              setAiMenuOpen(false)
+              setAiActive(false)
+            }}
+            onActiveStateChange={setAiActive}
             placement={openAiOnTop ? 'top' : 'bottom'}
           />
         ) : null}
