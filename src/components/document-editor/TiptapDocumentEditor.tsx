@@ -85,7 +85,7 @@ import { BlockAutoCapitalize, capitalizeFirstLetter } from './extensions/BlockAu
 import { SearchHighlight } from './extensions/SearchHighlight'
 import { InlineAiSuggestion } from '../../features/writing-assistant/InlineAiSuggestion'
 import { convertSelectedBlocks, isFormatCommand } from './blockConversion'
-import { matchesEditorMenuShortcut } from './editorMenuShortcuts'
+import { matchesEditorMenuShortcut, matchesPrintShortcut } from './editorMenuShortcuts'
 import { DocumentLinkProvider } from './DocumentLinkContext'
 import { documentLinkLocation, documentLinkTargets, pastedDocumentLink } from './documentLinkModel'
 import { clearTableSelection, isBlankEditorPoint, isEditorInteractiveTarget, keepEditorFocusedOnBlankClick } from './editorFocus'
@@ -1049,6 +1049,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const undoShortcut = isMacPlatform ? '⌘Z' : 'Ctrl+Z'
   const redoShortcut = isMacPlatform ? '⌘⇧Z' : 'Ctrl+Shift+Z'
   const findShortcut = isMacPlatform ? '⌘F' : 'Ctrl+F'
+  const printShortcut = isMacPlatform ? '⌘P' : 'Ctrl+P'
   const { files, folders } = useLibraryData()
   const accountEmail = useAuthStore((state) => state.email)
   const collaboration = useYjsDocumentSync(fileId, accountEmail)
@@ -1078,6 +1079,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const moreTriggerRef = useRef<HTMLButtonElement>(null)
   const mobileSelectionAiRef = useRef<MobileSelectionAiBarHandle | null>(null)
   const duplicateDocumentRef = useRef<() => Promise<void>>(async () => undefined)
+  const handlePrintRef = useRef<() => void>(() => undefined)
   const [documentLinkPicker, setDocumentLinkPicker] = useState<DocumentLinkPickerState | null>(null)
   const [documentLinkSelectedIndex, setDocumentLinkSelectedIndex] = useState<number>(0)
   const [imagePicker, setImagePicker] = useState<ImagePickerState | null>(null)
@@ -1144,6 +1146,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         event.stopPropagation()
         setIsFindReplaceOpen(true)
         setFindFocusTrigger((c) => c + 1)
+        return
+      }
+      if (matchesPrintShortcut(event, isMacPlatform)) {
+        event.preventDefault()
+        event.stopPropagation()
+        handlePrintRef.current()
         return
       }
       const target = event.target
@@ -3483,6 +3491,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (action === 'save') void saveAll()
     else if (action === 'backup') void backupNow()
     else if (action === 'copy-link') void copyDriveLink()
+    else if (action === 'print') handlePrintRef.current()
+    else if (action === 'export-pdf') handlePrintRef.current()
     else if (action === 'export-markdown') void exportMarkdown(true)
     else if (action === 'download-docx') void exportDocx(true)
     else if (action === 'prepare-docx') void exportDocx(false)
@@ -3675,6 +3685,25 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (!result.success) toast.add({ title: 'Could not update favorite', description: result.error, type: 'error', priority: 'low' })
   }
 
+  const handlePrint = () => {
+    const originalTitle = document.title
+    const printTitle = documentTitle.trim() || 'Untitled'
+    document.title = printTitle
+    const restoreTitle = () => {
+      document.title = originalTitle
+      window.removeEventListener('afterprint', restoreTitle)
+    }
+    window.addEventListener('afterprint', restoreTitle)
+    setTimeout(restoreTitle, 2000)
+    window.print()
+  }
+
+  const exportPdf = () => {
+    handlePrint()
+  }
+
+  handlePrintRef.current = handlePrint
+
   const folderPath = file.folderId ? getFolderPath(file.folderId, folders) : []
   const editorBreadcrumbs = [
     { label: 'Library', onPress: () => navigate('/folders') },
@@ -3725,6 +3754,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                 </button>
                 <span className="text-sm font-semibold text-foreground">Export to</span>
               </div>
+              <DropdownMenuItem onClick={() => { void exportPdf(); setMobileMoreSubmenu('main') }}>
+                PDF (.pdf)
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => { void exportMarkdown(true); setMobileMoreSubmenu('main') }}>
                 Markdown (.md)
               </DropdownMenuItem>
@@ -3759,10 +3791,15 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
               <DropdownMenuItem disabled={isPageLocked || !editor.can().chain().focus().redo().run()} onClick={() => editor.chain().focus().redo().run()}><span>Redo</span><kbd className="ml-auto hidden text-xs text-muted-foreground md:inline">{redoShortcut}</kbd></DropdownMenuItem>
               <DropdownMenuItem disabled={isPageLocked} onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>Clear formatting</DropdownMenuItem>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handlePrint}>
+                <span>Print</span>
+                <kbd className="ml-auto hidden text-xs text-muted-foreground md:inline">{printShortcut}</kbd>
+              </DropdownMenuItem>
               <DropdownMenuItem disabled={isPageLocked} onClick={() => importInputRef.current?.click()}>Import document</DropdownMenuItem>
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger className="hidden md:flex">Export to</DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={() => void exportPdf()}>PDF (.pdf)</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => void exportMarkdown(true)}>Markdown (.md)</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => void exportDocx(true)}>Word (.docx)</DropdownMenuItem>
                 </DropdownMenuSubContent>
@@ -3798,8 +3835,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           <Dropdown.Menu aria-label="Document menu" onAction={handleDocumentAction}>
             <Dropdown.Item id="save">Save now</Dropdown.Item>
             <Dropdown.Item id="backup">Sync now</Dropdown.Item>
+            <Dropdown.Item id="print">Print</Dropdown.Item>
             <Dropdown.Item id="import">Import document</Dropdown.Item>
             <Dropdown.Item id="duplicate">Duplicate</Dropdown.Item>
+            <Dropdown.Item id="export-pdf">Export PDF</Dropdown.Item>
             <Dropdown.Item id="export-markdown">Export Writin Markdown</Dropdown.Item>
             <Dropdown.Item id="download-docx">Download DOCX</Dropdown.Item>
             <Dropdown.Item id="prepare-docx">Prepare DOCX</Dropdown.Item>
@@ -4081,6 +4120,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                   </p>
                 ) : null}
                 <label htmlFor="page-document-title" className="sr-only">Page title</label>
+                <h1 className="hidden print:block text-[2.75rem] font-extrabold leading-[1.15] text-black mb-4">
+                  {title.trim() || placeholderTitle}
+                </h1>
                 <textarea
                   ref={pageTitleRef}
                   id="page-document-title"
@@ -4106,7 +4148,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                       editor.chain().focus().insertContentAt(0, { type: 'paragraph' }).setTextSelection(1).run()
                     }
                   }}
-                  className={`block min-h-[2.1875rem] sm:min-h-[3rem] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[1.875rem] font-extrabold leading-[1.2] tracking-normal outline-none placeholder:text-muted-foreground placeholder:opacity-60 focus-visible:ring-0 sm:text-[2.75rem] sm:leading-[1.15] ${duplicateTitleWarning ? 'text-destructive' : 'text-foreground'}`}
+                  className={`block print:hidden min-h-[2.1875rem] sm:min-h-[3rem] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[1.875rem] font-extrabold leading-[1.2] tracking-normal outline-none placeholder:text-muted-foreground placeholder:opacity-60 focus-visible:ring-0 sm:text-[2.75rem] sm:leading-[1.15] ${duplicateTitleWarning ? 'text-destructive' : 'text-foreground'}`}
                   aria-label="Page title"
                 />
               </div>

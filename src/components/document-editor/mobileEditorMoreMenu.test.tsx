@@ -58,8 +58,10 @@ describe('Mobile Editor More Menu & Header Actions', () => {
 
     function TestMenuHarness() {
       const [submenu, setSubmenu] = useState<'main' | 'export'>('main')
+      const onExportPdf = vi.fn()
       const onExportMarkdown = vi.fn()
       const onExportDocx = vi.fn()
+      const onPrint = vi.fn()
 
       return (
         <AppHeader
@@ -80,6 +82,7 @@ describe('Mobile Editor More Menu & Header Actions', () => {
                   </button>
                   <span>Export to</span>
                 </div>
+                <DropdownMenuItem onClick={onExportPdf}>PDF (.pdf)</DropdownMenuItem>
                 <DropdownMenuItem onClick={onExportMarkdown}>Markdown (.md)</DropdownMenuItem>
                 <DropdownMenuItem onClick={onExportDocx}>Word (.docx)</DropdownMenuItem>
               </div>
@@ -97,6 +100,11 @@ describe('Mobile Editor More Menu & Header Actions', () => {
                   <kbd className="ml-auto hidden text-xs text-muted-foreground md:inline">⌘F</kbd>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="hidden md:block" />
+                <DropdownMenuItem onClick={onPrint}>
+                  <span>Print</span>
+                  <kbd className="ml-auto hidden text-xs text-muted-foreground md:inline">⌘P</kbd>
+                </DropdownMenuItem>
+                <DropdownMenuItem>Import document</DropdownMenuItem>
                 <DropdownMenuItem
                   closeOnClick={false}
                   onSelect={(e) => {
@@ -135,12 +143,20 @@ describe('Mobile Editor More Menu & Header Actions', () => {
     expect(kbd).toHaveClass('hidden')
     expect(kbd).toHaveClass('md:inline')
 
+    // Verify Print is present immediately before Import document
+    const printItem = screen.getByRole('menuitem', { name: /Print/ })
+    const importItem = screen.getByRole('menuitem', { name: 'Import document' })
+    expect(printItem).toBeInTheDocument()
+    expect(importItem).toBeInTheDocument()
+    expect(printItem.compareDocumentPosition(importItem) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
     // Click Export to mobile item
     const exportBtn = screen.getByText('Export to')
     fireEvent.click(exportBtn)
 
     // Now in export subview
     expect(screen.getByTestId('export-subview')).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'PDF (.pdf)' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Markdown (.md)' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Word (.docx)' })).toBeInTheDocument()
 

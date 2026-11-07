@@ -1262,3 +1262,110 @@
 @keyframes mybook-ai-skeleton {
   to { background-position-x: -240%; }
 }
+
+@media print {
+  @page {
+    size: auto;
+    margin: 20mm 15mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 12pt;
+    overflow: visible !important;
+  }
+
+  header,
+  nav,
+  aside,
+  .no-print,
+  [data-slot="dialog"],
+  [data-slot="dialog-overlay"],
+  [data-slot="popover"],
+  [data-slot="sheet"],
+  [data-slot="toast"],
+  [data-slot="sidebar"],
+  [role="banner"],
+  [role="navigation"],
+  [role="toolbar"],
+  .mybook-app-header,
+  .mybook-selection-ai-bar,
+  .selection-toolbar,
+  .tiptap-floating-menu,
+  .tiptap-bubble-menu,
+  .slash-menu,
+  #page-document-title-duplicate-error,
+  .mybook-block-actions,
+  .mybook-block-drag-handle,
+  .mybook-block-controls {
+    display: none !important;
+  }
+
+  .tiptap .mybook-empty-block-placeholder::before,
+  .tiptap .mybook-picker-placeholder::before,
+  .tiptap .mybook-heading-placeholder::before,
+  .tiptap .mybook-column-placeholder::before,
+  .tiptap .mybook-quote-empty-placeholder::before {
+    display: none !important;
+    content: none !important;
+  }
+
+  .mybook-document-canvas,
+  .mybook-document-zoom-frame,
+  .mybook-document-scale,
+  .mybook-document-page {
+    transform: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: transparent !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  .tiptap {
+    color: #000000 !important;
+    background: transparent !important;
+  }
+
+  .tiptap p,
+  .tiptap h1,
+  .tiptap h2,
+  .tiptap h3,
+  .tiptap h4,
+  .tiptap blockquote,
+  .tiptap pre,
+  .tiptap table,
+  .tiptap img,
+  .tiptap [data-type="callout"],
+  .tiptap [data-type="toggle"] {
+    break-inside: avoid;
+  }
+
+  .tiptap h1,
+  .tiptap h2,
+  .tiptap h3,
+  .tiptap h4 {
+    break-after: avoid;
+  }
+
+  .tiptap a {
+    color: #000000 !important;
+    text-decoration: underline !important;
+  }
+
+  .tiptap table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+
+  .tiptap th,
+  .tiptap td {
+    border: 1px solid #d1d5db !important;
+  }
+}
