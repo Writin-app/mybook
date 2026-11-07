@@ -185,4 +185,37 @@ describe('MobileSelectionAiBar', () => {
     await waitFor(() => expect(screen.getByText('Prompt result.')).toBeTruthy())
     expect(screen.getByRole('region', { name: 'Writin Assist review' })).toHaveStyle({ position: 'fixed' })
   })
+
+  it('completes AI generation even if mobile selection blurs or collapses during generation', async () => {
+    const ed = setupEditor('The quick brown fox jumps over the lazy dog.')
+    const mockEngine = createMockTransformationEngine({
+      supportedCapabilities: ['rewrite', 'translation'],
+      delayMs: 50,
+      transformFn: () => 'A fast fox leapt.',
+    })
+
+    render(<MobileSelectionAiBar editor={ed} customEngine={mockEngine} />)
+
+    // Select text
+    act(() => {
+      ed.view.dispatch(ed.state.tr.setSelection(TextSelection.create(ed.state.doc, 1, 20)))
+    })
+
+    // Open sheet
+    fireEvent.click(screen.getByRole('button', { name: 'Writin Assist' }))
+
+    // Click Rewrite
+    fireEvent.click(screen.getByRole('button', { name: /Rewrite/i }))
+
+    // Simulate Android Chrome blurring or collapsing selection during generation
+    act(() => {
+      ed.view.dispatch(ed.state.tr.setSelection(TextSelection.create(ed.state.doc, 1, 1)))
+    })
+
+    // Generation should succeed and display the preview rather than failing with stale/error
+    await waitFor(() => {
+      expect(screen.getByText('A fast fox leapt.')).toBeTruthy()
+    })
+    expect(screen.queryByText(/The document was edited/i)).toBeNull()
+  })
 })

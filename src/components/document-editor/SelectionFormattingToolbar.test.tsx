@@ -361,4 +361,43 @@ describe('SelectionFormattingToolbar', () => {
     // Toolbar should be placed below the Add Row zone
     expect(pos!.top).toBeGreaterThanOrEqual(94)
   })
+
+  it('hides action toolbar when sleek AI bar is active', async () => {
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit],
+      content: '<p>The meeting is on Friday.</p>',
+    })
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({ left: 100, right: 200, top: 150, bottom: 170 })
+    vi.spyOn(editor, 'isFocused', 'get').mockReturnValue(true)
+
+    render(
+      <SelectionFormattingToolbar
+        editor={editor}
+        onInsertBlock={() => undefined}
+        onEditLink={() => undefined}
+      />
+    )
+
+    act(() => {
+      editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 1, 15)))
+    })
+
+    // Action toolbar is initially visible
+    expect(screen.getByRole('toolbar', { name: 'Selected text formatting' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Bold' })).toBeTruthy()
+
+    // Open Writin Assist
+    fireEvent.click(screen.getByRole('button', { name: 'Writin Assist' }))
+
+    // Click "Write with AI" to activate sleek prompt bar
+    fireEvent.click(screen.getByRole('button', { name: /Write with AI/i }))
+
+    // Action toolbar must now be completely hidden
+    expect(screen.queryByRole('toolbar', { name: 'Selected text formatting' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Bold' })).toBeNull()
+
+    // Sleek prompt bar is present
+    expect(screen.getByRole('region', { name: 'Write with Writin Assist' })).toBeTruthy()
+  })
 })

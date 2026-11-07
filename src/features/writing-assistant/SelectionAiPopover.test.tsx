@@ -100,7 +100,7 @@ describe('SelectionAiPopover', () => {
     })
 
     const reviewPopover = screen.getByRole('region', { name: 'Writin Assist review' })
-    expect(reviewPopover).toHaveStyle({ position: 'fixed', left: '490px', top: '292px' })
+    expect(reviewPopover).toHaveStyle({ position: 'fixed', left: '100px', top: '292px' })
     expect(screen.queryByRole('dialog', { name: 'Writin Assist' })).toBeNull()
 
     expect(
@@ -367,5 +367,88 @@ describe('SelectionAiPopover', () => {
     })
 
     expect(ed.getText()).toBe(originalText)
+  })
+
+  it('caps generating popover width and clamps position to prevent desktop clipping', async () => {
+    const ed = setupEditor()
+    vi.spyOn(ed.view, 'coordsAtPos').mockReturnValue({ left: 700, right: 850, top: 300, bottom: 320 })
+    // Simulate an offset editor on desktop (e.g. 960px wide editor starting at left=250px with viewport 1024px)
+    vi.spyOn(ed.view.dom, 'getBoundingClientRect').mockReturnValue({
+      x: 250, y: 100, left: 250, right: 1210, top: 100, bottom: 600, width: 960, height: 500,
+      toJSON: () => ({}),
+    } as DOMRect)
+    window.innerWidth = 1024
+
+    const mockEngine = createMockTransformationEngine({
+      supportedCapabilities: ['rewrite', 'translation'],
+      delayMs: 200,
+      transformFn: () => 'A fast fox leapt.',
+    })
+
+    act(() => {
+      ed.view.dispatch(ed.state.tr.setSelection(TextSelection.create(ed.state.doc, 1, 20)))
+    })
+
+    render(
+      <SelectionAiPopover
+        editor={ed}
+        fileId="test-doc"
+        customEngine={mockEngine}
+        onClose={() => undefined}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Summarize/i }))
+
+    // Popover is now in loading/generating state
+    const popover = screen.getByRole('region', { name: /Writin Assist review/i })
+    expect(popover).toBeInTheDocument()
+
+    // Width must be capped at 440px rather than expanding to editor's 960px width
+    expect(popover.style.width).toBe('440px')
+
+    // Popover left-aligns with text start and clamps to prevent right-edge clipping [16 <= left <= 1024 - 440 - 16 = 568]
+    const leftNum = parseFloat(popover.style.left)
+    expect(leftNum).toBeLessThanOrEqual(568)
+    expect(leftNum).toBeGreaterThanOrEqual(16)
+    expect(popover.style.transform).toBe('translateY(-100%)')
+  })
+
+  it('aligns sleek floating bar to the left margin of the text', async () => {
+    const ed = setupEditor()
+    vi.spyOn(ed.view, 'coordsAtPos').mockReturnValue({ left: 120, right: 260, top: 300, bottom: 320 })
+    vi.spyOn(ed.view.dom, 'getBoundingClientRect').mockReturnValue({
+      x: 120, y: 100, left: 120, right: 900, top: 100, bottom: 600, width: 780, height: 500,
+      toJSON: () => ({}),
+    } as DOMRect)
+    window.innerWidth = 1200
+
+    const mockEngine = createMockTransformationEngine({
+      supportedCapabilities: ['rewrite', 'translation'],
+      delayMs: 200,
+      transformFn: () => 'A fast fox leapt.',
+    })
+
+    act(() => {
+      ed.view.dispatch(ed.state.tr.setSelection(TextSelection.create(ed.state.doc, 5, 20)))
+    })
+
+    render(
+      <SelectionAiPopover
+        editor={ed}
+        fileId="test-doc"
+        customEngine={mockEngine}
+        onClose={() => undefined}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Summarize/i }))
+
+    const popover = screen.getByRole('region', { name: /Writin Assist review/i })
+    expect(popover).toBeInTheDocument()
+
+    // Left should align with the text start (120px)
+    expect(popover.style.left).toBe('120px')
+    expect(popover.style.transform).toBe('translateY(-100%)')
   })
 })

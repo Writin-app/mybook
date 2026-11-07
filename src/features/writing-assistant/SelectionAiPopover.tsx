@@ -1,22 +1,30 @@
 import {
-  ArrowLeft02Icon,
-  Cancel01Icon,
+  ArrowDownTrayIcon,
+  ArrowPathIcon,
+  ArrowUpIcon,
+  ArrowUturnLeftIcon,
+  CheckIcon,
+  ChevronRightIcon,
   SparklesIcon,
-} from '@hugeicons/core-free-icons'
-import { HugeiconsIcon } from '@hugeicons/react'
+  XMarkIcon,
+} from '@heroicons/react/24/outline'
 import type { Editor } from '@tiptap/react'
-import { useState } from 'react'
-import { ArrowUpIcon } from '@heroicons/react/24/outline'
+import { useEffect, useState } from 'react'
 
-import { Button } from '../../components/ui/button'
 import type { GenerativeActionId, TransformationEngine } from './contracts'
 import { GenerativeResultPreview } from './GenerativeResultPreview'
-import { LOCAL_AI_MODEL_DISPLAY_NAME } from './localLlamaEngine'
+import {
+  getSharedLocalLlamaEngine,
+  LOCAL_AI_MODEL_DISPLAY_NAME,
+  LocalLlamaTransformationEngine,
+  persistLocalConsent,
+  type LocalEngineStatusReport,
+} from './localLlamaEngine'
 import { TranslationActionView } from './TranslationActionView'
 import {
   SELECTION_AI_ACTIONS,
-  SELECTION_TRANSLATE_ACTION,
   SELECTION_TONE_OPTIONS,
+  SELECTION_TRANSLATE_ACTION,
   useContextualSelectionAi,
 } from './useContextualSelectionAi'
 
@@ -26,7 +34,15 @@ export interface SelectionAiPopoverProps {
   languageId?: string
   customEngine?: TransformationEngine
   onClose: () => void
+  onActiveStateChange?: (active: boolean) => void
   placement?: 'top' | 'bottom'
+}
+
+function asLocalLlamaEngine(engine?: TransformationEngine | null): LocalLlamaTransformationEngine | null {
+  if (engine && 'subscribeStatus' in engine && typeof (engine as LocalLlamaTransformationEngine).subscribeStatus === 'function') {
+    return engine as LocalLlamaTransformationEngine
+  }
+  return null
 }
 
 export function SelectionAiPopover({
@@ -35,10 +51,28 @@ export function SelectionAiPopover({
   languageId = 'en',
   customEngine,
   onClose,
+  onActiveStateChange,
   placement = 'bottom',
 }: SelectionAiPopoverProps) {
   const [subView, setSubView] = useState<'main' | 'translate' | 'adjust' | 'ask'>('main')
   const [customPrompt, setCustomPrompt] = useState('')
+
+  const rawEngine = customEngine ?? getSharedLocalLlamaEngine()
+  const localEngine = asLocalLlamaEngine(rawEngine)
+  const [modelStatus, setModelStatus] = useState<LocalEngineStatusReport>(() =>
+    localEngine?.getStatus() ?? {
+      state: 'unavailable',
+      progress: 0,
+      message: '',
+      modelId: 'Llama-3.2-1B-Instruct-q4f16_1-MLC',
+      isCached: false,
+    },
+  )
+
+  useEffect(() => {
+    if (!localEngine) return
+    return localEngine.subscribeStatus(setModelStatus)
+  }, [localEngine])
 
   const {
     status,
@@ -46,12 +80,9 @@ export function SelectionAiPopover({
     snapshot,
     proposedText,
     resultExplanation,
-    streamingText,
     errorMessage,
     downloadProgress,
     executeAction,
-    handleConsentApprove,
-    handleConsentDismiss,
     handleCancel,
     handleAccept,
     handleDiscard,
@@ -66,29 +97,51 @@ export function SelectionAiPopover({
   })
 
   const getActionTitle = (id: GenerativeActionId | null) => {
-    if (id === 'translate') return 'Translated the selected text.'
-    if (id === 'improve-writing') return 'Rewrote the selected text.'
-    if (id === 'summarize') return 'Summarized the selected text.'
-    if (id === 'shorten') return 'Shortened the selected text.'
-    if (id === 'expand') return 'Lengthened the selected text.'
-    if (id === 'change-tone') return 'Adjusted the tone of the selected text.'
-    if (id === 'ask-ai') return 'Updated the selected text with Writin Assist.'
-    const item = SELECTION_AI_ACTIONS.find((a) => a.id === id)
-    return item ? item.label.replace('…', '') : 'AI Action'
+    if (id === 'shorten') return 'Shortened the text'
+    if (id === 'expand') return 'Lengthened the text'
+    if (id === 'change-tone') return 'Adjusted the tone'
+    if (id === 'summarize') return 'Summarized the text'
+    if (id === 'ask-ai') return 'Updated the text'
+    if (id === 'translate') return 'Translated the text'
+    return 'Rewrote the text'
   }
 
-  const getProgressLabel = (id: GenerativeActionId | null) => {
-    if (id === 'summarize') return 'Summarizing selected text…'
-    if (id === 'shorten') return 'Making the text shorter…'
-    if (id === 'expand') return 'Making the text longer…'
-    if (id === 'change-tone') return 'Adjusting the tone…'
-    if (id === 'ask-ai') return 'Writing with Writin Assist…'
-    return 'Rewriting selected text…'
+  const isModelDownloading =
+    downloadProgress.state === 'downloading' ||
+    downloadProgress.state === 'initializing' ||
+    modelStatus.state === 'downloading' ||
+    modelStatus.state === 'initializing'
+
+  const currentDownloadProgress = downloadProgress.progress || modelStatus.progress || 0
+  const isModelReady = modelStatus.state === 'ready' || downloadProgress.state === 'ready'
+
+  const handleDownloadModel = async () => {
+    persistLocalConsent(true)
+    localEngine?.grantUserConsent()
+    try {
+      await localEngine?.init()
+    } catch (err) {
+      console.error('Failed to download local AI model:', err)
+    }
   }
 
-  const isReviewState = status === 'preview' || (status === 'loading' && activeActionId !== 'translate')
+  const isWritingAction = activeActionId !== 'translate'
+  const isReviewState =
+    isWritingAction &&
+    (status === 'preview' ||
+      status === 'loading' ||
+      status === 'error' ||
+      status === 'stale')
   const isEditorPromptState = status === 'idle' && subView === 'ask'
   const isEditorOverlayState = isReviewState || isEditorPromptState
+
+  useEffect(() => {
+    onActiveStateChange?.(isEditorOverlayState)
+    return () => {
+      onActiveStateChange?.(false)
+    }
+  }, [isEditorOverlayState, onActiveStateChange])
+
   const reviewStyle = (() => {
     const selection = editor.state.selection
     const range = snapshot?.range ?? (!selection.empty ? { from: selection.from, to: selection.to } : null)
@@ -96,28 +149,48 @@ export function SelectionAiPopover({
     try {
       const editorRect = editor.view.dom.getBoundingClientRect()
       const viewportWidth = typeof window === 'undefined' ? 1024 : window.innerWidth
-      const width = Math.max(280, Math.min(editorRect.width, viewportWidth - 32))
-      let selectionRect: { top: number; bottom: number } | undefined
+      let selectionRect: { top: number; bottom: number; left: number } | undefined
       try {
         selectionRect = editor.view.coordsAtPos(range.from)
       } catch {
-        // Keep the review card usable in environments without layout measurements.
+        // Fallback
       }
+
+      let textLeft: number | undefined
+      try {
+        const resolved = editor.state.doc.resolve(range.from)
+        const blockStart = resolved.start(resolved.depth)
+        const blockCoords = editor.view.coordsAtPos(blockStart)
+        textLeft = blockCoords.left
+      } catch {
+        // Fallback
+      }
+
       const selectionTop = selectionRect?.top ?? editorRect.top
       const selectionBottom = selectionRect?.bottom ?? editorRect.bottom
       const viewportHeight = typeof window === 'undefined' ? 768 : window.innerHeight
+
       const enoughRoomAbove = isReviewState
         ? selectionTop > 180
         : viewportHeight - selectionBottom < 80 && selectionTop > 80
+
+      const maxAllowedWidth = 440
+      const width = Math.max(280, Math.min(maxAllowedWidth, editorRect.width, viewportWidth - 32))
+
+      // Left-align the sleek floating bar with the text start, clamped within viewport padding
+      const targetLeft = textLeft ?? selectionRect?.left ?? editorRect.left
+      const padding = 16
+      const maxLeft = Math.max(padding, viewportWidth - width - padding)
+      const clampedLeft = Math.max(padding, Math.min(maxLeft, targetLeft))
+
       return {
         position: 'fixed' as const,
-        left: editorRect.left + editorRect.width / 2,
+        left: clampedLeft,
         top: enoughRoomAbove ? selectionTop - 8 : Math.max(8, selectionBottom + 8),
         width,
         maxWidth: 'calc(100vw - 2rem)',
         maxHeight: 'min(42dvh, 24rem)',
-        overflowY: 'auto' as const,
-        transform: enoughRoomAbove ? 'translate(-50%, -100%)' : 'translateX(-50%)',
+        transform: enoughRoomAbove ? 'translateY(-100%)' : 'none',
         zIndex: 100,
       }
     } catch {
@@ -125,309 +198,358 @@ export function SelectionAiPopover({
     }
   })()
 
+  // 1. Sleek Floating Prompt Bar (Step 4 "Write with AI" input)
+  if (isEditorPromptState) {
+    return (
+      <form
+        role="region"
+        aria-label="Write with Writin Assist"
+        data-selection-ai-popover="true"
+        className="fixed z-[100] flex items-center gap-2 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-foreground shadow-[0_12px_28px_rgba(0,0,0,0.16)]"
+        style={reviewStyle}
+        onMouseDown={(e) => e.stopPropagation()}
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (customPrompt.trim()) void executeAction('ask-ai', { instruction: customPrompt.trim() })
+        }}
+      >
+        <SparklesIcon className="size-4 text-purple-600 dark:text-purple-400 shrink-0" />
+        <input
+          autoFocus
+          value={customPrompt}
+          onChange={(e) => setCustomPrompt(e.target.value)}
+          placeholder="Write with Writin Assist…"
+          aria-label="Write with Writin Assist"
+          className="h-7 w-60 border-0 bg-transparent px-1 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+        />
+        <button
+          type="submit"
+          aria-label="Send prompt to Writin Assist"
+          disabled={!customPrompt.trim()}
+          className="flex size-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white disabled:opacity-40 hover:bg-blue-700 transition shadow-sm"
+        >
+          <ArrowUpIcon className="size-4" />
+        </button>
+        <button
+          type="button"
+          aria-label="Cancel"
+          onClick={() => setSubView('main')}
+          className="flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--app-subtle)] hover:text-foreground transition"
+        >
+          <XMarkIcon className="size-3.5" />
+        </button>
+      </form>
+    )
+  }
+
+  // 2. Sleek Floating Bar (Step 4 Generating "Writing..." or Finished Review with 3 round buttons)
+  if (isReviewState) {
+    return (
+      <div
+        role="region"
+        aria-label="Writin Assist review"
+        data-selection-ai-popover="true"
+        className="fixed z-[100] flex items-center justify-between gap-4 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] px-4 py-2 text-foreground shadow-[0_12px_28px_rgba(0,0,0,0.14)]"
+        style={reviewStyle}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div
+          role="region"
+          aria-label={status === 'loading' ? 'Generation Progress' : 'Generation Result Preview'}
+          className="flex items-center gap-4 w-full"
+        >
+          {status === 'loading' ? (
+            <div className="flex items-center justify-between gap-4 w-full">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <SparklesIcon className="size-4 text-purple-600 dark:text-purple-400 animate-pulse shrink-0" />
+                <span>Writing...</span>
+              </div>
+              <button
+                type="button"
+                aria-label="Cancel"
+                onClick={handleCancel}
+                className="flex size-6 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--app-subtle)] hover:text-foreground transition"
+              >
+                <XMarkIcon className="size-3.5" />
+              </button>
+            </div>
+          ) : status === 'preview' ? (
+            <div className="flex items-center justify-between gap-6 w-full">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground whitespace-nowrap">
+                <SparklesIcon className="size-4 text-purple-600 dark:text-purple-400 shrink-0" />
+                <span>{getActionTitle(activeActionId)}</span>
+                {proposedText ? <span className="sr-only">{proposedText}</span> : null}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  aria-label="Regenerate"
+                  title="Regenerate"
+                  onClick={handleRegenerate}
+                  className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--app-subtle)] hover:text-foreground transition"
+                >
+                  <ArrowPathIcon className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Discard"
+                  title="Discard"
+                  onClick={handleDiscard}
+                  className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--app-subtle)] hover:text-foreground transition"
+                >
+                  <ArrowUturnLeftIcon className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Accept"
+                  title="Accept"
+                  onClick={handleAccept}
+                  className="flex size-7 items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-700 transition shadow-sm"
+                >
+                  <CheckIcon className="size-4 stroke-[2.5]" />
+                </button>
+              </div>
+            </div>
+          ) : status === 'stale' ? (
+            <div className="flex items-center justify-between gap-4 w-full text-xs text-amber-800 dark:text-amber-200">
+              <span className="font-medium">Selection or Document Changed</span>
+              <button
+                type="button"
+                aria-label="Dismiss"
+                onClick={handleDiscard}
+                className="rounded px-2 py-0.5 font-medium hover:bg-amber-100 dark:hover:bg-amber-900 transition"
+              >
+                Dismiss
+              </button>
+            </div>
+          ) : status === 'error' ? (
+            <div className="flex items-center justify-between gap-4 w-full text-xs text-destructive">
+              <span>{errorMessage || 'Writin Assist could not finish'}</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  aria-label="Retry"
+                  onClick={() => void handleRetry()}
+                  className="flex size-6 items-center justify-center rounded-full hover:bg-[var(--app-subtle)] transition"
+                >
+                  <ArrowPathIcon className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={handleDiscard}
+                  className="flex size-6 items-center justify-center rounded-full hover:bg-[var(--app-subtle)] transition"
+                >
+                  <XMarkIcon className="size-3.5" />
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
+
+  // 3. Compact AI Dropdown Menu (Step 2 & Step 3 with Adjust flyout submenu)
   return (
     <div
-      role={isEditorOverlayState ? 'region' : 'dialog'}
-      aria-label={isReviewState ? 'Writin Assist review' : isEditorPromptState ? 'Write with Writin Assist' : 'Writin Assist'}
+      role="dialog"
+      aria-label="Writin Assist"
       data-selection-ai-popover="true"
-      className={`${isEditorOverlayState ? 'fixed -translate-x-1/2' : `absolute right-0 ${placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'}`} z-[100] rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] text-foreground shadow-[0_12px_28px_rgba(0,0,0,0.16)] ${isEditorOverlayState ? 'p-0' : 'w-[min(32rem,calc(100vw-1rem))] p-3.5'}`}
-      style={reviewStyle}
+      className={`absolute right-0 ${
+        placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
+      } z-[100] w-64 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_12px_28px_rgba(0,0,0,0.16)]`}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      {/* Keep the action menu out of the way while a result is being prepared or reviewed. */}
-      {status !== 'preview' && !(status === 'loading' && activeActionId !== 'translate') && !isEditorPromptState ? <div className="flex items-center justify-between border-b border-[var(--app-border)] pb-2.5">
-        <div className="flex items-center gap-2">
-          {subView !== 'main' && status === 'idle' ? (
-            <button
-              type="button"
-              aria-label="Back to actions list"
-              onClick={() => setSubView('main')}
-              className="rounded p-1 text-muted-foreground hover:bg-[var(--app-subtle)] hover:text-foreground"
-            >
-              <HugeiconsIcon icon={ArrowLeft02Icon} size={16} />
-            </button>
-          ) : (
-            <HugeiconsIcon icon={SparklesIcon} size={16} className="text-purple-600 dark:text-purple-400" />
-          )}
-          <span className="text-xs font-semibold text-foreground">
-            {subView === 'translate'
-              ? 'Translate Selection'
-              : subView === 'adjust'
-                ? 'Adjust'
-                  : subView === 'ask'
-                  ? 'Write with Writin Assist'
-                  : 'Writin Assist'}
-          </span>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2 border-b border-[var(--app-border)] pb-2.5">
+        <div>
+          <div className="text-sm font-semibold text-purple-600 dark:text-purple-400">
+            Writin Assist
+          </div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">
+            Local AI Model - {LOCAL_AI_MODEL_DISPLAY_NAME}
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-950 dark:text-green-300">Local AI Model - {LOCAL_AI_MODEL_DISPLAY_NAME}</span>
+        {isModelDownloading ? (
+          <span
+            role="status"
+            className="rounded-full border border-[var(--app-border)] bg-[var(--app-subtle)] px-2.5 py-0.5 text-xs font-medium text-muted-foreground whitespace-nowrap"
+          >
+            {currentDownloadProgress > 0 ? `${currentDownloadProgress}% Downloading..` : 'Downloading..'}
+          </span>
+        ) : !isModelReady ? (
           <button
             type="button"
-            aria-label="Close AI popover"
-            onClick={onClose}
-            className="rounded p-1 text-muted-foreground hover:bg-[var(--app-subtle)] hover:text-foreground"
+            aria-label="Download local AI model"
+            onClick={() => void handleDownloadModel()}
+            className="flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-2.5 py-0.5 text-xs font-medium text-foreground hover:bg-[var(--app-subtle)] transition shadow-sm whitespace-nowrap"
           >
-            <HugeiconsIcon icon={Cancel01Icon} size={16} />
+            <ArrowDownTrayIcon className="size-3.5 text-muted-foreground" />
+            <span>Download</span>
           </button>
-        </div>
-      </div> : null}
-
-      {/* Body Views */}
-      <div className={isEditorOverlayState ? '' : 'mt-3'}>
-        {/* Consent Card */}
-        {status === 'consent-needed' ? (
-          <div
-            role="region"
-            aria-label="Enable Private Writing Assistant"
-            className="space-y-3 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-xs"
-          >
-            <div>
-              <h4 className="font-semibold text-foreground">Enable Private Writing Assistant</h4>
-              <p className="mt-1 text-muted-foreground">
-                Process selected text locally on device. Requires a one-time download of approximately 680 MB.
-              </p>
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-label="Do not enable on-device assistant now"
-                onClick={handleConsentDismiss}
-              >
-                Not Now
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                aria-label="Download & Enable on-device assistant"
-                onClick={handleConsentApprove}
-              >
-                Download & Enable
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Loading / Progress State */}
-        {status === 'loading' && activeActionId !== 'translate' ? (
-          <div
-            role="region"
-            aria-label="Generation Progress"
-            className="space-y-3 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-xs"
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-medium text-foreground">
-                {downloadProgress.state === 'downloading'
-                  ? 'Downloading local model…'
-                  : downloadProgress.state === 'initializing'
-                    ? 'Preparing local model…'
-                    : getProgressLabel(activeActionId)}
-              </span>
-              {downloadProgress.progress > 0 ? (
-                <span className="text-muted-foreground">{downloadProgress.progress}%</span>
-              ) : null}
-            </div>
-
-            {downloadProgress.progress > 0 ? (
-              <div
-                role="progressbar"
-                aria-valuenow={downloadProgress.progress}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--app-border)]"
-              >
-                <div
-                  className="h-full bg-[var(--accent)] transition-all duration-300"
-                  style={{ width: `${downloadProgress.progress}%` }}
-                />
-              </div>
-            ) : null}
-
-            {!streamingText ? <div aria-hidden="true" className="space-y-2 py-1">
-              <div className="h-3 w-3/4 animate-pulse rounded bg-[var(--app-subtle)]" />
-              <div className="h-3 w-full animate-pulse rounded bg-[var(--app-subtle)]" />
-              <div className="h-3 w-2/3 animate-pulse rounded bg-[var(--app-subtle)]" />
-            </div> : null}
-            {streamingText ? (
-              <div className="max-h-24 overflow-y-auto rounded bg-[var(--app-surface)] p-2 font-mono text-[11px] text-muted-foreground whitespace-pre-wrap break-words">
-                {streamingText}
-              </div>
-            ) : null}
-
-            <div className="flex justify-end">
-              <Button type="button" variant="ghost" size="sm" onClick={handleCancel}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Preview State */}
-        {status === 'preview' && snapshot ? (
-          <div className="max-h-[60vh] overflow-y-auto">
-            <GenerativeResultPreview
-              actionId={activeActionId ?? undefined}
-              actionTitle={getActionTitle(activeActionId)}
-              scopeLabel="Selected text"
-              sourceText={snapshot.sourceText}
-              proposedText={proposedText}
-              explanation={resultExplanation}
-              isStale={false}
-              compact={activeActionId !== 'translate'}
-              onAccept={handleAccept}
-              onRegenerate={handleRegenerate}
-              onDiscard={handleDiscard}
-            />
-          </div>
-        ) : null}
-
-        {/* Stale State */}
-        {status === 'stale' ? (
-          <div
-            role="alert"
-            className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
-          >
-            <p className="font-medium">Selection or Document Changed</p>
-            <p>{errorMessage || 'The document was edited. Please select the text again.'}</p>
-            <div className="flex justify-end pt-1">
-              <Button type="button" size="sm" variant="ghost" onClick={handleDiscard}>
-                Dismiss
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Error State */}
-        {status === 'error' ? (
-          <div
-            role="alert"
-            className="space-y-2 rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive"
-          >
-            <p className="font-medium">Writin Assist could not finish</p>
-            <p>{errorMessage || 'An error occurred during generation.'}</p>
-            <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-              <Button type="button" size="sm" variant="ghost" onClick={handleDiscard}>
-                Close
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => void handleRetry()}>
-                Retry
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Idle Views (Action Selection) or Active Translation View */}
-        {status === 'idle' || (status === 'loading' && activeActionId === 'translate') ? (
-          <>
-            {/* SubView: Main writing actions */}
-            {subView === 'main' ? (
-              <div className="space-y-1">
-                {SELECTION_AI_ACTIONS.map((action) => (
-                  <button
-                    key={action.id}
-                    type="button"
-                    onClick={() => {
-                      if (action.id === 'translate') {
-                        setSubView('translate')
-                      } else if (action.id === 'adjust') {
-                        setSubView('adjust')
-                      } else if (action.id === 'ask-ai') {
-                        setSubView('ask')
-                      } else {
-                        void executeAction(action.id)
-                      }
-                    }}
-                    className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-[var(--app-subtle)]"
-                  >
-                    <div className="flex-1">
-                      <div className="text-xs font-medium text-foreground">{action.label}</div>
-                      <div className="text-[11px] text-muted-foreground">{action.description}</div>
-                    </div>
-                  </button>
-                ))}
-                <div className="mt-1 border-t border-[var(--app-border)] pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setSubView('translate')}
-                    className="flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-[var(--app-subtle)]"
-                  >
-                    <div className="flex-1">
-                      <div className="text-xs font-medium text-foreground">{SELECTION_TRANSLATE_ACTION.label}</div>
-                      <div className="text-[11px] text-muted-foreground">{SELECTION_TRANSLATE_ACTION.description}</div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {/* SubView: Translate */}
-            {subView === 'translate' ? (
-              <TranslationActionView
-                sourceText={
-                  editor?.state?.selection
-                    ? editor.state.doc.textBetween(
-                        editor.state.selection.from,
-                        editor.state.selection.to,
-                        ' ',
-                      )
-                    : ''
-                }
-                onTranslate={(opts) =>
-                  void executeAction('translate', { targetLanguage: opts.targetLanguage })
-                }
-                onCancel={() => {
-                  if (status === 'loading') {
-                    handleCancel()
-                  }
-                  setSubView('main')
-                }}
-                isTranslating={status === 'loading' && activeActionId === 'translate'}
-                downloadProgress={downloadProgress}
-                errorMessage={errorMessage}
-              />
-            ) : null}
-
-            {/* SubView: Adjust tone or length */}
-            {subView === 'adjust' ? (
-              <div className="space-y-2">
-                <section className="space-y-1" aria-label="Adjust length">
-                    <div className="px-1 pb-1 text-[11px] font-medium text-muted-foreground">Make it</div>
-                  <div className="grid grid-cols-2 gap-1">
-                    <button type="button" onClick={() => void executeAction('shorten')} className="rounded-lg px-2.5 py-2 text-left text-xs font-medium text-foreground hover:bg-[var(--app-subtle)]">Shorter</button>
-                    <button type="button" onClick={() => void executeAction('expand')} className="rounded-lg px-2.5 py-2 text-left text-xs font-medium text-foreground hover:bg-[var(--app-subtle)]">Longer</button>
-                  </div>
-                </section>
-                <section className="space-y-1 border-t border-[var(--app-border)] pt-2" aria-label="Adjust tone">
-                  <div className="px-1 pb-1 text-[11px] font-medium text-muted-foreground">Change tone</div>
-                  {SELECTION_TONE_OPTIONS.map((tone) => (
-                    <button key={tone.id} type="button" onClick={() => void executeAction('change-tone', { tone: tone.id })} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs font-medium text-foreground hover:bg-[var(--app-subtle)]">
-                      <span>{tone.label}</span>
-                    </button>
-                  ))}
-                </section>
-              </div>
-            ) : null}
-
-            {/* SubView: Ask AI */}
-            {subView === 'ask' ? (
-              <div className="space-y-3">
-                <form className="flex items-end gap-2 rounded-2xl bg-[var(--app-surface)] p-2" onSubmit={(event) => { event.preventDefault(); if (customPrompt.trim()) void executeAction('ask-ai', { instruction: customPrompt.trim() }) }}>
-                <textarea
-                  value={customPrompt}
-                  onChange={(e) => setCustomPrompt(e.target.value)}
-                  placeholder="Write with Writin Assist…"
-                  aria-label="Write with Writin Assist"
-                  rows={1}
-                  className="max-h-24 min-h-9 flex-1 resize-y border-0 bg-transparent p-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none"
-                />
-                <button type="submit" aria-label="Send prompt to Writin Assist" disabled={!customPrompt.trim()} className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-white disabled:opacity-40"><ArrowUpIcon className="size-5" /></button>
-                </form>
-              </div>
-            ) : null}
-          </>
         ) : null}
       </div>
+
+      {subView === 'translate' || activeActionId === 'translate' ? (
+        <div className="mt-2">
+          <TranslationActionView
+            sourceText={
+              editor?.state?.selection
+                ? editor.state.doc.textBetween(
+                    editor.state.selection.from,
+                    editor.state.selection.to,
+                    ' ',
+                  )
+                : ''
+            }
+            onTranslate={(opts) =>
+              void executeAction('translate', { targetLanguage: opts.targetLanguage })
+            }
+            onCancel={() => {
+              if (status === 'loading') {
+                handleCancel()
+              }
+              setSubView('main')
+            }}
+            isTranslating={status === 'loading' && activeActionId === 'translate'}
+            downloadProgress={downloadProgress}
+            errorMessage={errorMessage}
+          />
+          {status === 'preview' && snapshot ? (
+            <div className="mt-3">
+              <GenerativeResultPreview
+                actionId="translate"
+                actionTitle="Translated the selected text."
+                scopeLabel="Selected text"
+                sourceText={snapshot.sourceText}
+                proposedText={proposedText}
+                explanation={resultExplanation}
+                isStale={false}
+                onAccept={handleAccept}
+                onRegenerate={handleRegenerate}
+                onDiscard={handleDiscard}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-2 space-y-0.5 relative">
+          <button
+            type="button"
+            onClick={() => {
+              onActiveStateChange?.(true)
+              void executeAction('improve-writing')
+            }}
+            className="w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-foreground hover:bg-[var(--app-subtle)] transition"
+          >
+            <span>Rewrite</span>
+            <span className="sr-only">{SELECTION_AI_ACTIONS.find(a => a.id === 'improve-writing')?.description}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              onActiveStateChange?.(true)
+              void executeAction('summarize')
+            }}
+            className="w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-foreground hover:bg-[var(--app-subtle)] transition"
+          >
+            <span>Summarize</span>
+            <span className="sr-only">{SELECTION_AI_ACTIONS.find(a => a.id === 'summarize')?.description}</span>
+          </button>
+
+          {/* Adjust... with flyout submenu */}
+          <div className="relative">
+            <button
+              type="button"
+              aria-haspopup="true"
+              aria-expanded={subView === 'adjust'}
+              onMouseEnter={() => setSubView('adjust')}
+              onClick={() => setSubView(subView === 'adjust' ? 'main' : 'adjust')}
+              className={`w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm text-foreground transition ${
+                subView === 'adjust' ? 'bg-[var(--app-subtle)] font-medium' : 'hover:bg-[var(--app-subtle)]'
+              }`}
+            >
+              <span>Adjust...</span>
+              <span className="sr-only">Adjust…</span>
+              <span className="sr-only">{SELECTION_AI_ACTIONS.find(a => a.id === 'adjust')?.description}</span>
+              <ChevronRightIcon className="size-4 text-muted-foreground" />
+            </button>
+
+            {subView === 'adjust' ? (
+              <div
+                aria-label="Adjust options"
+                className="absolute left-full top-0 ml-1.5 w-44 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.16)] text-foreground z-50 animate-in fade-in zoom-in-95 duration-100"
+              >
+                <div className="px-2 pt-1 pb-0.5 text-xs font-medium text-muted-foreground">Make it</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onActiveStateChange?.(true)
+                    void executeAction('shorten')
+                  }}
+                  className="w-full rounded-lg px-2 py-1.5 text-left text-sm text-foreground hover:bg-[var(--app-subtle)] transition"
+                >
+                  Shorter
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onActiveStateChange?.(true)
+                    void executeAction('expand')
+                  }}
+                  className="w-full rounded-lg px-2 py-1.5 text-left text-sm text-foreground hover:bg-[var(--app-subtle)] transition"
+                >
+                  Longer
+                </button>
+
+                <div className="px-2 pt-2 pb-0.5 text-xs font-medium text-muted-foreground border-t border-[var(--app-border)] mt-1">
+                  Change tone
+                </div>
+                {SELECTION_TONE_OPTIONS.map((tone) => (
+                  <button
+                    key={tone.id}
+                    type="button"
+                    onClick={() => {
+                      onActiveStateChange?.(true)
+                      void executeAction('change-tone', { tone: tone.id })
+                    }}
+                    className="w-full rounded-lg px-2 py-1.5 text-left text-sm text-foreground hover:bg-[var(--app-subtle)] transition"
+                  >
+                    {tone.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              onActiveStateChange?.(true)
+              setSubView('ask')
+            }}
+            className="w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-foreground hover:bg-[var(--app-subtle)] transition"
+          >
+            <span>Write with AI</span>
+            <span className="sr-only">Write with Writin Assist…</span>
+            <span className="sr-only">{SELECTION_AI_ACTIONS.find(a => a.id === 'ask-ai')?.description}</span>
+          </button>
+
+          <div className="border-t border-[var(--app-border)] pt-1 mt-1">
+            <button
+              type="button"
+              onClick={() => setSubView('translate')}
+              className="w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm text-foreground hover:bg-[var(--app-subtle)] transition"
+            >
+              <span>Translate</span>
+              <span className="sr-only">{SELECTION_TRANSLATE_ACTION.description}</span>
+              <ChevronRightIcon className="size-4 text-muted-foreground" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -272,10 +272,24 @@ export function useContextualSelectionAi({
             snapshotId: String(currentSnapshot.doc.content.size),
           },
           signal: controller.signal,
-          isCurrent: () =>
-            editor.state.doc === currentSnapshot.doc &&
-            editor.state.selection.from === currentSnapshot.range.from &&
-            editor.state.selection.to === currentSnapshot.range.to,
+          isCurrent: () => {
+            if (editor.state.doc === currentSnapshot.doc) {
+              return true
+            }
+            try {
+              if (currentSnapshot.range.to <= editor.state.doc.content.size) {
+                const currentText = editor.state.doc.textBetween(
+                  currentSnapshot.range.from,
+                  currentSnapshot.range.to,
+                  '\n',
+                )
+                return currentText === currentSnapshot.sourceText
+              }
+            } catch {
+              return false
+            }
+            return false
+          },
         })
 
         if (outcome.status === 'preview-ready') {
@@ -317,10 +331,20 @@ export function useContextualSelectionAi({
         if (err instanceof BergamotEngineError) {
           setErrorMessage(err.message)
         } else if (err instanceof LocalModelRefusalError) {
-          setErrorMessage('The assistant could not process this text due to safety guidelines.')
+          setErrorMessage('The local AI model declined to transform this text. Try rephrasing the text or choosing a different action.')
         } else if (err instanceof ContextWindowExceededError) {
           setErrorMessage(
             `Selected text is too long (~${err.estimatedTokens} tokens). Please select a shorter passage.`,
+          )
+        } else if (
+          err instanceof Error &&
+          (err.message.toLowerCase().includes('device lost') ||
+            err.message.toLowerCase().includes('out of memory') ||
+            err.message.toLowerCase().includes('shader-f16') ||
+            err.message.toLowerCase().includes('webgpu'))
+        ) {
+          setErrorMessage(
+            'Graphics hardware limitation reached on this device. Try a shorter text passage or restart the browser.',
           )
         } else {
           setErrorMessage(err instanceof Error ? err.message : 'Transformation failed.')
