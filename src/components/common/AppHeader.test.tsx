@@ -186,16 +186,16 @@ describe('AppHeader', () => {
     expect(onMore).toHaveBeenCalledOnce()
   })
 
-  it('renders lock action and calls onLockToggle', () => {
+  it('renders reading mode lock action and calls onLockToggle', () => {
     const onLockToggle = vi.fn()
     const { rerender } = render(<AppHeader lockAction isLocked={false} onLockToggle={onLockToggle} />)
-    const lockBtn = screen.getByRole('button', { name: 'Lock page' })
+    const lockBtn = screen.getByRole('button', { name: 'Enable reading mode' })
     expect(lockBtn).toBeInTheDocument()
     fireEvent.click(lockBtn)
     expect(onLockToggle).toHaveBeenCalledOnce()
 
     rerender(<AppHeader lockAction isLocked={true} onLockToggle={onLockToggle} />)
-    expect(screen.getByRole('button', { name: 'Unlock page' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Disable reading mode' })).toBeInTheDocument()
   })
 
   it('reflects favorite active state and accessibility attributes', () => {
@@ -389,5 +389,35 @@ describe('AppHeader', () => {
     rerender(<AppHeader status="saved" />)
     expect(screen.getByRole('status')).toHaveAccessibleName('Saved')
     expect(screen.getByRole('status').querySelector('svg')).not.toHaveClass('animate-spin')
+  })
+
+  it('replaces full breadcrumbs with only current folder name on mobile viewports', () => {
+    vi.stubGlobal('innerWidth', 375)
+    render(
+      <AppHeader
+        breadcrumbs={[
+          { label: 'Library', onPress: vi.fn() },
+          { label: 'Projects', onPress: vi.fn() },
+          { label: 'Alpha' },
+        ]}
+      />,
+    )
+
+    const breadcrumbNav = screen.getByRole('navigation', { name: 'breadcrumb' })
+    expect(breadcrumbNav.textContent).toContain('Alpha')
+    expect(breadcrumbNav.textContent).not.toContain('Library')
+    expect(breadcrumbNav.textContent).not.toContain('Projects')
+  })
+
+  it('renders reading mode button on both desktop and mobile and switches between outline and filled book icons', () => {
+    const onLockToggle = vi.fn()
+    const { rerender } = render(<AppHeader lockAction isLocked={false} onLockToggle={onLockToggle} />)
+
+    const btn = screen.getByRole('button', { name: 'Enable reading mode' })
+    expect(btn).not.toHaveClass('md:hidden')
+
+    rerender(<AppHeader lockAction isLocked={true} onLockToggle={onLockToggle} />)
+    const activeBtn = screen.getByRole('button', { name: 'Disable reading mode' })
+    expect(activeBtn).not.toHaveClass('md:hidden')
   })
 })

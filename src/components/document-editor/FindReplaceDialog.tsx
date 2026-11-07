@@ -18,10 +18,12 @@ export function FindReplaceDialog({
   editor,
   open,
   onOpenChange,
+  focusTrigger,
 }: {
   editor: Editor
   open: boolean
   onOpenChange: (open: boolean) => void
+  focusTrigger?: number
 }) {
   const [query, setQuery] = useState('')
   const [replacement, setReplacement] = useState('')
@@ -77,7 +79,7 @@ export function FindReplaceDialog({
         findInputRef.current?.select()
       })
     }
-  }, [open])
+  }, [open, focusTrigger])
 
   useEffect(() => {
     if (showReplacement) {
@@ -151,6 +153,13 @@ export function FindReplaceDialog({
   }
 
   const handleFindKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
+      event.preventDefault()
+      event.stopPropagation()
+      findInputRef.current?.focus()
+      findInputRef.current?.select()
+      return
+    }
     if (event.key === 'Enter') {
       event.preventDefault()
       if (event.shiftKey) findNext(-1)
@@ -163,6 +172,13 @@ export function FindReplaceDialog({
   }
 
   const handleReplaceKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
+      event.preventDefault()
+      event.stopPropagation()
+      findInputRef.current?.focus()
+      findInputRef.current?.select()
+      return
+    }
     if (event.key === 'Enter') {
       event.preventDefault()
       replaceCurrent()
@@ -182,6 +198,14 @@ export function FindReplaceDialog({
       aria-label="Find and replace"
       data-find-replace="true"
       data-editor-popover="true"
+      onKeyDown={(event) => {
+        if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
+          event.preventDefault()
+          event.stopPropagation()
+          findInputRef.current?.focus()
+          findInputRef.current?.select()
+        }
+      }}
       className="absolute inset-x-0 top-0 z-50 border-b border-border bg-background/95 shadow-md backdrop-blur supports-[backdrop-filter]:bg-background/85"
     >
       <div className="mx-auto flex max-w-screen-2xl flex-col gap-1.5 px-2.5 py-2 sm:gap-2 sm:px-5">

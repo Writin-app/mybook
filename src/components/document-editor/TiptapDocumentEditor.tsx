@@ -1072,6 +1072,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [zoomContentHeight, setZoomContentHeight] = useState(0)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false)
+  const [findFocusTrigger, setFindFocusTrigger] = useState(0)
   const [resolvedConflictVersionId, setResolvedConflictVersionId] = useState<string | null>(null)
   const [isMoveToOpen, setIsMoveToOpen] = useState(false)
   const moreTriggerRef = useRef<HTMLButtonElement>(null)
@@ -1138,6 +1139,13 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }, [])
   useEffect(() => {
     const handleEditorMenuShortcuts = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        event.stopPropagation()
+        setIsFindReplaceOpen(true)
+        setFindFocusTrigger((c) => c + 1)
+        return
+      }
       const target = event.target
       const isPageTitle = target === pageTitleRef.current
       if (target instanceof HTMLElement && !isPageTitle && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || (target.isContentEditable && !target.closest('.tiptap')))) return
@@ -1149,10 +1157,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         event.preventDefault()
         event.stopPropagation()
         setIsMoveToOpen(true)
-      } else if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'f') {
-        event.preventDefault()
-        event.stopPropagation()
-        setIsFindReplaceOpen(true)
       }
     }
     window.addEventListener('keydown', handleEditorMenuShortcuts, true)
@@ -2123,6 +2127,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f' && editorRef.current) {
           event.preventDefault()
           setIsFindReplaceOpen(true)
+          setFindFocusTrigger((c) => c + 1)
           return true
         }
 
@@ -3729,9 +3734,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             </div>
           ) : (
             <>
-              <DropdownMenuItem closeOnClick={false} onSelect={(event) => event.preventDefault()} onClick={() => void setPageLocked(!file.isLocked)} className="hidden md:flex justify-between cursor-pointer">
-                <span>Lock page</span><Switch aria-label="Lock page" checked={Boolean(file.isLocked)} onClick={(e) => e.stopPropagation()} onCheckedChange={(checked) => void setPageLocked(checked)} />
-              </DropdownMenuItem>
               <DropdownMenuItem closeOnClick={false} onSelect={(event) => event.preventDefault()} onClick={() => setDocumentViewMode(!isFullWidth)} className="hidden md:flex justify-between cursor-pointer">
                 <span>Full width</span><Switch aria-label="Full width" checked={isFullWidth} onClick={(e) => e.stopPropagation()} onCheckedChange={setDocumentViewMode} />
               </DropdownMenuItem>
@@ -3746,7 +3748,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                 <span>Find and replace</span>
                 <kbd className="ml-auto hidden text-xs text-muted-foreground md:inline">{findShortcut}</kbd>
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator className="hidden md:block" />
               <DropdownMenuItem onClick={() => void duplicateDocument()}><span>Duplicate</span><kbd className="ml-auto hidden text-xs text-muted-foreground md:inline">{duplicateShortcut}</kbd></DropdownMenuItem>
               <DropdownMenuItem onClick={() => void copyDocumentContent()}>Copy content</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setIsMoveToOpen(true)}>
@@ -3789,7 +3791,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         }
       />
       <div ref={findBarAnchorRef} className="sticky top-[57px] md:top-[65px] z-50 h-0 overflow-visible">
-        <FindReplaceDialog editor={editor} open={isFindReplaceOpen} onOpenChange={setIsFindReplaceOpen} />
+        <FindReplaceDialog editor={editor} open={isFindReplaceOpen} onOpenChange={setIsFindReplaceOpen} focusTrigger={findFocusTrigger} />
       </div>
       <nav aria-label="Desktop document commands" className="hidden">
         <DesktopMenu label="Document">

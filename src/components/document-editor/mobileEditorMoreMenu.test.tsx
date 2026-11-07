@@ -36,7 +36,7 @@ describe('Mobile Editor More Menu & Header Actions', () => {
       />
     )
 
-    const lockBtn = screen.getByRole('button', { name: 'Lock page' })
+    const lockBtn = screen.getByRole('button', { name: 'Enable reading mode' })
     expect(lockBtn).toBeInTheDocument()
     fireEvent.click(lockBtn)
     expect(onLockToggle).toHaveBeenCalledTimes(1)
@@ -50,7 +50,7 @@ describe('Mobile Editor More Menu & Header Actions', () => {
         isFavorite={false}
       />
     )
-    expect(screen.getByRole('button', { name: 'Unlock page' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Disable reading mode' })).toBeInTheDocument()
   })
 
   it('hides desktop-only items and kbd shortcuts on mobile, and drills down to Export to subview', () => {
@@ -85,7 +85,6 @@ describe('Mobile Editor More Menu & Header Actions', () => {
               </div>
             ) : (
               <>
-                <DropdownMenuItem className="hidden md:flex"><span>Lock page</span></DropdownMenuItem>
                 <DropdownMenuItem className="hidden md:flex"><span>Full width</span></DropdownMenuItem>
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger className="hidden md:flex">Zoom</DropdownMenuSubTrigger>
@@ -97,7 +96,7 @@ describe('Mobile Editor More Menu & Header Actions', () => {
                   <span>Find and replace</span>
                   <kbd className="ml-auto hidden text-xs text-muted-foreground md:inline">⌘F</kbd>
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
+                <DropdownMenuSeparator className="hidden md:block" />
                 <DropdownMenuItem
                   closeOnClick={false}
                   onSelect={(e) => {
@@ -122,11 +121,7 @@ describe('Mobile Editor More Menu & Header Actions', () => {
     // Open More menu
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
 
-    // Verify Lock page, Full width, and Zoom are hidden on mobile
-    const lockItem = screen.getByText('Lock page').closest('[role="menuitem"]')
-    expect(lockItem).toHaveClass('hidden')
-    expect(lockItem).toHaveClass('md:flex')
-
+    // Verify Full width and Zoom are hidden on mobile
     const fullWidthItem = screen.getByText('Full width').closest('[role="menuitem"]')
     expect(fullWidthItem).toHaveClass('hidden')
     expect(fullWidthItem).toHaveClass('md:flex')

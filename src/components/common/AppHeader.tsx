@@ -2,8 +2,6 @@ import {
   ArrowLeft01Icon,
   CloudCheckIcon,
   Loading03Icon,
-  LockIcon,
-  LockOpenIcon,
   MoreHorizontalIcon,
   PlusSignIcon,
   Share08Icon,
@@ -11,6 +9,8 @@ import {
   SidebarRight01Icon,
   StarIcon,
 } from '@hugeicons/core-free-icons'
+import { BookOpenIcon as BookOpenOutlineIcon } from '@heroicons/react/24/outline'
+import { BookOpenIcon as BookOpenSolidIcon } from '@heroicons/react/24/solid'
 import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react'
 import { Fragment, useEffect, useRef, useState, type RefObject, type ReactNode } from 'react'
 
@@ -306,64 +306,81 @@ export function AppHeader({
           <div className="min-w-0 flex-1">
             {breadcrumbs.length && !(isMobile && hideBreadcrumbsOnMobile) ? (
               <Breadcrumb className={cn(hideBreadcrumbsOnMobile && 'hidden md:block')}>
-                <BreadcrumbList>
-                  {breadcrumbs.map((breadcrumb, index) => {
-                    const isCurrent = index === breadcrumbs.length - 1
-                    const shouldCollapse = breadcrumbs.length > 3
-                    const isCollapsed = shouldCollapse && index > 0 && index < breadcrumbs.length - 1
-                    if (isCollapsed && index > 1) return null
+                {isMobile ? (
+                  <BreadcrumbList>
+                    <BreadcrumbItem className="min-w-0">
+                      {onRename ? (
+                        <RenameBreadcrumb label={renamedTitle ?? lastBreadcrumbLabel ?? displayTitle ?? ''} onRename={(name) => {
+                          setRenamedTitle(name)
+                          onBreadcrumbRename?.(name)
+                        }} />
+                      ) : (
+                        <BreadcrumbPage className="max-w-[200px] truncate font-semibold text-sm">
+                          {renamedTitle ?? lastBreadcrumbLabel ?? displayTitle}
+                        </BreadcrumbPage>
+                      )}
+                    </BreadcrumbItem>
+                  </BreadcrumbList>
+                ) : (
+                  <BreadcrumbList>
+                    {breadcrumbs.map((breadcrumb, index) => {
+                      const isCurrent = index === breadcrumbs.length - 1
+                      const shouldCollapse = breadcrumbs.length > 3
+                      const isCollapsed = shouldCollapse && index > 0 && index < breadcrumbs.length - 1
+                      if (isCollapsed && index > 1) return null
 
-                    return (
-                      <Fragment key={`${breadcrumb.label}:${index}`}>
-                        {index ? <BreadcrumbSeparator /> : null}
-                        <BreadcrumbItem className="min-w-0">
-                          {isCollapsed ? (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger render={<button type="button" aria-label="More breadcrumbs" />}>
-                                <BreadcrumbEllipsis />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="start">
-                                {breadcrumbs.slice(1, -1).map((hiddenBreadcrumb, hiddenIndex) => (
-                                  <DropdownMenuItem
-                                    key={`${hiddenBreadcrumb.label}:${hiddenIndex}`}
-                                    disabled={!hiddenBreadcrumb.onPress}
-                                    onClick={hiddenBreadcrumb.onPress}
-                                  >
-                                    {hiddenBreadcrumb.label}
-                                  </DropdownMenuItem>
-                                ))}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          ) : isCurrent ? (
-                            onRename ? (
-                              <RenameBreadcrumb label={renamedTitle ?? breadcrumb.label} onRename={(name) => {
-                                setRenamedTitle(name)
-                                onBreadcrumbRename?.(name)
-                              }} />
+                      return (
+                        <Fragment key={`${breadcrumb.label}:${index}`}>
+                          {index ? <BreadcrumbSeparator /> : null}
+                          <BreadcrumbItem className="min-w-0">
+                            {isCollapsed ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger render={<button type="button" aria-label="More breadcrumbs" />}>
+                                  <BreadcrumbEllipsis />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start">
+                                  {breadcrumbs.slice(1, -1).map((hiddenBreadcrumb, hiddenIndex) => (
+                                    <DropdownMenuItem
+                                      key={`${hiddenBreadcrumb.label}:${hiddenIndex}`}
+                                      disabled={!hiddenBreadcrumb.onPress}
+                                      onClick={hiddenBreadcrumb.onPress}
+                                    >
+                                      {hiddenBreadcrumb.label}
+                                    </DropdownMenuItem>
+                                  ))}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : isCurrent ? (
+                              onRename ? (
+                                <RenameBreadcrumb label={renamedTitle ?? breadcrumb.label} onRename={(name) => {
+                                  setRenamedTitle(name)
+                                  onBreadcrumbRename?.(name)
+                                }} />
+                              ) : (
+                                <BreadcrumbPage className="max-w-[140px] truncate sm:max-w-[200px] md:max-w-xs">
+                                  {renamedTitle ?? breadcrumb.label}
+                                </BreadcrumbPage>
+                              )
+                            ) : breadcrumb.onPress ? (
+                              <BreadcrumbLink
+                                render={<button type="button" className="max-w-[120px] truncate sm:max-w-[180px]" />}
+                                onClick={breadcrumb.onPress}
+                              >
+                                {breadcrumb.label}
+                              </BreadcrumbLink>
                             ) : (
-                              <BreadcrumbPage className="max-w-[140px] truncate sm:max-w-[200px] md:max-w-xs">
-                                {renamedTitle ?? breadcrumb.label}
-                              </BreadcrumbPage>
-                            )
-                          ) : breadcrumb.onPress ? (
-                            <BreadcrumbLink
-                              render={<button type="button" className="max-w-[120px] truncate sm:max-w-[180px]" />}
-                              onClick={breadcrumb.onPress}
-                            >
-                              {breadcrumb.label}
-                            </BreadcrumbLink>
-                          ) : (
-                            <BreadcrumbLink
-                              render={<span className="max-w-[120px] truncate sm:max-w-[180px]" />}
-                            >
-                              {breadcrumb.label}
-                            </BreadcrumbLink>
-                          )}
-                        </BreadcrumbItem>
-                      </Fragment>
-                    )
-                  })}
-                </BreadcrumbList>
+                              <BreadcrumbLink
+                                render={<span className="max-w-[120px] truncate sm:max-w-[180px]" />}
+                              >
+                                {breadcrumb.label}
+                              </BreadcrumbLink>
+                            )}
+                          </BreadcrumbItem>
+                        </Fragment>
+                      )
+                    })}
+                  </BreadcrumbList>
+                )}
               </Breadcrumb>
             ) : null}
             {showTitle && displayTitle ? (
@@ -454,17 +471,17 @@ export function AppHeader({
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={isLocked ? 'Unlock page' : 'Lock page'}
-                    title={isLocked ? 'Unlock page' : 'Lock page'}
+                    aria-label={isLocked ? 'Disable reading mode' : 'Enable reading mode'}
+                    title={isLocked ? 'Disable reading mode' : 'Enable reading mode'}
                     aria-pressed={isLocked}
                     onClick={onLockToggle}
-                    className={cn('rounded-lg md:hidden', isLocked && 'bg-muted text-foreground')}
+                    className={cn('rounded-lg', isLocked && 'bg-muted text-foreground')}
                   >
-                    <HugeiconsIcon
-                      icon={isLocked ? LockIcon : LockOpenIcon}
-                      strokeWidth={2}
-                      className={cn('size-4', isLocked && 'text-amber-500 dark:text-amber-400')}
-                    />
+                    {isLocked ? (
+                      <BookOpenSolidIcon className="size-4 text-amber-500 dark:text-amber-400" />
+                    ) : (
+                      <BookOpenOutlineIcon className="size-4" />
+                    )}
                   </Button>
                 ) : null}
 
