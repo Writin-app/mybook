@@ -237,23 +237,6 @@ export function SelectionFormattingToolbar({
     return () => document.removeEventListener('pointerdown', handlePointerDown)
   }, [editor, isOpen])
 
-  if (aiActive && aiMenuOpen) {
-    return (
-      <SelectionAiPopover
-        editor={editor}
-        fileId={fileId}
-        languageId={languageId}
-        customEngine={customEngine}
-        onClose={() => {
-          setAiMenuOpen(false)
-          setAiActive(false)
-        }}
-        onActiveStateChange={setAiActive}
-        placement="top"
-      />
-    )
-  }
-
   if (!position) return null
 
   const viewportHeight = typeof window !== 'undefined'
@@ -277,88 +260,99 @@ export function SelectionFormattingToolbar({
   return (
     <div
       ref={toolbarRef}
-      role="toolbar"
-      data-selection-toolbar="true"
-      data-editor-popover="true"
-      aria-label="Selected text formatting"
-      className="fixed z-50 hidden md:flex h-9 items-center gap-0.5 rounded-[8px] bg-[var(--app-surface)] px-1 text-foreground shadow-[0_8px_20px_rgba(0,0,0,0.12)]"
+      role={aiActive ? undefined : 'toolbar'}
+      data-selection-toolbar={aiActive ? undefined : 'true'}
+      data-editor-popover={aiActive ? undefined : 'true'}
+      aria-label={aiActive ? undefined : 'Selected text formatting'}
+      className={
+        aiActive
+          ? 'fixed z-50 pointer-events-none'
+          : 'fixed z-50 hidden md:flex h-9 items-center gap-0.5 rounded-[8px] bg-[var(--app-surface)] px-1 text-foreground shadow-[0_8px_20px_rgba(0,0,0,0.12)]'
+      }
       style={{ left: position.left, top: position.top }}
       onMouseDown={(event) => event.preventDefault()}
     >
-      <div className="relative">
-        <button
-          type="button"
-          aria-label="Block style"
-          aria-expanded={blockMenuOpen}
-          onClick={() => {
-            setBlockMenuOpen((open) => !open)
-            setColorMenu(null)
-            setAiMenuOpen(false)
-          }}
-          className="flex h-7 min-w-20 items-center justify-center gap-1.5 rounded-[6px] bg-[var(--app-subtle)] px-2 text-xs font-medium hover:bg-[var(--app-subtle)]/80"
-        >
-          {blockStyle}
-          <HugeiconsIcon icon={ArrowDown01Icon} size={14} className="text-muted-foreground" />
-        </button>
-        {blockMenuOpen ? (
-          <div role="menu" aria-label="Block style" className={`absolute left-0 z-50 w-56 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openBlockOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
-            {['Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Heading 4'].map((label, index) => (
-              <button key={label} type="button" role="menuitemradio" aria-checked={blockStyle === label} onClick={() => setBlockStyle(index)} className={`flex min-h-11 w-full items-center justify-between rounded-lg px-3 text-left text-sm hover:bg-[var(--app-subtle)] ${blockStyle === label ? 'bg-[var(--app-subtle)]' : ''}`}>
-                <span>{label}</span><span className="text-muted-foreground">{'#'.repeat(index)}</span>
-              </button>
-            ))}
+      {!aiActive ? (
+        <>
+          <div className="relative">
+            <button
+              type="button"
+              aria-label="Block style"
+              aria-expanded={blockMenuOpen}
+              onClick={() => {
+                setBlockMenuOpen((open) => !open)
+                setColorMenu(null)
+                setAiMenuOpen(false)
+              }}
+              className="flex h-7 min-w-20 items-center justify-center gap-1.5 rounded-[6px] bg-[var(--app-subtle)] px-2 text-xs font-medium hover:bg-[var(--app-subtle)]/80"
+            >
+              {blockStyle}
+              <HugeiconsIcon icon={ArrowDown01Icon} size={14} className="text-muted-foreground" />
+            </button>
+            {blockMenuOpen ? (
+              <div role="menu" aria-label="Block style" className={`absolute left-0 z-50 w-56 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openBlockOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
+                {['Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Heading 4'].map((label, index) => (
+                  <button key={label} type="button" role="menuitemradio" aria-checked={blockStyle === label} onClick={() => setBlockStyle(index)} className={`flex min-h-11 w-full items-center justify-between rounded-lg px-3 text-left text-sm hover:bg-[var(--app-subtle)] ${blockStyle === label ? 'bg-[var(--app-subtle)]' : ''}`}>
+                    <span>{label}</span><span className="text-muted-foreground">{'#'.repeat(index)}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
-        ) : null}
-      </div>
-      <ToolButton label="Bold" active={editor.isActive('bold')} onClick={() => { restoreSelection(); editor.chain().focus().toggleBold().run() }}><HugeiconsIcon icon={TextBoldIcon} size={16} /></ToolButton>
-      <ToolButton label="Underline" active={editor.isActive('underline')} onClick={() => { restoreSelection(); editor.chain().focus().toggleUnderline().run() }}><HugeiconsIcon icon={TextUnderlineIcon} size={16} /></ToolButton>
-      <ToolButton label="Italic" active={editor.isActive('italic')} onClick={() => { restoreSelection(); editor.chain().focus().toggleItalic().run() }}><HugeiconsIcon icon={TextItalicIcon} size={16} /></ToolButton>
-      <ToolButton label="Strikethrough" active={editor.isActive('strike')} onClick={() => { restoreSelection(); editor.chain().focus().toggleStrike().run() }}><HugeiconsIcon icon={TextStrikethroughIcon} size={16} /></ToolButton>
-      <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
-      <div className="relative">
-        <ToolButton label="Text color" active={editor.isActive('textColor')} onClick={() => { setColorMenu((current) => current === 'text' ? null : 'text'); setBlockMenuOpen(false); setAiMenuOpen(false) }}>
-          <span className="flex h-5 flex-col items-center justify-center text-sm font-medium leading-none">A<span className="mt-0.5 h-0.5 w-3 rounded-full" style={{ backgroundColor: editor.getAttributes('textColor').color ?? 'currentColor' }} /></span>
-        </ToolButton>
-        {colorMenu === 'text' ? (
-          <div role="menu" aria-label="Text color" className={`absolute left-1/2 z-50 w-48 -translate-x-1/2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openColorOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
-            {textColors.map((color) => <button key={color.name} type="button" role="menuitemradio" aria-checked={(editor.getAttributes('textColor').color ?? null) === color.value} onClick={() => applyColor('text', color.value)} className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--app-subtle)]"><span className="size-4 rounded border border-[var(--app-border)]" style={{ backgroundColor: color.value ?? 'transparent' }}>{color.value ? null : <span className="block rotate-45 border-t border-destructive" />}</span>{color.name}{(editor.getAttributes('textColor').color ?? null) === color.value ? <CheckIcon className="ml-auto size-4" /> : null}</button>)}
+          <ToolButton label="Bold" active={editor.isActive('bold')} onClick={() => { restoreSelection(); editor.chain().focus().toggleBold().run() }}><HugeiconsIcon icon={TextBoldIcon} size={16} /></ToolButton>
+          <ToolButton label="Underline" active={editor.isActive('underline')} onClick={() => { restoreSelection(); editor.chain().focus().toggleUnderline().run() }}><HugeiconsIcon icon={TextUnderlineIcon} size={16} /></ToolButton>
+          <ToolButton label="Italic" active={editor.isActive('italic')} onClick={() => { restoreSelection(); editor.chain().focus().toggleItalic().run() }}><HugeiconsIcon icon={TextItalicIcon} size={16} /></ToolButton>
+          <ToolButton label="Strikethrough" active={editor.isActive('strike')} onClick={() => { restoreSelection(); editor.chain().focus().toggleStrike().run() }}><HugeiconsIcon icon={TextStrikethroughIcon} size={16} /></ToolButton>
+          <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
+          <div className="relative">
+            <ToolButton label="Text color" active={editor.isActive('textColor')} onClick={() => { setColorMenu((current) => current === 'text' ? null : 'text'); setBlockMenuOpen(false); setAiMenuOpen(false) }}>
+              <span className="flex h-5 flex-col items-center justify-center text-sm font-medium leading-none">A<span className="mt-0.5 h-0.5 w-3 rounded-full" style={{ backgroundColor: editor.getAttributes('textColor').color ?? 'currentColor' }} /></span>
+            </ToolButton>
+            {colorMenu === 'text' ? (
+              <div role="menu" aria-label="Text color" className={`absolute left-1/2 z-50 w-48 -translate-x-1/2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openColorOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
+                {textColors.map((color) => <button key={color.name} type="button" role="menuitemradio" aria-checked={(editor.getAttributes('textColor').color ?? null) === color.value} onClick={() => applyColor('text', color.value)} className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--app-subtle)]"><span className="size-4 rounded border border-[var(--app-border)]" style={{ backgroundColor: color.value ?? 'transparent' }}>{color.value ? null : <span className="block rotate-45 border-t border-destructive" />}</span>{color.name}{(editor.getAttributes('textColor').color ?? null) === color.value ? <CheckIcon className="ml-auto size-4" /> : null}</button>)}
+              </div>
+            ) : null}
           </div>
-        ) : null}
-      </div>
-      <div className="relative">
-        <ToolButton label="Highlight" active={editor.isActive('highlight')} onClick={() => { setColorMenu((current) => current === 'highlight' ? null : 'highlight'); setBlockMenuOpen(false); setAiMenuOpen(false) }}>
-          <span className="flex size-4 items-center justify-center rounded border border-current text-[10px] font-bold" style={{ backgroundColor: editor.getAttributes('highlight').color ?? 'transparent' }}>H</span>
-        </ToolButton>
-        {colorMenu === 'highlight' ? (
-          <div role="menu" aria-label="Highlight color" className={`absolute left-1/2 z-50 w-48 -translate-x-1/2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openColorOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
-            <button type="button" role="menuitem" onClick={() => applyColor('highlight', null)} className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--app-subtle)]">Remove highlight</button>
-            {tableColors.filter((color) => color.name !== 'White').map((color) => <button key={color.name} type="button" role="menuitemradio" aria-checked={editor.getAttributes('highlight').color === color.value} onClick={() => applyColor('highlight', color.value)} className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--app-subtle)]"><span className="size-4 rounded border border-[var(--app-border)]" style={{ backgroundColor: color.value }} />{color.name}{editor.getAttributes('highlight').color === color.value ? <CheckIcon className="ml-auto size-4" /> : null}</button>)}
+          <div className="relative">
+            <ToolButton label="Highlight" active={editor.isActive('highlight')} onClick={() => { setColorMenu((current) => current === 'highlight' ? null : 'highlight'); setBlockMenuOpen(false); setAiMenuOpen(false) }}>
+              <span className="flex size-4 items-center justify-center rounded border border-current text-[10px] font-bold" style={{ backgroundColor: editor.getAttributes('highlight').color ?? 'transparent' }}>H</span>
+            </ToolButton>
+            {colorMenu === 'highlight' ? (
+              <div role="menu" aria-label="Highlight color" className={`absolute left-1/2 z-50 w-48 -translate-x-1/2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 shadow-[0_12px_28px_rgba(0,0,0,0.14)] ${openColorOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
+                <button type="button" role="menuitem" onClick={() => applyColor('highlight', null)} className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--app-subtle)]">Remove highlight</button>
+                {tableColors.filter((color) => color.name !== 'White').map((color) => <button key={color.name} type="button" role="menuitemradio" aria-checked={editor.getAttributes('highlight').color === color.value} onClick={() => applyColor('highlight', color.value)} className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--app-subtle)]"><span className="size-4 rounded border border-[var(--app-border)]" style={{ backgroundColor: color.value }} />{color.name}{editor.getAttributes('highlight').color === color.value ? <CheckIcon className="ml-auto size-4" /> : null}</button>)}
+              </div>
+            ) : null}
           </div>
+          <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
+          <ToolButton label="Link" active={editor.isActive('link')} onClick={openLinkEditor}><HugeiconsIcon icon={Link02Icon} size={16} /></ToolButton>
+          <ToolButton label="Checklist" active={editor.isActive('taskList')} onClick={() => { restoreSelection(); editor.chain().focus().toggleTaskList().run() }}><HugeiconsIcon icon={CheckListIcon} size={16} /></ToolButton>
+          <ToolButton label="Inline code" active={editor.isActive('code')} onClick={() => { restoreSelection(); editor.chain().focus().toggleCode().run() }}><HugeiconsIcon icon={CodeIcon} size={16} /></ToolButton>
+          <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
+        </>
+      ) : null}
+
+      <div className={aiActive ? 'pointer-events-auto' : 'relative'}>
+        {!aiActive ? (
+          <button
+            type="button"
+            aria-label="Writin Assist"
+            aria-expanded={aiMenuOpen}
+            onClick={() => {
+              setAiMenuOpen((open) => !open)
+              setColorMenu(null)
+              setBlockMenuOpen(false)
+              setMoreMenuOpen(false)
+            }}
+            className={`flex h-7 items-center gap-1 rounded-[6px] px-2 text-xs font-medium text-purple-600 dark:text-purple-400 transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
+              aiMenuOpen ? 'bg-[var(--app-subtle)]' : ''
+            }`}
+          >
+            <HugeiconsIcon icon={SparklesIcon} size={14} className="shrink-0" />
+            <span>Writin Assist</span>
+          </button>
         ) : null}
-      </div>
-      <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
-      <ToolButton label="Link" active={editor.isActive('link')} onClick={openLinkEditor}><HugeiconsIcon icon={Link02Icon} size={16} /></ToolButton>
-      <ToolButton label="Checklist" active={editor.isActive('taskList')} onClick={() => { restoreSelection(); editor.chain().focus().toggleTaskList().run() }}><HugeiconsIcon icon={CheckListIcon} size={16} /></ToolButton>
-      <ToolButton label="Inline code" active={editor.isActive('code')} onClick={() => { restoreSelection(); editor.chain().focus().toggleCode().run() }}><HugeiconsIcon icon={CodeIcon} size={16} /></ToolButton>
-      <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
-      <div className="relative">
-        <button
-          type="button"
-          aria-label="Writin Assist"
-          aria-expanded={aiMenuOpen}
-          onClick={() => {
-            setAiMenuOpen((open) => !open)
-            setColorMenu(null)
-            setBlockMenuOpen(false)
-            setMoreMenuOpen(false)
-          }}
-          className={`flex h-7 items-center gap-1 rounded-[6px] px-2 text-xs font-medium text-purple-600 dark:text-purple-400 transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
-            aiMenuOpen ? 'bg-[var(--app-subtle)]' : ''
-          }`}
-        >
-          <HugeiconsIcon icon={SparklesIcon} size={14} className="shrink-0" />
-          <span>Writin Assist</span>
-        </button>
         {aiMenuOpen ? (
           <SelectionAiPopover
             editor={editor}
@@ -374,25 +368,30 @@ export function SelectionFormattingToolbar({
           />
         ) : null}
       </div>
-      <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
-      <div className="relative">
-        <ToolButton label="More options" active={moreMenuOpen} onClick={() => { setMoreMenuOpen((open) => !open); setColorMenu(null); setBlockMenuOpen(false); setAiMenuOpen(false) }}><HugeiconsIcon icon={MoreHorizontalIcon} size={16} /></ToolButton>
-        {moreMenuOpen ? (
-          <div
-            data-command-menu-scroller="true"
-            className={`absolute right-0 z-50 w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 text-foreground shadow-[0_12px_28px_rgba(0,0,0,0.16)] ${openMoreOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}
-            style={{ maxHeight: moreMaxHeight }}
-          >
-            <BlockCommandMenu
-              ariaLabel="More block options"
-              commands={moreCommands}
-              selectedIndex={moreSelectedIndex}
-              onSelectIndex={setMoreSelectedIndex}
-              onRun={runMoreCommand}
-            />
+
+      {!aiActive ? (
+        <>
+          <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
+          <div className="relative">
+            <ToolButton label="More options" active={moreMenuOpen} onClick={() => { setMoreMenuOpen((open) => !open); setColorMenu(null); setBlockMenuOpen(false); setAiMenuOpen(false) }}><HugeiconsIcon icon={MoreHorizontalIcon} size={16} /></ToolButton>
+            {moreMenuOpen ? (
+              <div
+                data-command-menu-scroller="true"
+                className={`absolute right-0 z-50 w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 text-foreground shadow-[0_12px_28px_rgba(0,0,0,0.16)] ${openMoreOnTop ? 'bottom-full mb-2' : 'top-full mt-2'}`}
+                style={{ maxHeight: moreMaxHeight }}
+              >
+                <BlockCommandMenu
+                  ariaLabel="More block options"
+                  commands={moreCommands}
+                  selectedIndex={moreSelectedIndex}
+                  onSelectIndex={setMoreSelectedIndex}
+                  onRun={runMoreCommand}
+                />
+              </div>
+            ) : null}
           </div>
-        ) : null}
-      </div>
+        </>
+      ) : null}
     </div>
   )
 }

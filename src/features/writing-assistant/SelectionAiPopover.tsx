@@ -437,7 +437,10 @@ export function SelectionAiPopover({
         <div className="mt-2 space-y-0.5 relative">
           <button
             type="button"
-            onClick={() => void executeAction('improve-writing')}
+            onClick={() => {
+              onActiveStateChange?.(true)
+              void executeAction('improve-writing')
+            }}
             className="w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-foreground hover:bg-[var(--app-subtle)] transition"
           >
             <span>Rewrite</span>
@@ -446,7 +449,10 @@ export function SelectionAiPopover({
 
           <button
             type="button"
-            onClick={() => void executeAction('summarize')}
+            onClick={() => {
+              onActiveStateChange?.(true)
+              void executeAction('summarize')
+            }}
             className="w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-foreground hover:bg-[var(--app-subtle)] transition"
           >
             <span>Summarize</span>
@@ -479,14 +485,20 @@ export function SelectionAiPopover({
                 <div className="px-2 pt-1 pb-0.5 text-xs font-medium text-muted-foreground">Make it</div>
                 <button
                   type="button"
-                  onClick={() => void executeAction('shorten')}
+                  onClick={() => {
+                    onActiveStateChange?.(true)
+                    void executeAction('shorten')
+                  }}
                   className="w-full rounded-lg px-2 py-1.5 text-left text-sm text-foreground hover:bg-[var(--app-subtle)] transition"
                 >
                   Shorter
                 </button>
                 <button
                   type="button"
-                  onClick={() => void executeAction('expand')}
+                  onClick={() => {
+                    onActiveStateChange?.(true)
+                    void executeAction('expand')
+                  }}
                   className="w-full rounded-lg px-2 py-1.5 text-left text-sm text-foreground hover:bg-[var(--app-subtle)] transition"
                 >
                   Longer
@@ -499,7 +511,10 @@ export function SelectionAiPopover({
                   <button
                     key={tone.id}
                     type="button"
-                    onClick={() => void executeAction('change-tone', { tone: tone.id })}
+                    onClick={() => {
+                      onActiveStateChange?.(true)
+                      void executeAction('change-tone', { tone: tone.id })
+                    }}
                     className="w-full rounded-lg px-2 py-1.5 text-left text-sm text-foreground hover:bg-[var(--app-subtle)] transition"
                   >
                     {tone.label}
@@ -511,7 +526,10 @@ export function SelectionAiPopover({
 
           <button
             type="button"
-            onClick={() => setSubView('ask')}
+            onClick={() => {
+              onActiveStateChange?.(true)
+              setSubView('ask')
+            }}
             className="w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-foreground hover:bg-[var(--app-subtle)] transition"
           >
             <span>Write with AI</span>
