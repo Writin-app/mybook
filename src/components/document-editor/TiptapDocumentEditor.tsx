@@ -1049,7 +1049,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const undoShortcut = isMacPlatform ? '⌘Z' : 'Ctrl+Z'
   const redoShortcut = isMacPlatform ? '⌘⇧Z' : 'Ctrl+Shift+Z'
   const findShortcut = isMacPlatform ? '⌘F' : 'Ctrl+F'
-  const { files, folders } = useLibraryData(true)
+  const { files, folders } = useLibraryData()
   const accountEmail = useAuthStore((state) => state.email)
   const collaboration = useYjsDocumentSync(fileId, accountEmail)
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])

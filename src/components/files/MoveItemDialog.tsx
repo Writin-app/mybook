@@ -54,8 +54,9 @@ export function MoveItemDialog({
   }
 
   const folderList = useMemo(() => {
-    const folderIds = new Set(folders.map((folder) => folder.id))
-    return [...folders, ...createdFolders.filter((folder) => !folderIds.has(folder.id))]
+    const activeFolders = folders.filter((folder) => !folder.isDeleted)
+    const folderIds = new Set(activeFolders.map((folder) => folder.id))
+    return [...activeFolders, ...createdFolders.filter((folder) => !folderIds.has(folder.id))]
   }, [createdFolders, folders])
   const foldersByParent = useMemo(() => {
     const children = new Map<string | null, MyBookFolder[]>()

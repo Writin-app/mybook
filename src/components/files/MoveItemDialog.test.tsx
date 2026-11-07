@@ -292,4 +292,33 @@ describe('MoveItemDialog', () => {
     expect(parentGroup).toHaveClass('pl-1.5')
     expect(parentGroup).toHaveClass('sm:pl-2')
   })
+
+  it('filters out deleted folders so they cannot be selected or used as parent folders', () => {
+    const foldersWithDeleted: MyBookFolder[] = [
+      ...folders,
+      {
+        id: 'trash-folder',
+        driveFolderId: null,
+        name: 'Deleted Project',
+        parentId: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        isDeleted: true,
+      },
+    ]
+
+    render(
+      <MoveItemDialog
+        isOpen
+        itemKind="file"
+        folders={foldersWithDeleted}
+        onClose={vi.fn()}
+        onMove={vi.fn().mockResolvedValue({ success: true })}
+        onCreateFolder={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('treeitem', { name: /Projects/ })).toBeInTheDocument()
+    expect(screen.queryByRole('treeitem', { name: /Deleted Project/ })).not.toBeInTheDocument()
+  })
 })
