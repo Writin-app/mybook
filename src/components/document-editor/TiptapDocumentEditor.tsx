@@ -37,6 +37,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { useIsMobile } from '../../hooks/use-mobile'
 import { getVisualViewportBounds } from '../../hooks/useVisualViewport'
+import { computeCaretScrollAdjustment } from './mobileCaretScroll'
 import { backupDocumentToDrive, copyDriveFileLink, openDriveFileInBrowser } from '../../services/googleDrive'
 import { compressImageFile } from '../../utils/imageCompression'
 import { contentToMarkdown, documentToMyBookMarkdown, downloadMyBookMarkdown, isMarkdownText, myBookMarkdownToDocument } from '../../utils/mybookMarkdown'
@@ -1728,24 +1729,45 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     inlineLinkToolbarRef.current = nextToolbar
     setInlineLinkToolbar(nextToolbar)
   }, [])
+  const scrollCaretRafRef = useRef<number | null>(null)
   const keepCaretVisibleAboveToolbar = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
-    try {
-      const { selection } = currentEditor.state
-      const coords = currentEditor.view.coordsAtPos(selection.to)
-      if (!coords || !Number.isFinite(coords.bottom)) return
-      const bounds = getVisualViewportBounds()
-      const toolbarHeight = 44
-      const visibleBottom = bounds.height - bounds.keyboardOffset
-      const dangerZoneTop = visibleBottom - toolbarHeight - 24
-      if (coords.bottom > dangerZoneTop) {
+    if (scrollCaretRafRef.current !== null) {
+      window.cancelAnimationFrame(scrollCaretRafRef.current)
+      scrollCaretRafRef.current = null
+    }
+
+    // Do not scroll during text selection ranges or IME composition to prevent
+    // Android native selection handles, magnifier, and keyboard from flickering/flashing.
+    if (!currentEditor.state.selection.empty || currentEditor.view.composing) {
+      return
+    }
+
+    scrollCaretRafRef.current = window.requestAnimationFrame(() => {
+      scrollCaretRafRef.current = null
+      if (currentEditor.isDestroyed || !currentEditor.isFocused || !currentEditor.state.selection.empty || currentEditor.view.composing) {
+        return
+      }
+
+      const toolbarElement = document.querySelector<HTMLElement>('.mybook-mobile-document-toolbar')
+      const overlap = computeCaretScrollAdjustment({
+        editor: currentEditor,
+        toolbarElement,
+      })
+
+      if (overlap > 0) {
         const scrollContainer = document.querySelector('main')
         if (scrollContainer) {
-          const overlap = coords.bottom - dangerZoneTop
           scrollContainer.scrollTop += overlap
         }
       }
-    } catch {
-      // Ignore coordinate lookup errors during rapid typing
+    })
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (scrollCaretRafRef.current !== null) {
+        window.cancelAnimationFrame(scrollCaretRafRef.current)
+      }
     }
   }, [])
   const editor = useEditor({
@@ -2304,7 +2326,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       updateSlashMenu(currentEditor)
       updateMentionMenu(currentEditor)
       updatePasteAsMenu(currentEditor)
-      if (isMobileRef.current && currentEditor.isFocused) {
+      if (isMobileRef.current && currentEditor.isFocused && currentEditor.state.selection.empty && !currentEditor.view.composing) {
         keepCaretVisibleAboveToolbar(currentEditor)
       }
 
@@ -2346,7 +2368,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       updateSlashMenu(currentEditor)
       updateMentionMenu(currentEditor)
       updatePasteAsMenu(currentEditor)
-      if (isMobileRef.current && currentEditor.isFocused) {
+      if (isMobileRef.current && currentEditor.isFocused && currentEditor.state.selection.empty && !currentEditor.view.composing) {
         keepCaretVisibleAboveToolbar(currentEditor)
       }
     },
