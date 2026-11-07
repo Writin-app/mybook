@@ -149,12 +149,23 @@ export function SelectionAiPopover({
     try {
       const editorRect = editor.view.dom.getBoundingClientRect()
       const viewportWidth = typeof window === 'undefined' ? 1024 : window.innerWidth
-      let selectionRect: { top: number; bottom: number } | undefined
+      let selectionRect: { top: number; bottom: number; left: number } | undefined
       try {
         selectionRect = editor.view.coordsAtPos(range.from)
       } catch {
         // Fallback
       }
+
+      let textLeft: number | undefined
+      try {
+        const resolved = editor.state.doc.resolve(range.from)
+        const blockStart = resolved.start(resolved.depth)
+        const blockCoords = editor.view.coordsAtPos(blockStart)
+        textLeft = blockCoords.left
+      } catch {
+        // Fallback
+      }
+
       const selectionTop = selectionRect?.top ?? editorRect.top
       const selectionBottom = selectionRect?.bottom ?? editorRect.bottom
       const viewportHeight = typeof window === 'undefined' ? 768 : window.innerHeight
@@ -165,21 +176,21 @@ export function SelectionAiPopover({
 
       const maxAllowedWidth = 440
       const width = Math.max(280, Math.min(maxAllowedWidth, editorRect.width, viewportWidth - 32))
-      const targetCenter = editorRect.left + editorRect.width / 2
-      const halfWidth = width / 2
+
+      // Left-align the sleek floating bar with the text start, clamped within viewport padding
+      const targetLeft = textLeft ?? selectionRect?.left ?? editorRect.left
       const padding = 16
-      const minCenter = halfWidth + padding
-      const maxCenter = Math.max(minCenter, viewportWidth - halfWidth - padding)
-      const clampedCenter = Math.max(minCenter, Math.min(maxCenter, targetCenter))
+      const maxLeft = Math.max(padding, viewportWidth - width - padding)
+      const clampedLeft = Math.max(padding, Math.min(maxLeft, targetLeft))
 
       return {
         position: 'fixed' as const,
-        left: clampedCenter,
+        left: clampedLeft,
         top: enoughRoomAbove ? selectionTop - 8 : Math.max(8, selectionBottom + 8),
         width,
         maxWidth: 'calc(100vw - 2rem)',
         maxHeight: 'min(42dvh, 24rem)',
-        transform: enoughRoomAbove ? 'translate(-50%, -100%)' : 'translateX(-50%)',
+        transform: enoughRoomAbove ? 'translateY(-100%)' : 'none',
         zIndex: 100,
       }
     } catch {
