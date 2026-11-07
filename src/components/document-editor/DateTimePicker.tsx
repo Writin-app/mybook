@@ -394,7 +394,20 @@ function DateTimePickerOverlay({ isMobile, open, onOpenChange, disabled, classNa
   label: string
   children: ReactNode
 }) {
-  const trigger = <Button variant="ghost" size="sm" disabled={disabled} className={cn('h-auto px-0 py-0 font-normal text-muted-foreground hover:bg-transparent hover:text-muted-foreground aria-expanded:bg-transparent aria-expanded:text-muted-foreground', className)} aria-label={ariaLabel}>{label}</Button>
+  const trigger = (
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={disabled}
+      className={cn(
+        'h-auto px-0 py-0 font-normal text-[length:inherit] leading-[inherit] text-inherit hover:bg-transparent hover:text-inherit aria-expanded:bg-transparent aria-expanded:text-inherit',
+        className
+      )}
+      aria-label={ariaLabel}
+    >
+      {label}
+    </Button>
+  )
 
   if (isMobile) {
     return (

@@ -291,7 +291,12 @@
     content: attr(data-placeholder);
   }
   .tiptap hr { margin: 2rem 0; border: 0; border-top: 2px solid color-mix(in srgb, var(--app-border) 75%, var(--foreground)); }
-  .tiptap .mybook-date-time-block button { color: color-mix(in srgb, var(--muted-foreground) 65%, var(--foreground)); }
+  .tiptap .mybook-date-time-block button {
+    font-size: inherit;
+    line-height: inherit;
+    color: inherit;
+    background: transparent;
+  }
   .tiptap a {
     color: var(--primary);
     text-decoration: underline;
@@ -901,9 +906,6 @@
   body:has([data-paste-as-menu="true"]) .mybook-table-column-grip,
   body:has([data-paste-as-menu="true"]) .mybook-table-row-grip,
   body:has([data-paste-as-menu="true"]) .mybook-table-resize-handle,
-  body:has([data-selection-toolbar="true"]) .mybook-table-add-column,
-  body:has([data-selection-toolbar="true"]) .mybook-table-add-row,
-  body:has([data-selection-toolbar="true"]) .mybook-table-add-corner,
   body:has([data-selection-toolbar="true"]) .mybook-table-column-grip,
   body:has([data-selection-toolbar="true"]) .mybook-table-row-grip,
   body:has([data-selection-toolbar="true"]) .mybook-table-resize-handle,

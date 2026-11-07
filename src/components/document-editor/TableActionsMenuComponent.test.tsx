@@ -238,4 +238,30 @@ describe('TableActionsMenu touch controls & boundaries', () => {
     // Since row is at 680-730 in 768 viewport, menu cannot fit below, so it flips above
     expect(topStyle).toBeLessThan(680)
   })
+
+  it('scrolls wrapper to scrollHeight and clears selection when Add row is clicked on a fixed-row table', () => {
+    isTouchMock = false
+    editor = createTableEditor()
+    editor.commands.setTextSelection(4)
+
+    const wrapper = editor.view.dom.querySelector('.tableWrapper') as HTMLElement
+    wrapper?.setAttribute('data-fixed-rows', 'true')
+    Object.defineProperty(wrapper, 'scrollHeight', { configurable: true, value: 500 })
+    Object.defineProperty(wrapper, 'clientHeight', { configurable: true, value: 200 })
+    wrapper.scrollTop = 0
+
+    render(<TableActionsMenu editor={editor} />)
+
+    const addRow = screen.getByRole('button', { name: 'Add row' })
+    expect(addRow).toBeTruthy()
+
+    const scrollIntoViewMock = vi.fn()
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock
+
+    fireEvent.click(addRow)
+
+    // The wrapper should be scrolled so the new row and caret remain visible
+    expect(wrapper.scrollTop).toBe(500)
+    expect(scrollIntoViewMock).toHaveBeenCalled()
+  })
 })
