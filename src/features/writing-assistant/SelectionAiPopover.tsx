@@ -96,7 +96,8 @@ export function SelectionAiPopover({
     try {
       const editorRect = editor.view.dom.getBoundingClientRect()
       const viewportWidth = typeof window === 'undefined' ? 1024 : window.innerWidth
-      const width = Math.max(280, Math.min(editorRect.width, viewportWidth - 32))
+      const maxAllowedWidth = status === 'loading' ? 440 : isReviewState ? 540 : 440
+      const width = Math.max(280, Math.min(maxAllowedWidth, editorRect.width, viewportWidth - 32))
       let selectionRect: { top: number; bottom: number } | undefined
       try {
         selectionRect = editor.view.coordsAtPos(range.from)
@@ -109,9 +110,17 @@ export function SelectionAiPopover({
       const enoughRoomAbove = isReviewState
         ? selectionTop > 180
         : viewportHeight - selectionBottom < 80 && selectionTop > 80
+
+      const targetCenter = editorRect.left + editorRect.width / 2
+      const halfWidth = width / 2
+      const padding = 16
+      const minCenter = halfWidth + padding
+      const maxCenter = Math.max(minCenter, viewportWidth - halfWidth - padding)
+      const clampedCenter = Math.max(minCenter, Math.min(maxCenter, targetCenter))
+
       return {
         position: 'fixed' as const,
-        left: editorRect.left + editorRect.width / 2,
+        left: clampedCenter,
         top: enoughRoomAbove ? selectionTop - 8 : Math.max(8, selectionBottom + 8),
         width,
         maxWidth: 'calc(100vw - 2rem)',
@@ -130,7 +139,7 @@ export function SelectionAiPopover({
       role={isEditorOverlayState ? 'region' : 'dialog'}
       aria-label={isReviewState ? 'Writin Assist review' : isEditorPromptState ? 'Write with Writin Assist' : 'Writin Assist'}
       data-selection-ai-popover="true"
-      className={`${isEditorOverlayState ? 'fixed -translate-x-1/2' : `absolute right-0 ${placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'}`} z-[100] rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] text-foreground shadow-[0_12px_28px_rgba(0,0,0,0.16)] ${isEditorOverlayState ? 'p-0' : 'w-[min(32rem,calc(100vw-1rem))] p-3.5'}`}
+      className={`${isEditorOverlayState ? 'fixed' : `absolute right-0 ${placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'}`} z-[100] rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] text-foreground shadow-[0_12px_28px_rgba(0,0,0,0.16)] ${isEditorOverlayState ? 'p-0' : 'w-[min(22rem,calc(100vw-2rem))] p-3.5'}`}
       style={reviewStyle}
       onMouseDown={(e) => e.stopPropagation()}
     >

@@ -368,4 +368,48 @@ describe('SelectionAiPopover', () => {
 
     expect(ed.getText()).toBe(originalText)
   })
+
+  it('caps generating popover width and clamps position to prevent desktop clipping', async () => {
+    const ed = setupEditor()
+    vi.spyOn(ed.view, 'coordsAtPos').mockReturnValue({ left: 700, right: 850, top: 300, bottom: 320 })
+    // Simulate an offset editor on desktop (e.g. 960px wide editor starting at left=250px with viewport 1024px)
+    vi.spyOn(ed.view.dom, 'getBoundingClientRect').mockReturnValue({
+      x: 250, y: 100, left: 250, right: 1210, top: 100, bottom: 600, width: 960, height: 500,
+      toJSON: () => ({}),
+    } as DOMRect)
+    window.innerWidth = 1024
+
+    const mockEngine = createMockTransformationEngine({
+      supportedCapabilities: ['rewrite', 'translation'],
+      delayMs: 200,
+      transformFn: () => 'A fast fox leapt.',
+    })
+
+    act(() => {
+      ed.view.dispatch(ed.state.tr.setSelection(TextSelection.create(ed.state.doc, 1, 20)))
+    })
+
+    render(
+      <SelectionAiPopover
+        editor={ed}
+        fileId="test-doc"
+        customEngine={mockEngine}
+        onClose={() => undefined}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Summarize/i }))
+
+    // Popover is now in loading/generating state
+    const popover = screen.getByRole('region', { name: /Writin Assist review/i })
+    expect(popover).toBeInTheDocument()
+
+    // Width must be capped at 440px rather than expanding to editor's 960px width
+    expect(popover.style.width).toBe('440px')
+
+    // Popover center must be clamped within viewport [440/2 + 16 = 236, 1024 - 440/2 - 16 = 788]
+    const leftNum = parseFloat(popover.style.left)
+    expect(leftNum).toBeLessThanOrEqual(788)
+    expect(leftNum).toBeGreaterThanOrEqual(236)
+  })
 })

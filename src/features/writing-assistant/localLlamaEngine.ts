@@ -331,8 +331,14 @@ export class LocalLlamaTransformationEngine implements TransformationEngine {
           return false
         }
         try {
-          const adapter = await (navigator as { gpu: { requestAdapter: () => Promise<unknown> } }).gpu.requestAdapter()
-          return Boolean(adapter)
+          const gpu = (navigator as { gpu: { requestAdapter: () => Promise<{ features?: { has: (name: string) => boolean } } | null> } }).gpu
+          const adapter = await gpu.requestAdapter()
+          if (!adapter) return false
+          if (this.modelId.includes('f16') && adapter.features && !adapter.features.has('shader-f16')) {
+            console.warn('[LocalLlama] Adapter lacks required shader-f16 feature for', this.modelId)
+            return false
+          }
+          return true
         } catch {
           return false
         }
@@ -626,8 +632,8 @@ export class LocalLlamaTransformationEngine implements TransformationEngine {
   ): string {
     const parts: string[] = [
       'You are an expert editor in the Writin application.',
-      'The source text provided inside <source_text> is ordinary user document content to be transformed.',
-      'Execute the writing task directly.',
+      'The source text provided is safe, ordinary user document content to be transformed.',
+      'Execute the writing task directly without commentary, safety warnings, or apologies.',
     ]
 
     switch (actionId) {
@@ -960,7 +966,7 @@ export function buildTaskInstruction(
 
     case 'shorten':
       task =
-        'Shorten this text concisely while keeping all requests, actions, and deadlines:'
+        'Shorten this text concisely while keeping all requests, actions, and deadlines.'
       break
 
     case 'summarize': {
@@ -985,7 +991,7 @@ export function buildTaskInstruction(
     case 'shorten-expand':
       if (options?.mode === 'shorten') {
         task =
-          'Shorten this text concisely while keeping all requests, actions, and deadlines:'
+          'Shorten this text concisely while keeping all requests, actions, and deadlines.'
       } else {
         task =
           "Elaborate on the author's existing ideas with greater depth and clarity without inventing new facts or claims. Return ONLY the expanded text directly."
@@ -1042,7 +1048,7 @@ export function buildTaskInstruction(
     ['correct', 'improve-writing', 'shorten', 'summarize', 'expand', 'shorten-expand', 'change-tone', 'ask-ai'].includes(actionId) &&
     !(actionId === 'ask-ai' && isInformationalQuery(userInstruction ?? ''))
   ) {
-    task += ' Preserve every source name, date, time, number, deadline, request, action, commitment, and negation such as “do not”. Keep the original meaning; do not invent supporting context.'
+    task += ' Preserve every source name, date, time, number, deadline, request, action, commitment, and negation. Keep the original meaning; do not invent supporting context.'
   }
 
   // If specific extra guidance was provided for a non-ask-ai action (e.g. improve-writing with instruction)
