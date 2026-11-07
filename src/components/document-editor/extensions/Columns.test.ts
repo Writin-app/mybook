@@ -291,6 +291,114 @@ describe('Columns and Column extensions', () => {
     element.remove()
   })
 
+  it('advances to next column when pressing Enter in an empty non-last column', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({
+      element,
+      extensions: [Document, Paragraph, Text, Columns, Column],
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'columns',
+            attrs: { count: 2 },
+            content: [
+              {
+                type: 'column',
+                content: [{ type: 'paragraph' }],
+              },
+              {
+                type: 'column',
+                content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col 2 text' }] }],
+              },
+            ],
+          },
+        ],
+      },
+    })
+
+    editor.chain().setTextSelection(3).run()
+
+    const shortcuts = Columns.config.addKeyboardShortcuts?.call({ editor } as never)
+    const handled = shortcuts?.['Enter']?.({ editor, state: editor.state, dispatch: editor.view.dispatch } as never)
+    expect(handled).toBe(true)
+
+    const col1 = editor.state.doc.child(0).child(0)
+    expect(col1.childCount).toBe(1)
+
+    const { $from } = editor.state.selection
+    let colIndex = -1
+    for (let d = $from.depth; d > 0; d -= 1) {
+      if ($from.node(d).type.name === 'column') {
+        colIndex = $from.index(d - 1)
+        break
+      }
+    }
+    expect(colIndex).toBe(1)
+
+    editor.destroy()
+    element.remove()
+  })
+
+  it('removes trailing empty paragraph and advances to next column when pressing Enter in a non-last column', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({
+      element,
+      extensions: [Document, Paragraph, Text, Columns, Column],
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'columns',
+            attrs: { count: 2 },
+            content: [
+              {
+                type: 'column',
+                content: [
+                  { type: 'paragraph', content: [{ type: 'text', text: 'Left text' }] },
+                  { type: 'paragraph' },
+                ],
+              },
+              {
+                type: 'column',
+                content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Right text' }] }],
+              },
+            ],
+          },
+        ],
+      },
+    })
+
+    let emptyParagraphPos = 0
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isTextblock && node.content.size === 0 && emptyParagraphPos === 0) {
+        emptyParagraphPos = pos
+      }
+    })
+    editor.chain().setTextSelection(emptyParagraphPos + 1).run()
+
+    const shortcuts = Columns.config.addKeyboardShortcuts?.call({ editor } as never)
+    const handled = shortcuts?.['Enter']?.({ editor, state: editor.state, dispatch: editor.view.dispatch } as never)
+    expect(handled).toBe(true)
+
+    const col1 = editor.state.doc.child(0).child(0)
+    expect(col1.childCount).toBe(1)
+    expect(col1.child(0).textContent).toBe('Left text')
+
+    const { $from } = editor.state.selection
+    let colIndex = -1
+    for (let d = $from.depth; d > 0; d -= 1) {
+      if ($from.node(d).type.name === 'column') {
+        colIndex = $from.index(d - 1)
+        break
+      }
+    }
+    expect(colIndex).toBe(1)
+
+    editor.destroy()
+    element.remove()
+  })
+
   it('exits columns container when pressing ArrowDown at the end of the last column when Columns is the last block', () => {
     const element = document.body.appendChild(document.createElement('div'))
     const editor = new Editor({

@@ -67,7 +67,8 @@ export const EmptyBlockPlaceholder = Extension.create({
             }
             if (parent?.type.name === 'column') {
               const isFocusedInThisBlock = pos === activeTextblockPos
-              if (!isFocusedInThisBlock) {
+              const isOnlyChildInColumn = parent.childCount === 1
+              if (!isFocusedInThisBlock && isOnlyChildInColumn && node.type.name === 'paragraph') {
                 // Determine column index (1-based)
                 // pos is inside parent (column), which is inside grandparent (columns)
                 const $pos = state.doc.resolve(pos)
@@ -88,8 +89,9 @@ export const EmptyBlockPlaceholder = Extension.create({
                 }))
                 return
               }
-              // If focused in this block, allow the normal emptyBlockPlaceholder decoration below
-              return
+              if (node.type.name === 'paragraph') {
+                return
+              }
             }
             if (node.type.name === 'heading' || (node.type.name !== 'paragraph' && pos === activeTextblockPos)) {
               const isHeading = node.type.name === 'heading'

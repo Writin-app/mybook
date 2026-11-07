@@ -147,4 +147,33 @@ describe('FindReplaceDialog', () => {
 
     scrollSpy.mockRestore()
   })
+
+  it('intercepts repeated Mod+F presses, preventing native browser search and focusing/selecting the find input', () => {
+    const editorElement = document.body.appendChild(document.createElement('div'))
+    editor = new Editor({ element: editorElement, extensions: [StarterKit], content: '<p>alpha beta</p>' })
+    render(<FindReplaceDialog editor={editor} open onOpenChange={() => undefined} />)
+
+    const findInput = screen.getByLabelText('Find') as HTMLInputElement
+    fireEvent.change(findInput, { target: { value: 'alpha' } })
+
+    const selectSpy = vi.spyOn(findInput, 'select')
+    const focusSpy = vi.spyOn(findInput, 'focus')
+
+    // Simulate Mod+F (Cmd+F / Ctrl+F) on the find input
+    const event = new KeyboardEvent('keydown', { key: 'f', metaKey: true, bubbles: true, cancelable: true })
+    findInput.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(focusSpy).toHaveBeenCalled()
+    expect(selectSpy).toHaveBeenCalled()
+
+    // Open replace and press Mod+F on replace input
+    fireEvent.click(screen.getByRole('button', { name: /toggle replace/i }))
+    const replaceInput = screen.getByLabelText('Replace with') as HTMLInputElement
+    const replaceEvent = new KeyboardEvent('keydown', { key: 'f', metaKey: true, bubbles: true, cancelable: true })
+    replaceInput.dispatchEvent(replaceEvent)
+
+    expect(replaceEvent.defaultPrevented).toBe(true)
+    expect(focusSpy).toHaveBeenCalled()
+  })
 })
