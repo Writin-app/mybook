@@ -83,7 +83,7 @@ describe('Mobile Editor More Menu & Header Actions', () => {
                   <span>Export to</span>
                 </div>
                 <DropdownMenuItem onClick={onExportPdf}>PDF (.pdf)</DropdownMenuItem>
-                <DropdownMenuItem onClick={onExportMarkdown}>Markdown (.md)</DropdownMenuItem>
+                <DropdownMenuItem onClick={onExportMarkdown}>Copy as Markdown</DropdownMenuItem>
                 <DropdownMenuItem onClick={onExportDocx}>Word (.docx)</DropdownMenuItem>
               </div>
             ) : (
@@ -157,7 +157,7 @@ describe('Mobile Editor More Menu & Header Actions', () => {
     // Now in export subview
     expect(screen.getByTestId('export-subview')).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'PDF (.pdf)' })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: 'Markdown (.md)' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Copy as Markdown' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Word (.docx)' })).toBeInTheDocument()
 
     // Click back button to return to main options

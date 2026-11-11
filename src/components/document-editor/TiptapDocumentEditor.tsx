@@ -40,7 +40,7 @@ import { getVisualViewportBounds } from '../../hooks/useVisualViewport'
 import { computeCaretScrollAdjustment } from './mobileCaretScroll'
 import { backupDocumentToDrive, copyDriveFileLink, openDriveFileInBrowser } from '../../services/googleDrive'
 import { compressImageFile } from '../../utils/imageCompression'
-import { contentToMarkdown, documentToMyBookMarkdown, downloadMyBookMarkdown, isMarkdownText, myBookMarkdownToDocument } from '../../utils/mybookMarkdown'
+import { contentToMarkdown, documentToMyBookMarkdown, isMarkdownText, myBookMarkdownToDocument } from '../../utils/mybookMarkdown'
 import { EmptyState } from '../common/EmptyState'
 import { AppHeader } from '../common/AppHeader'
 import { DeleteFileDialog } from '../files/DeleteFileDialog'
@@ -1063,6 +1063,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const loadedIdRef = useRef<string | null>(null)
   const [docxBlob, setDocxBlob] = useState<Blob | null>(null)
   const [docxMessage, setDocxMessage] = useState('')
+  const [copiedMarkdown, setCopiedMarkdown] = useState(false)
   const [slashMenu, setSlashMenu] = useState<SlashMenuState | null>(null)
   const [mentionMenu, setMentionMenu] = useState<SlashMenuState | null>(null)
   const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0)
@@ -1170,6 +1171,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     window.addEventListener('keydown', handleEditorMenuShortcuts, true)
     return () => window.removeEventListener('keydown', handleEditorMenuShortcuts, true)
   }, [isMacPlatform])
+
+  useEffect(() => {
+    if (!copiedMarkdown) return
+    const timer = window.setTimeout(() => setCopiedMarkdown(false), 2000)
+    return () => window.clearTimeout(timer)
+  }, [copiedMarkdown])
   const lastActiveSelectionRef = useRef({ from: 1, to: 1 })
   const contentSyncTimerRef = useRef<number | null>(null)
   const lastTypingTimeRef = useRef<number>(0)
@@ -3331,14 +3338,15 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
   }
 
-  const exportMarkdown = async (download: boolean) => {
+  const copyAsMarkdown = async () => {
     try {
       const markdown = documentToMyBookMarkdown(documentTitle, editor.getJSON(), { documentId: file.id })
-      setDocxMessage(download ? 'Writin Markdown downloaded.' : 'Writin Markdown ready.')
-      if (download) downloadMyBookMarkdown(markdown, documentTitle)
+      await navigator.clipboard?.writeText(markdown)
+      setCopiedMarkdown(true)
+      setDocxMessage('Markdown copied to clipboard.')
     } catch (error) {
-      devLog('error', 'Could not export Writin Markdown.', error)
-      setDocxMessage('Markdown export failed.')
+      devLog('error', 'Could not copy Markdown.', error)
+      setDocxMessage('Markdown copy failed.')
     }
   }
 
@@ -3492,8 +3500,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     else if (action === 'backup') void backupNow()
     else if (action === 'copy-link') void copyDriveLink()
     else if (action === 'print') handlePrintRef.current()
-    else if (action === 'export-pdf') handlePrintRef.current()
-    else if (action === 'export-markdown') void exportMarkdown(true)
+    else if (action === 'export-pdf') void exportPdf()
+    else if (action === 'export-markdown') void copyAsMarkdown()
     else if (action === 'download-docx') void exportDocx(true)
     else if (action === 'prepare-docx') void exportDocx(false)
     else if (action === 'open-drive' && file.driveFileId) void openDriveFileInBrowser(file.driveFileId)
@@ -3698,8 +3706,16 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     window.print()
   }
 
-  const exportPdf = () => {
-    handlePrint()
+  const exportPdf = async () => {
+    try {
+      const { createPdfBlob, downloadPdf } = await import('../../utils/pdf')
+      const blob = await createPdfBlob(documentTitle, editor.view.dom)
+      setDocxMessage('PDF downloaded.')
+      downloadPdf(blob, documentTitle)
+    } catch (error) {
+      devLog('error', 'Could not export PDF.', error)
+      setDocxMessage('PDF export failed.')
+    }
   }
 
   handlePrintRef.current = handlePrint
@@ -3714,6 +3730,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   return (
     <section className={`mybook-document-editor relative min-h-dvh w-full pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 ${documentSurfaceClass}`}>
       <AppHeader
+        className="print:hidden"
         leadingAction="sidebar"
         onBack={navigateBack}
         breadcrumbs={editorBreadcrumbs}
@@ -3757,8 +3774,19 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
               <DropdownMenuItem onClick={() => { void exportPdf(); setMobileMoreSubmenu('main') }}>
                 PDF (.pdf)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { void exportMarkdown(true); setMobileMoreSubmenu('main') }}>
-                Markdown (.md)
+              <DropdownMenuItem
+                closeOnClick={false}
+                onSelect={(event) => {
+                  event.preventDefault()
+                  void copyAsMarkdown()
+                }}
+                onClick={() => void copyAsMarkdown()}
+                className="flex items-center justify-between cursor-pointer"
+              >
+                <span>{copiedMarkdown ? 'Copied' : 'Copy as Markdown'}</span>
+                {copiedMarkdown ? (
+                  <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-primary shrink-0" />
+                ) : null}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => { void exportDocx(true); setMobileMoreSubmenu('main') }}>
                 Word (.docx)
@@ -3800,7 +3828,20 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                 <DropdownMenuSubTrigger className="hidden md:flex">Export to</DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
                   <DropdownMenuItem onClick={() => void exportPdf()}>PDF (.pdf)</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => void exportMarkdown(true)}>Markdown (.md)</DropdownMenuItem>
+                  <DropdownMenuItem
+                    closeOnClick={false}
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      void copyAsMarkdown()
+                    }}
+                    onClick={() => void copyAsMarkdown()}
+                    className="flex items-center justify-between cursor-pointer"
+                  >
+                    <span>{copiedMarkdown ? 'Copied' : 'Copy as Markdown'}</span>
+                    {copiedMarkdown ? (
+                      <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-primary shrink-0" />
+                    ) : null}
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => void exportDocx(true)}>Word (.docx)</DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
@@ -3820,9 +3861,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
               <DropdownMenuItem variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>Delete</DropdownMenuItem>
               <DropdownMenuSeparator />
               {file.workspaceType === 'local' || file.syncStatus === 'local' ? <div className="px-2 py-1.5 text-xs text-muted-foreground">Local</div> : <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground"><span>{file.syncStatus === 'backing-up' ? 'Syncing…' : file.syncStatus === 'backed-up' ? 'Synced with cloud' : file.syncStatus === 'failed' ? 'Sync failed' : file.syncStatus === 'offline' ? 'Offline · saved locally' : 'Waiting to sync'}</span><button type="button" aria-label="Sync now" title="Sync now" disabled={file.syncStatus === 'backing-up'} onClick={() => void backupNow()} className="rounded p-1 text-foreground hover:bg-accent disabled:opacity-50"><ArrowPathIcon className={`size-4 ${file.syncStatus === 'backing-up' ? 'animate-spin' : ''}`} /></button></div>}
-              <div className="px-2 pb-1.5 text-xs text-muted-foreground">
+              <div className="px-2 pb-1 text-xs text-muted-foreground">
                 <span>Created {new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(file.createdAt))}</span>
               </div>
+              <DocumentTextCounts editor={editor} />
             </>
           )
         }
@@ -3839,7 +3881,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             <Dropdown.Item id="import">Import document</Dropdown.Item>
             <Dropdown.Item id="duplicate">Duplicate</Dropdown.Item>
             <Dropdown.Item id="export-pdf">Export PDF</Dropdown.Item>
-            <Dropdown.Item id="export-markdown">Export Writin Markdown</Dropdown.Item>
+            <Dropdown.Item id="export-markdown">Copy as Markdown</Dropdown.Item>
             <Dropdown.Item id="download-docx">Download DOCX</Dropdown.Item>
             <Dropdown.Item id="prepare-docx">Prepare DOCX</Dropdown.Item>
             <Dropdown.Item id="delete" variant="danger">Move to Trash</Dropdown.Item>
@@ -3931,7 +3973,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       <input ref={importInputRef} type="file" accept=".md,.markdown,.mybook.md,.txt,.docx,.html,.htm,.rtf,text/markdown,text/plain,text/html,application/rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="sr-only" aria-label="Import document file" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void importDocumentFile(selectedFile); event.target.value = '' }} />
       <input ref={fileInputRef} type="file" className="sr-only" aria-label="Attach file" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void insertAttachmentFile(selectedFile); event.target.value = '' }} />
       <input ref={imageInputRef} type="file" accept="image/*" className="sr-only" aria-label="Insert image" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void insertImageFile(selectedFile); event.target.value = '' }} />
-      {docxMessage ? <p role="status" className="mx-auto mt-3 max-w-3xl px-4 text-sm text-muted-foreground sm:px-6">{docxMessage}<span className="sr-only">{docxBlob ? ` Export size ${docxBlob.size} bytes.` : ''}</span></p> : null}
+      {docxMessage ? <p role="status" className="print:hidden mx-auto mt-3 max-w-3xl px-4 text-sm text-muted-foreground sm:px-6">{docxMessage}<span className="sr-only">{docxBlob ? ` Export size ${docxBlob.size} bytes.` : ''}</span></p> : null}
       <div
         className={`mybook-document-canvas w-full ${zoomedIn ? '' : 'overflow-x-clip'} px-0 py-0`}
         onMouseDownCapture={(event) => {
@@ -4120,7 +4162,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                   </p>
                 ) : null}
                 <label htmlFor="page-document-title" className="sr-only">Page title</label>
-                <h1 className="hidden print:block text-[2.75rem] font-extrabold leading-[1.15] text-black mb-4">
+                <h1 className="hidden print:block text-[34px] font-extrabold leading-[40px] text-black mb-4">
                   {title.trim() || placeholderTitle}
                 </h1>
                 <textarea
@@ -4148,7 +4190,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                       editor.chain().focus().insertContentAt(0, { type: 'paragraph' }).setTextSelection(1).run()
                     }
                   }}
-                  className={`block print:hidden min-h-[2.1875rem] sm:min-h-[3rem] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[1.875rem] font-extrabold leading-[1.2] tracking-normal outline-none placeholder:text-muted-foreground placeholder:opacity-60 focus-visible:ring-0 sm:text-[2.75rem] sm:leading-[1.15] ${duplicateTitleWarning ? 'text-destructive' : 'text-foreground'}`}
+                  className={`block print:hidden min-h-[36px] sm:min-h-[40px] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[28px] font-extrabold leading-[36px] tracking-normal outline-none placeholder:text-muted-foreground placeholder:opacity-60 focus-visible:ring-0 sm:text-[34px] sm:leading-[40px] ${duplicateTitleWarning ? 'text-destructive' : 'text-foreground'}`}
                   aria-label="Page title"
                 />
               </div>
@@ -4261,7 +4303,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         />
       ) : null}
       {!isPageLocked ? <DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} onEditLink={openSelectionLinkEditor} onOpenAiActions={() => mobileSelectionAiRef.current?.open()} variant="mobile" /> : null}
-      <DocumentTextCounts editor={editor} />
       <DeleteFileDialog
         isOpen={isDeleteDialogOpen}
         fileName={documentTitle}

@@ -27,18 +27,19 @@ async function openNewDocument(page: Page) {
   await page.getByRole('menuitem', { name: 'Document', exact: true }).click()
 }
 
-test('desktop counts update and More has no Writing Assistant or Proofread entry', async ({ page }) => {
+test('desktop counts update in More menu and More has no Writing Assistant or Proofread entry', async ({ page }) => {
   await openNewDocument(page)
   const editor = page.locator('.tiptap[contenteditable="true"]')
   await editor.fill('Quick sample text for rewrite.')
+
+  await page.getByRole('button', { name: 'More actions' }).click()
+  await expect(page.getByRole('menu', { name: 'More actions' })).toBeVisible()
 
   await expect(page.getByRole('status', { name: 'Document word and character count' }))
     .toContainText('5 words')
   await expect(page.getByRole('status', { name: 'Document word and character count' }))
     .toContainText('30 characters')
 
-  await page.getByRole('button', { name: 'More actions' }).click()
-  await expect(page.getByRole('menu', { name: 'More actions' })).toBeVisible()
   await expect(page.getByRole('menu').getByText('Writing Assistant')).toHaveCount(0)
   await expect(page.getByRole('menu').getByText('Proofread')).toHaveCount(0)
 })
