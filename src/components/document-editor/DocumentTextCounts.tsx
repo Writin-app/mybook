@@ -2,7 +2,13 @@ import type { Editor } from '@tiptap/react'
 import { useEffect, useState } from 'react'
 import { getDocumentTextCounts } from './documentTextCountUtils'
 
-export function DocumentTextCounts({ editor }: { editor: Editor }) {
+export function DocumentTextCounts({
+  editor,
+  className = 'px-2 pb-1.5 text-xs text-muted-foreground',
+}: {
+  editor: Editor
+  className?: string
+}) {
   const [text, setText] = useState(() => editor.getText({ blockSeparator: '\n' }))
 
   useEffect(() => {
@@ -22,10 +28,11 @@ export function DocumentTextCounts({ editor }: { editor: Editor }) {
       role="status"
       aria-live="polite"
       aria-label="Document word and character count"
-      className="pointer-events-none fixed right-3 z-30 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)]/95 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur md:!bottom-4 md:right-4 md:z-40 md:text-sm"
-      style={{ bottom: 'calc(var(--mybook-keyboard-offset, 0px) + 5.5rem + env(safe-area-inset-bottom, 0px))' }}
+      className={className}
     >
-      {words} {words === 1 ? 'word' : 'words'} · {characters} {characters === 1 ? 'character' : 'characters'}
+      <span>
+        {words} {words === 1 ? 'word' : 'words'} · {characters} {characters === 1 ? 'character' : 'characters'}
+      </span>
     </div>
   )
 }

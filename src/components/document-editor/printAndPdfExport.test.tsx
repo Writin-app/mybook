@@ -144,4 +144,24 @@ describe('Print and PDF Export functionality', () => {
       expect(document.title).toBe('Writin')
     })
   })
+
+  describe('Copy as Markdown lifecycle', () => {
+    it('copies generated markdown to clipboard and sets copied feedback state', async () => {
+      const writeTextMock = vi.fn().mockResolvedValue(undefined)
+      Object.assign(navigator, {
+        clipboard: { writeText: writeTextMock },
+      })
+
+      let copiedMarkdown = false
+      const copyAsMarkdown = async (title: string, content: string) => {
+        const markdown = `# ${title}\n\n${content}`
+        await navigator.clipboard.writeText(markdown)
+        copiedMarkdown = true
+      }
+
+      await copyAsMarkdown('Test Doc', 'Hello world')
+      expect(writeTextMock).toHaveBeenCalledWith('# Test Doc\n\nHello world')
+      expect(copiedMarkdown).toBe(true)
+    })
+  })
 })

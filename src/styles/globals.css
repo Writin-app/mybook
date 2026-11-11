@@ -203,10 +203,17 @@
     font-family: var(--font-editor);
   }
 
+  #page-document-title {
+    font-size: 34px;
+    line-height: 40px;
+    font-weight: 800;
+  }
+
   .tiptap {
     color: var(--foreground);
-    font-size: 1rem;
-    line-height: 1.8;
+    font-size: 16px;
+    line-height: 24px;
+    font-weight: 400;
     scroll-padding-block: 8rem;
     overflow-wrap: anywhere;
     caret-color: var(--primary);
@@ -260,10 +267,10 @@
     content: none;
   }
 
-  .tiptap h1 { font-size: 2.5rem; line-height: 1.2; font-weight: 700; }
-  .tiptap h2 { font-size: 2rem; line-height: 1.25; font-weight: 650; }
-  .tiptap h3 { font-size: 1.5rem; line-height: 1.35; font-weight: 650; }
-  .tiptap h4 { font-size: 1.25rem; line-height: 1.4; font-weight: 650; }
+  .tiptap h1 { font-size: 30px; line-height: 36px; font-weight: 700; }
+  .tiptap h2 { font-size: 24px; line-height: 32px; font-weight: 700; }
+  .tiptap h3 { font-size: 22px; line-height: 28px; font-weight: 700; }
+  .tiptap h4 { font-size: 20px; line-height: 28px; font-weight: 700; }
   .tiptap h1,
   .tiptap h2,
   .tiptap h3,
@@ -445,10 +452,10 @@
   .tiptap .mybook-toggle-caret:hover { background: var(--app-subtle); color: var(--foreground); }
   .tiptap .mybook-toggle-title { min-width: 0; flex: 1; border: 0; background: transparent; color: inherit; font: inherit; outline: none; }
   .tiptap .mybook-toggle-title::placeholder { color: var(--muted-foreground); opacity: 0.6; }
-  .tiptap .mybook-toggle[data-level="1"] .mybook-toggle-title { font-size: 2.5rem; line-height: 1.2; font-weight: 700; }
-  .tiptap .mybook-toggle[data-level="2"] .mybook-toggle-title { font-size: 2rem; line-height: 1.25; font-weight: 650; }
-  .tiptap .mybook-toggle[data-level="3"] .mybook-toggle-title { font-size: 1.5rem; line-height: 1.35; font-weight: 650; }
-  .tiptap .mybook-toggle[data-level="4"] .mybook-toggle-title { font-size: 1.25rem; line-height: 1.4; font-weight: 650; }
+  .tiptap .mybook-toggle[data-level="1"] .mybook-toggle-title { font-size: 30px; line-height: 36px; font-weight: 700; }
+  .tiptap .mybook-toggle[data-level="2"] .mybook-toggle-title { font-size: 24px; line-height: 32px; font-weight: 700; }
+  .tiptap .mybook-toggle[data-level="3"] .mybook-toggle-title { font-size: 22px; line-height: 28px; font-weight: 700; }
+  .tiptap .mybook-toggle[data-level="4"] .mybook-toggle-title { font-size: 20px; line-height: 28px; font-weight: 700; }
   .tiptap .mybook-toggle[data-level="1"] .mybook-toggle-caret { width: 1.75rem; height: 1.75rem; font-size: 1.5rem; }
   .tiptap .mybook-toggle[data-level="2"] .mybook-toggle-caret { width: 1.5rem; height: 1.5rem; font-size: 1.35rem; }
   .tiptap .mybook-toggle[data-level="3"] .mybook-toggle-caret { width: 1.35rem; height: 1.35rem; font-size: 1.2rem; }
@@ -1030,26 +1037,35 @@
   }
 
   @media (max-width: 640px) {
+    #page-document-title {
+      font-size: 28px;
+      line-height: 36px;
+      font-weight: 800;
+    }
+
     .tiptap {
-      font-size: 1rem;
-      line-height: 1.75;
+      font-size: 14px;
+      line-height: 22px;
+      font-weight: 400;
       scroll-padding-block: 7rem;
     }
 
-    .tiptap h1 { font-size: 1.5rem; line-height: 1.3; }
-    .tiptap h2 { font-size: 1.25rem; line-height: 1.4; }
-    .tiptap h3 { font-size: 1.125rem; line-height: 1.45; }
-    .tiptap h4 { font-size: 1rem; line-height: 1.5; }
-    .tiptap .mybook-toggle[data-level="1"] .mybook-toggle-title { font-size: 1.5rem; line-height: 1.3; }
-    .tiptap .mybook-toggle[data-level="2"] .mybook-toggle-title { font-size: 1.25rem; line-height: 1.4; }
-    .tiptap .mybook-toggle[data-level="3"] .mybook-toggle-title { font-size: 1.125rem; line-height: 1.45; }
-    .tiptap .mybook-toggle[data-level="4"] .mybook-toggle-title { font-size: 1rem; line-height: 1.5; }
+    .tiptap h1 { font-size: 24px; line-height: 32px; font-weight: 700; }
+    .tiptap h2 { font-size: 22px; line-height: 28px; font-weight: 700; }
+    .tiptap h3 { font-size: 20px; line-height: 28px; font-weight: 700; }
+    .tiptap h4 { font-size: 16px; line-height: 20px; font-weight: 700; }
+    .tiptap .mybook-toggle[data-level="1"] .mybook-toggle-title { font-size: 24px; line-height: 32px; font-weight: 700; }
+    .tiptap .mybook-toggle[data-level="2"] .mybook-toggle-title { font-size: 22px; line-height: 28px; font-weight: 700; }
+    .tiptap .mybook-toggle[data-level="3"] .mybook-toggle-title { font-size: 20px; line-height: 28px; font-weight: 700; }
+    .tiptap .mybook-toggle[data-level="4"] .mybook-toggle-title { font-size: 16px; line-height: 20px; font-weight: 700; }
     .tiptap .mybook-toggle[data-level="1"] .mybook-toggle-caret,
     .tiptap .mybook-toggle[data-level="2"] .mybook-toggle-caret,
-    .tiptap .mybook-toggle[data-level="3"] .mybook-toggle-caret { width: 1.35rem; height: 1.35rem; font-size: 1.2rem; }
+    .tiptap .mybook-toggle[data-level="3"] .mybook-toggle-caret,
+    .tiptap .mybook-toggle[data-level="4"] .mybook-toggle-caret { width: 1.25rem; height: 1.25rem; font-size: 1.1rem; }
     .tiptap .mybook-toggle[data-level="1"] .mybook-toggle-content,
     .tiptap .mybook-toggle[data-level="2"] .mybook-toggle-content,
-    .tiptap .mybook-toggle[data-level="3"] .mybook-toggle-content { margin-left: 1.85rem; }
+    .tiptap .mybook-toggle[data-level="3"] .mybook-toggle-content,
+    .tiptap .mybook-toggle[data-level="4"] .mybook-toggle-content { margin-left: 1.5rem; }
     .tiptap ul:not([data-type="taskList"]),
     .tiptap ol { padding-left: 1.25rem; }
     .tiptap ul[data-type="taskList"] li[data-type="taskItem"] { gap: 0.75rem; padding: 0.25rem 0; }
@@ -1299,7 +1315,12 @@
   #page-document-title-duplicate-error,
   .mybook-block-actions,
   .mybook-block-drag-handle,
-  .mybook-block-controls {
+  .mybook-block-controls,
+  .mybook-code-block-toolbar,
+  .mybook-image-block-toolbar,
+  .mybook-table-actions,
+  .mybook-callout-emoji-button,
+  .mybook-hover-actions {
     display: none !important;
   }
 
@@ -1368,4 +1389,96 @@
   .tiptap td {
     border: 1px solid #d1d5db !important;
   }
+}
+
+.mybook-pdf-export {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+}
+
+.mybook-pdf-export .tiptap {
+  color: #111827 !important;
+  background-color: transparent !important;
+}
+
+.mybook-pdf-export .tiptap a {
+  color: #2563eb !important;
+  text-decoration: underline !important;
+}
+
+.mybook-pdf-export .tiptap table {
+  border-collapse: collapse !important;
+  width: 100% !important;
+  margin: 12px 0 !important;
+}
+
+.mybook-pdf-export .tiptap th,
+.mybook-pdf-export .tiptap td {
+  border: 1px solid #d1d5db !important;
+  padding: 6px 8px !important;
+}
+
+.mybook-pdf-export .tiptap pre,
+.mybook-pdf-export .tiptap pre.mybook-code-block {
+  background-color: #f4f4f5 !important;
+  border: 1px solid #e4e4e7 !important;
+  border-radius: 8px !important;
+  padding: 14px 16px !important;
+  margin: 14px 0 !important;
+  font-family: var(--font-mono, monospace) !important;
+  color: #18181b !important;
+  overflow: visible !important;
+  white-space: pre-wrap !important;
+  word-break: normal !important;
+}
+
+.mybook-pdf-export .tiptap pre code {
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+  color: inherit !important;
+}
+
+.mybook-pdf-export .tiptap code:not(pre code) {
+  background-color: #f4f4f5 !important;
+  border: 1px solid #e4e4e7 !important;
+  border-radius: 4px !important;
+  padding: 2px 5px !important;
+  font-family: var(--font-mono, monospace) !important;
+  font-size: 0.9em !important;
+  color: #18181b !important;
+}
+
+.mybook-pdf-export .tiptap blockquote {
+  background-color: #f8fafc !important;
+  border-left: 4px solid #94a3b8 !important;
+  border-radius: 0 6px 6px 0 !important;
+  padding: 10px 16px !important;
+  margin: 12px 0 !important;
+  color: #334155 !important;
+  font-style: italic !important;
+}
+
+.mybook-pdf-export .tiptap [data-type="callout"],
+.mybook-pdf-export .tiptap .mybook-callout {
+  background-color: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  border-left: 4px solid #3b82f6 !important;
+  border-radius: 8px !important;
+  padding: 14px 16px !important;
+  margin: 12px 0 !important;
+  color: #1e293b !important;
+}
+
+.mybook-pdf-export .mybook-block-actions,
+.mybook-pdf-export .mybook-block-drag-handle,
+.mybook-pdf-export .mybook-block-controls,
+.mybook-pdf-export .mybook-code-block-toolbar,
+.mybook-pdf-export .mybook-image-block-toolbar,
+.mybook-pdf-export .mybook-table-actions,
+.mybook-pdf-export .mybook-callout-emoji-button,
+.mybook-pdf-export .mybook-hover-actions {
+  display: none !important;
 }

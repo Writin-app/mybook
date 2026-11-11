@@ -48,4 +48,19 @@ describe('DocumentTextCounts', () => {
     expect(screen.getByRole('status')).toHaveTextContent('0 words')
     expect(screen.getByRole('status')).toHaveTextContent('0 characters')
   })
+
+  it('applies default menu metadata styling and supports custom className', () => {
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit],
+      content: '<p>Single word</p>',
+    })
+
+    const { rerender } = render(<DocumentTextCounts editor={editor} />)
+    const status = screen.getByRole('status')
+    expect(status).toHaveClass('px-2', 'pb-1.5', 'text-xs', 'text-muted-foreground')
+
+    rerender(<DocumentTextCounts editor={editor} className="custom-menu-class" />)
+    expect(screen.getByRole('status')).toHaveClass('custom-menu-class')
+  })
 })
