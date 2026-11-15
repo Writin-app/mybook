@@ -1,9 +1,4 @@
-import {
-  CreateWebWorkerMLCEngine,
-  type InitProgressReport,
-  hasModelInCache,
-  prebuiltAppConfig,
-} from '@mlc-ai/web-llm'
+import type { InitProgressReport } from '@mlc-ai/web-llm'
 
 import type { EngineAvailability, GenerationContext, TransformationEngine } from './contracts'
 import { resolveTargetLanguageName } from './languages'
@@ -311,11 +306,13 @@ export class LocalLlamaTransformationEngine implements TransformationEngine {
 
     this.engineFactory =
       options.engineFactory ??
-      ((worker, modelId, opts) =>
-        CreateWebWorkerMLCEngine(worker, modelId, {
+      (async (worker, modelId, opts) => {
+        const { CreateWebWorkerMLCEngine, prebuiltAppConfig } = await import('@mlc-ai/web-llm')
+        return CreateWebWorkerMLCEngine(worker, modelId, {
           initProgressCallback: opts.initProgressCallback as (report: InitProgressReport) => void,
           appConfig: prebuiltAppConfig,
-        }) as unknown as Promise<MLCEngineInterface>)
+        }) as unknown as Promise<MLCEngineInterface>
+      })
 
     this.workerFactory =
       options.workerFactory ??
@@ -348,6 +345,7 @@ export class LocalLlamaTransformationEngine implements TransformationEngine {
       options.isModelCached ??
       (async (modelId: string) => {
         try {
+          const { hasModelInCache, prebuiltAppConfig } = await import('@mlc-ai/web-llm')
           return await hasModelInCache(modelId, prebuiltAppConfig)
         } catch {
           return false
