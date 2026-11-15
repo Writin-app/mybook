@@ -85,7 +85,6 @@ export default defineConfig({
       globIgnores: [
         '**/proofreading.worker-*.js',
         '**/harper-engine-*.js',
-        '**/__vite-browser-external-*.js',
         '**/webllm-*.js',
         '**/bergamot.worker-*.js',
         '**/bergamot-*.wasm',
@@ -94,6 +93,11 @@ export default defineConfig({
         '**/*.spm*',
       ],
       runtimeCaching: [
+        {
+          urlPattern: ({ url }) => url.origin === (globalThis as unknown as { location: { origin: string } }).location.origin && /^\/assets\/webllm-[\w-]+\.js$/.test(url.pathname),
+          handler: 'CacheFirst',
+          options: { cacheName: 'writin-webllm-runtime' },
+        },
         {
           urlPattern: ({ url }) => url.origin === (globalThis as unknown as { location: { origin: string } }).location.origin && /^\/assets\/(?:proofreading\.worker|harper-engine)-[\w-]+\.js$/.test(url.pathname),
           handler: 'CacheFirst',

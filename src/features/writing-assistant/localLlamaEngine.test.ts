@@ -832,4 +832,28 @@ describe('LocalLlamaTransformationEngine', () => {
       expect(outcome.status).toBe('cancelled')
     })
   })
+
+  describe('10. Dynamic Engine Loading and Offline Resilience', () => {
+    it('defers web-llm loading until initialize or cache check is called', async () => {
+      let factoryCalled = false
+      const engine = new LocalLlamaTransformationEngine({
+        userConsentGranted: true,
+        isWebGPUSupported: async () => true,
+        engineFactory: async () => {
+          factoryCalled = true
+          return createMockMLCEngine()
+        },
+        workerFactory: () => ({
+          postMessage: vi.fn(),
+          terminate: vi.fn(),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+        } as unknown as Worker),
+      })
+
+      expect(factoryCalled).toBe(false)
+      await engine.init()
+      expect(factoryCalled).toBe(true)
+    })
+  })
 })
