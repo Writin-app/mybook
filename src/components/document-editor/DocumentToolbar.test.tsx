@@ -47,7 +47,7 @@ describe('DocumentToolbar', () => {
     expect(screen.getByRole('button', { name: 'Hide keyboard' })).toBeTruthy()
   })
 
-  it('provides AI actions from the mobile action toolbar', () => {
+  it('provides AI actions from the mobile action toolbar when showAi is true', () => {
     editor = new Editor({
       element: document.body.appendChild(document.createElement('div')),
       extensions: [StarterKit, Underline, TaskList, TaskItem, TableKit],
@@ -55,7 +55,7 @@ describe('DocumentToolbar', () => {
     })
     const onOpenAiActions = vi.fn()
 
-    render(<DocumentToolbar editor={editor} variant="mobile" onOpenAiActions={onOpenAiActions} />)
+    render(<DocumentToolbar editor={editor} variant="mobile" onOpenAiActions={onOpenAiActions} showAi={true} />)
 
     act(() => {
       editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 1, 6)))
@@ -64,6 +64,22 @@ describe('DocumentToolbar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'AI actions' }))
 
     expect(onOpenAiActions).toHaveBeenCalledOnce()
+  })
+
+  it('hides AI actions from the mobile action toolbar by default when showAi is omitted/disabled', () => {
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit, Underline, TaskList, TaskItem, TableKit],
+      content: '<p>Hello world</p>',
+    })
+
+    render(<DocumentToolbar editor={editor} variant="mobile" />)
+
+    act(() => {
+      editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 1, 6)))
+    })
+
+    expect(screen.queryByRole('button', { name: 'AI actions' })).toBeNull()
   })
 
   it('switches to format toolbar on Aa click and switches back on back click', () => {

@@ -23,7 +23,7 @@ import {
 import { useAuthStore } from '../stores/useAuthStore'
 import { db } from '../database/db'
 import { processPendingDriveFolderSync } from '../database/repositories'
-import { APP_VERSION } from '../config/app'
+import { APP_VERSION, ENABLE_AI_WRITING_ASSISTANT } from '../config/app'
 import { useAppStore } from '../stores/useAppStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { toast } from '../components/ui/toast'
@@ -215,7 +215,7 @@ export function SettingsPage() {
           Use {theme === 'light' ? 'dark' : 'light'} theme
         </AppButton>
       </section>
-      <LocalAiPreferencesSection />
+      {ENABLE_AI_WRITING_ASSISTANT ? <LocalAiPreferencesSection /> : null}
       <section aria-labelledby="account-heading" className="rounded-2xl bg-muted/70 p-4">
         <h2 id="account-heading" className="text-base font-semibold leading-6">Account</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">
