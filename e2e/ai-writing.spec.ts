@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { ENABLE_AI_WRITING_ASSISTANT } from '../src/config/features'
 
 async function openNewDocument(page: Page) {
   await page.addInitScript(() => {
@@ -47,7 +48,22 @@ test('desktop counts update in More menu and More has no Writing Assistant or Pr
 test.describe('mobile AI toolbar', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
 
-  test('opens the same selection actions from the action toolbar and selection pill', async ({ page }) => {
+  test('mobile AI toolbar and pill remain hidden when AI writing assistant is disabled', async ({ page }) => {
+    test.skip(ENABLE_AI_WRITING_ASSISTANT, 'AI writing assistant is enabled')
+    await openNewDocument(page)
+    const editor = page.locator('.tiptap[contenteditable="true"]')
+    await editor.fill('Quick sample text for rewrite.')
+    const paragraph = editor.locator('p')
+    await paragraph.click()
+    await page.keyboard.press('Home')
+    await page.keyboard.press('Shift+End')
+
+    await expect(page.getByRole('button', { name: 'Writin Assist', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'AI actions', exact: true })).toHaveCount(0)
+  })
+
+  test('opens the same selection actions from the action toolbar and selection pill when enabled', async ({ page }) => {
+    test.skip(!ENABLE_AI_WRITING_ASSISTANT, 'AI writing assistant is currently disabled in UI')
     await openNewDocument(page)
     const editor = page.locator('.tiptap[contenteditable="true"]')
     await editor.fill('Quick sample text for rewrite.')

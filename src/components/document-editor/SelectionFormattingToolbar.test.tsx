@@ -244,7 +244,7 @@ describe('SelectionFormattingToolbar', () => {
     expect(leftStyle).toBe(1000 - SELECTION_TOOLBAR_WIDTH - 8)
   })
 
-  it('renders AI actions button and toggles AI popover', () => {
+  it('hides AI actions button by default when showAi is omitted/false', () => {
     editor = new Editor({
       element: document.body.appendChild(document.createElement('div')),
       extensions: [StarterKit],
@@ -254,6 +254,23 @@ describe('SelectionFormattingToolbar', () => {
     vi.spyOn(editor, 'isFocused', 'get').mockReturnValue(true)
 
     render(<SelectionFormattingToolbar editor={editor} onInsertBlock={() => undefined} onEditLink={() => undefined} />)
+    act(() => {
+      editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 1, 10)))
+    })
+
+    expect(screen.queryByRole('button', { name: 'Writin Assist' })).toBeNull()
+  })
+
+  it('renders AI actions button and toggles AI popover when showAi is true', () => {
+    editor = new Editor({
+      element: document.body.appendChild(document.createElement('div')),
+      extensions: [StarterKit],
+      content: '<p>Sample text to analyze</p>',
+    })
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({ left: 50, right: 100, top: 100, bottom: 120 })
+    vi.spyOn(editor, 'isFocused', 'get').mockReturnValue(true)
+
+    render(<SelectionFormattingToolbar editor={editor} onInsertBlock={() => undefined} onEditLink={() => undefined} showAi={true} />)
     act(() => {
       editor!.view.dispatch(editor!.state.tr.setSelection(TextSelection.create(editor!.state.doc, 1, 10)))
     })
@@ -376,6 +393,7 @@ describe('SelectionFormattingToolbar', () => {
         editor={editor}
         onInsertBlock={() => undefined}
         onEditLink={() => undefined}
+        showAi={true}
       />
     )
 

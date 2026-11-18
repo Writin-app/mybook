@@ -18,6 +18,7 @@ import { TextSelection } from '@tiptap/pm/state'
 
 import type { TransformationEngine } from '../../features/writing-assistant/contracts'
 import { SelectionAiPopover } from '../../features/writing-assistant/SelectionAiPopover'
+import { ENABLE_AI_WRITING_ASSISTANT } from '../../config/features'
 import { BlockCommandMenu } from './SlashCommandMenu'
 import { tableColors } from './extensions/TableCellStyles'
 import { filterSlashCommands, type SlashCommand } from './slashCommands'
@@ -63,6 +64,7 @@ export interface SelectionFormattingToolbarProps {
   fileId?: string
   languageId?: string
   customEngine?: TransformationEngine
+  showAi?: boolean
 }
 
 export function SelectionFormattingToolbar({
@@ -73,6 +75,7 @@ export function SelectionFormattingToolbar({
   fileId,
   languageId,
   customEngine,
+  showAi = ENABLE_AI_WRITING_ASSISTANT,
 }: SelectionFormattingToolbarProps) {
   const [position, setPosition] = useState<ToolbarPosition | null>(null)
   const [colorMenu, setColorMenu] = useState<ColorMenu>(null)
@@ -333,45 +336,47 @@ export function SelectionFormattingToolbar({
         </>
       ) : null}
 
-      <div className={aiActive ? 'pointer-events-auto' : 'relative'}>
-        {!aiActive ? (
-          <button
-            type="button"
-            aria-label="Writin Assist"
-            aria-expanded={aiMenuOpen}
-            onClick={() => {
-              setAiMenuOpen((open) => !open)
-              setColorMenu(null)
-              setBlockMenuOpen(false)
-              setMoreMenuOpen(false)
-            }}
-            className={`flex h-7 items-center gap-1 rounded-[6px] px-2 text-xs font-medium text-purple-600 dark:text-purple-400 transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
-              aiMenuOpen ? 'bg-[var(--app-subtle)]' : ''
-            }`}
-          >
-            <HugeiconsIcon icon={SparklesIcon} size={14} className="shrink-0" />
-            <span>Writin Assist</span>
-          </button>
-        ) : null}
-        {aiMenuOpen ? (
-          <SelectionAiPopover
-            editor={editor}
-            fileId={fileId}
-            languageId={languageId}
-            customEngine={customEngine}
-            onClose={() => {
-              setAiMenuOpen(false)
-              setAiActive(false)
-            }}
-            onActiveStateChange={setAiActive}
-            placement={openAiOnTop ? 'top' : 'bottom'}
-          />
-        ) : null}
-      </div>
+      {showAi ? (
+        <div className={aiActive ? 'pointer-events-auto' : 'relative'}>
+          {!aiActive ? (
+            <button
+              type="button"
+              aria-label="Writin Assist"
+              aria-expanded={aiMenuOpen}
+              onClick={() => {
+                setAiMenuOpen((open) => !open)
+                setColorMenu(null)
+                setBlockMenuOpen(false)
+                setMoreMenuOpen(false)
+              }}
+              className={`flex h-7 items-center gap-1 rounded-[6px] px-2 text-xs font-medium text-purple-600 dark:text-purple-400 transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
+                aiMenuOpen ? 'bg-[var(--app-subtle)]' : ''
+              }`}
+            >
+              <HugeiconsIcon icon={SparklesIcon} size={14} className="shrink-0" />
+              <span>Writin Assist</span>
+            </button>
+          ) : null}
+          {aiMenuOpen ? (
+            <SelectionAiPopover
+              editor={editor}
+              fileId={fileId}
+              languageId={languageId}
+              customEngine={customEngine}
+              onClose={() => {
+                setAiMenuOpen(false)
+                setAiActive(false)
+              }}
+              onActiveStateChange={setAiActive}
+              placement={openAiOnTop ? 'top' : 'bottom'}
+            />
+          ) : null}
+        </div>
+      ) : null}
 
       {!aiActive ? (
         <>
-          <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" />
+          {showAi ? <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-[var(--app-border)]" /> : null}
           <div className="relative">
             <ToolButton label="More options" active={moreMenuOpen} onClick={() => { setMoreMenuOpen((open) => !open); setColorMenu(null); setBlockMenuOpen(false); setAiMenuOpen(false) }}><HugeiconsIcon icon={MoreHorizontalIcon} size={16} /></ToolButton>
             {moreMenuOpen ? (

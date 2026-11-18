@@ -50,6 +50,7 @@ import { ChecklistActionsMenu } from './ChecklistActionsMenu'
 import { DocumentToolbar } from './DocumentToolbar'
 import { SelectionFormattingToolbar } from './SelectionFormattingToolbar'
 import { MobileSelectionAiBar, type MobileSelectionAiBarHandle } from './MobileSelectionAiBar'
+import { ENABLE_AI_WRITING_ASSISTANT } from '../../config/features'
 import { EditorBlockControls, type BlockTarget } from './EditorBlockControls'
 import { useHoverBlockControlsAvailable } from '../../hooks/useHoverBlockControls'
 import { EditorStatus } from './EditorStatus'
@@ -4245,7 +4246,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           languageId={file.writingLanguage}
         />
       ) : null}
-      {!isPageLocked && isMobile ? (
+      {!isPageLocked && isMobile && ENABLE_AI_WRITING_ASSISTANT ? (
         <MobileSelectionAiBar
           ref={mobileSelectionAiRef}
           editor={editor}

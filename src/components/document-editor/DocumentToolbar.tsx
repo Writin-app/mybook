@@ -66,6 +66,7 @@ import { MobileBottomSheet } from '../common/MobileBottomSheet'
 import { convertSelectedBlocks } from './blockConversion'
 import { calloutNode } from './extensions/Callout'
 import { toggleBlockNode } from './extensions/ToggleBlock'
+import { ENABLE_AI_WRITING_ASSISTANT } from '../../config/features'
 import { filterSlashCommands, groupSlashCommands, isInsideColumns, runSlashCommand, slashCommands } from './slashCommands'
 
 function KeyboardHideIcon({ className }: { className?: string }) {
@@ -259,6 +260,7 @@ function ToolbarControls({
   onInsertBlock,
   onEditLink,
   onOpenAiActions,
+  showAi = false,
   keyboardOffset = 0,
 }: {
   editor: Editor
@@ -269,6 +271,7 @@ function ToolbarControls({
   onInsertBlock?: (commandId: string) => void
   onEditLink?: () => void
   onOpenAiActions?: () => void
+  showAi?: boolean
   keyboardOffset?: number
 }) {
   const setLink = () => {
@@ -701,7 +704,9 @@ function ToolbarControls({
                     }}
                     isMobile
                   />
-                  <ToolButton label="AI actions" hugeIcon={SparklesIcon} disabled={editor.state.selection.empty} onPress={() => onOpenAiActions?.()} isMobile />
+                  {showAi ? (
+                    <ToolButton label="AI actions" hugeIcon={SparklesIcon} disabled={editor.state.selection.empty} onPress={() => onOpenAiActions?.()} isMobile />
+                  ) : null}
                   <ToolButton
                     label="Replace block"
                     hugeIcon={ArrowReloadHorizontalIcon}
@@ -830,7 +835,9 @@ function ToolbarControls({
                     isMobile
                   />
 
-                  <ToolButton label="AI actions" hugeIcon={SparklesIcon} disabled={editor.state.selection.empty} onPress={() => onOpenAiActions?.()} isMobile />
+                  {showAi ? (
+                    <ToolButton label="AI actions" hugeIcon={SparklesIcon} disabled={editor.state.selection.empty} onPress={() => onOpenAiActions?.()} isMobile />
+                  ) : null}
 
                   <span aria-hidden="true" className="mx-0.5 h-3.5 w-px flex-none bg-[var(--app-border)]" />
 
@@ -1079,6 +1086,7 @@ export function DocumentToolbar({
   onInsertBlock,
   onEditLink,
   onOpenAiActions,
+  showAi = ENABLE_AI_WRITING_ASSISTANT,
   variant = 'mobile',
   keyboardOffset: propKeyboardOffset,
 }: {
@@ -1088,6 +1096,7 @@ export function DocumentToolbar({
   onInsertBlock?: (commandId: string) => void
   onEditLink?: () => void
   onOpenAiActions?: () => void
+  showAi?: boolean
   variant?: 'desktop' | 'mobile'
   keyboardOffset?: number
 }) {
@@ -1113,7 +1122,7 @@ export function DocumentToolbar({
     return (
       <div role="toolbar" aria-label="Document formatting" className="hidden border-t border-[var(--app-border)] md:block">
         <div className="scrollbar flex h-14 w-full items-center gap-1 overflow-x-auto overscroll-x-contain px-8 [scrollbar-width:thin]">
-          <ToolbarControls editor={editor} idPrefix="desktop" onInsertFile={onInsertFile} onInsertImage={onInsertImage} onInsertBlock={onInsertBlock} onEditLink={onEditLink} variant="desktop" />
+          <ToolbarControls editor={editor} idPrefix="desktop" onInsertFile={onInsertFile} onInsertImage={onInsertImage} onInsertBlock={onInsertBlock} onEditLink={onEditLink} showAi={showAi} variant="desktop" />
         </div>
       </div>
     )
@@ -1128,6 +1137,7 @@ export function DocumentToolbar({
       onInsertBlock={onInsertBlock}
       onEditLink={onEditLink}
       onOpenAiActions={onOpenAiActions}
+      showAi={showAi}
       variant="mobile"
       keyboardOffset={keyboardOffset}
     />

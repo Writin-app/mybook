@@ -116,4 +116,10 @@ describe('SettingsPage', () => {
     fireEvent.click(licensesBtn)
     expect(mockNavigate).toHaveBeenCalledWith('/about#licenses')
   })
+
+  it('hides Local AI preferences section when AI features are disabled by default', () => {
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>)
+
+    expect(screen.queryByRole('heading', { name: /Local AI Model/i })).not.toBeInTheDocument()
+  })
 })
