@@ -8,6 +8,7 @@ import {
   scanAndHydrateLocalWorkspace,
 } from './localWorkspace'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
+import { registerUnsavedEditsProbe } from './localEditState'
 
 describe('localWorkspace service', () => {
   beforeEach(async () => {
@@ -648,5 +649,147 @@ describe('localWorkspace service', () => {
     const saved = await db.files.get(fileId)
     expect(saved?.content).toContain('newer local content')
     expect(saved?.content).not.toContain('stale content on disk')
+  })
+
+  it('does not mark file deleted when disk read throws an error during autosave lock', async () => {
+    const fileId = 'locked-file-doc'
+    const now = new Date().toISOString()
+    await db.files.add({
+      id: fileId,
+      driveFileId: null,
+      workspaceType: 'local',
+      name: 'Active Editing Document',
+      type: 'document',
+      folderId: null,
+      content: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'my text' }] }] }),
+      mimeType: 'application/x-mybook-document',
+      createdAt: now,
+      updatedAt: now,
+      lastSyncedAt: null,
+      syncStatus: 'local',
+      isDeleted: false,
+    })
+
+    const mockRootHandle = {
+      kind: 'directory',
+      name: 'Writin',
+      getDirectoryHandle: vi.fn().mockRejectedValue(new Error('No Writin folder')),
+      entries: async function* () {
+        yield [
+          'Active Editing Document.md',
+          {
+            kind: 'file',
+            name: 'Active Editing Document.md',
+            getFile: vi.fn().mockRejectedValue(new Error('InvalidStateError: The file is locked')),
+          } as unknown as FileSystemHandle,
+        ] as [string, FileSystemHandle]
+      },
+    } as unknown as FileSystemDirectoryHandle
+
+    const result = await scanAndHydrateLocalWorkspace(mockRootHandle, { targetWorkspaceType: 'local' })
+    expect(result.deletedCount).toBe(0)
+
+    const file = await db.files.get(fileId)
+    expect(file).toBeDefined()
+    expect(file?.isDeleted).toBe(false)
+  })
+
+  it('preserves file from deletion when active unsaved edits are present', async () => {
+    const activeEditFileId = 'active-edit-file'
+    const otherFileId = 'other-file'
+    const now = new Date().toISOString()
+
+    await db.files.bulkAdd([
+      {
+        id: activeEditFileId,
+        driveFileId: null,
+        workspaceType: 'local',
+        name: 'Unsaved Note',
+        type: 'document',
+        folderId: null,
+        content: JSON.stringify({ type: 'doc', content: [] }),
+        mimeType: 'application/x-mybook-document',
+        createdAt: now,
+        updatedAt: now,
+        lastSyncedAt: null,
+        syncStatus: 'local',
+        isDeleted: false,
+      },
+      {
+        id: otherFileId,
+        driveFileId: null,
+        workspaceType: 'local',
+        name: 'Other Note',
+        type: 'document',
+        folderId: null,
+        content: JSON.stringify({ type: 'doc', content: [] }),
+        mimeType: 'application/x-mybook-document',
+        createdAt: now,
+        updatedAt: now,
+        lastSyncedAt: null,
+        syncStatus: 'local',
+        isDeleted: false,
+      },
+    ])
+
+    const unregister = registerUnsavedEditsProbe(activeEditFileId, () => true)
+
+    const mockRootHandle = {
+      kind: 'directory',
+      name: 'Writin',
+      getDirectoryHandle: vi.fn().mockRejectedValue(new Error('No Writin folder')),
+      entries: async function* () {
+        // Disk only has other note, so activeEditFileId is absent on disk
+        yield [
+          'Other Note.md',
+          {
+            kind: 'file',
+            name: 'Other Note.md',
+            getFile: async () => ({
+              text: async () => '---\nmybook_version: 1\ntype: document\ndocument_id: "other-file"\n---\n',
+              lastModified: Date.now(),
+            }),
+          } as unknown as FileSystemHandle,
+        ] as [string, FileSystemHandle]
+      },
+    } as unknown as FileSystemDirectoryHandle
+
+    try {
+      await scanAndHydrateLocalWorkspace(mockRootHandle, { targetWorkspaceType: 'local' })
+
+      const activeFile = await db.files.get(activeEditFileId)
+      expect(activeFile).toBeDefined()
+      expect(activeFile?.isDeleted).toBe(false)
+    } finally {
+      unregister()
+    }
+  })
+
+  it('does not mark mirror folder missing when a child directory scan fails', async () => {
+    useWorkspaceStore.setState({ isMirrorFolderMissing: false })
+
+    const mockSubDirHandle = {
+      kind: 'directory',
+      name: 'SubFolder',
+      entries: async function* () {
+        if (true as boolean) {
+          throw new Error('NotFoundError: child folder was deleted')
+        }
+        yield ['dummy', {} as FileSystemHandle] as [string, FileSystemHandle]
+      },
+    } as unknown as FileSystemDirectoryHandle
+
+    const mockRootHandle = {
+      kind: 'directory',
+      name: 'Writin',
+      getDirectoryHandle: vi.fn().mockRejectedValue(new Error('No Writin folder')),
+      entries: async function* () {
+        yield ['SubFolder', mockSubDirHandle] as [string, FileSystemHandle]
+      },
+    } as unknown as FileSystemDirectoryHandle
+
+    await scanAndHydrateLocalWorkspace(mockRootHandle, { targetWorkspaceType: 'local' })
+
+    expect(useWorkspaceStore.getState().isMirrorFolderMissing).toBe(false)
   })
 })

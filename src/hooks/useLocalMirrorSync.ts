@@ -43,8 +43,11 @@ export function useLocalMirrorSync() {
       }
     } catch (error) {
       if (isMissingDirectoryError(error)) {
-        await forgetDeviceDirectoryHandle()
-        setMirrorFolderMissing(true)
+        const validity = await checkDeviceDirectoryHandleValid()
+        if (!validity.valid && isMissingDirectoryError(validity.error)) {
+          await forgetDeviceDirectoryHandle()
+          setMirrorFolderMissing(true)
+        }
       }
     } finally {
       isScanningRef.current = false
