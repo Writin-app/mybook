@@ -254,8 +254,17 @@ export async function getWorkspaceEffectiveDirectory(
   const details = await getLocalWorkspaceDetails()
   const vaultName = sanitizeFileName(details?.name || 'Writin')
 
-  // If the root directory handle itself is named the vaultName (case-insensitive), use root directly
-  if (root.name && root.name.trim().toLowerCase() === vaultName.toLowerCase()) {
+  // If the root directory handle itself is named the vaultName (case-insensitive)
+  // or has no name (e.g. Android SAF handle restored from IndexedDB), check whether to use root directly
+  if (!root.name || root.name.trim().toLowerCase() === vaultName.toLowerCase()) {
+    if (!root.name) {
+      try {
+        const nested = await root.getDirectoryHandle(vaultName, { create: false })
+        return nested
+      } catch {
+        return root
+      }
+    }
     return root
   }
 
@@ -709,6 +718,16 @@ export async function appContentFromStoredFile(
   }
 }
 
+function matchesTargetWorkspace(
+  workspaceType: string | undefined | null,
+  targetWorkspaceType: 'drive' | 'local'
+): boolean {
+  if (targetWorkspaceType === 'local') {
+    return workspaceType === 'local'
+  }
+  return workspaceType !== 'local'
+}
+
 export async function scanAndHydrateLocalWorkspace(
   customRoot?: FileSystemDirectoryHandle | null,
   options?: { targetWorkspaceType?: 'local' | 'drive'; triggerDriveSync?: boolean }
@@ -755,7 +774,7 @@ export async function scanAndHydrateLocalWorkspace(
     // Process subdirectories
     for (const { name, handle } of subdirectories) {
       let existingFolder = await db.folders
-        .filter((f) => f.workspaceType === targetWorkspaceType && !f.isDeleted && f.parentId === parentFolderId && f.name.toLowerCase() === name.toLowerCase())
+        .filter((f) => matchesTargetWorkspace(f.workspaceType, targetWorkspaceType) && !f.isDeleted && f.parentId === parentFolderId && f.name.toLowerCase() === name.toLowerCase())
         .first()
 
       if (!existingFolder) {
@@ -790,7 +809,11 @@ export async function scanAndHydrateLocalWorkspace(
       }
 
       encounteredFolderIds.add(existingFolder.id)
-      await scanDirectory(handle, existingFolder.id)
+      try {
+        await scanDirectory(handle, existingFolder.id)
+      } catch (subErr) {
+        devLog('warn', `Failed to scan subdirectory: ${name}`, subErr)
+      }
     }
 
     // Process files
@@ -821,7 +844,7 @@ export async function scanAndHydrateLocalWorkspace(
           let existingFile: MyBookFile | undefined
           if (documentId) {
             const candidate = await db.files.get(documentId)
-            if (candidate && !candidate.isDeleted && candidate.workspaceType === targetWorkspaceType) {
+            if (candidate && !candidate.isDeleted && matchesTargetWorkspace(candidate.workspaceType, targetWorkspaceType)) {
               if (candidate.name.toLowerCase() === docName.toLowerCase() && candidate.folderId === parentFolderId) {
                 existingFile = candidate
               } else if (!encounteredFileIds.has(candidate.id)) {
@@ -831,7 +854,7 @@ export async function scanAndHydrateLocalWorkspace(
           }
           if (!existingFile) {
             existingFile = await db.files
-              .filter((f) => f.workspaceType === targetWorkspaceType && !f.isDeleted && f.folderId === parentFolderId && f.name.toLowerCase() === docName.toLowerCase() && !encounteredFileIds.has(f.id))
+              .filter((f) => matchesTargetWorkspace(f.workspaceType, targetWorkspaceType) && !f.isDeleted && f.folderId === parentFolderId && f.name.toLowerCase() === docName.toLowerCase() && !encounteredFileIds.has(f.id))
               .first()
           }
 
@@ -933,7 +956,7 @@ export async function scanAndHydrateLocalWorkspace(
           }
         } else if (isSpreadsheet) {
           const existingFile = await db.files
-            .filter((f) => f.workspaceType === targetWorkspaceType && !f.isDeleted && f.folderId === parentFolderId && f.name.toLowerCase() === docName.toLowerCase())
+            .filter((f) => matchesTargetWorkspace(f.workspaceType, targetWorkspaceType) && !f.isDeleted && f.folderId === parentFolderId && f.name.toLowerCase() === docName.toLowerCase())
             .first()
 
           if (!existingFile) {
@@ -1016,6 +1039,17 @@ export async function scanAndHydrateLocalWorkspace(
         }
       } catch (err) {
         devLog('warn', `Failed to read disk file during workspace scan: ${name}`, err)
+        try {
+          const docName = cleanDocumentName(name)
+          const fallbackFile = await db.files
+            .filter((f) => matchesTargetWorkspace(f.workspaceType, targetWorkspaceType) && !f.isDeleted && f.folderId === parentFolderId && f.name.toLowerCase() === docName.toLowerCase())
+            .first()
+          if (fallbackFile) {
+            encounteredFileIds.add(fallbackFile.id)
+          }
+        } catch {
+          // Non-blocking fallback lookup
+        }
       }
     }
   }
@@ -1024,10 +1058,14 @@ export async function scanAndHydrateLocalWorkspace(
     await scanDirectory(effectiveRoot, null)
   } catch (error) {
     if (isMissingDirectoryError(error)) {
-      await forgetDeviceDirectoryHandle()
-      useWorkspaceStore.getState().setMirrorFolderMissing(true)
-      return { discoveredCount: 0, restoredCount: 0, deletedCount: 0 }
+      const rootCheck = await checkDeviceDirectoryHandleValid(effectiveRoot)
+      if (!rootCheck.valid && isMissingDirectoryError(rootCheck.error)) {
+        await forgetDeviceDirectoryHandle()
+        useWorkspaceStore.getState().setMirrorFolderMissing(true)
+        return { discoveredCount: 0, restoredCount: 0, deletedCount: 0 }
+      }
     }
+    devLog('warn', 'Error during local workspace scan:', error)
   }
 
   // Only process deletions from disk if an active physical device directory handle is linked
@@ -1037,8 +1075,8 @@ export async function scanAndHydrateLocalWorkspace(
   }
 
   // Detect and process items deleted locally from disk
-  const activeFolders = await db.folders.filter((f) => f.workspaceType === targetWorkspaceType && !f.isDeleted).toArray()
-  const activeFiles = await db.files.filter((f) => f.workspaceType === targetWorkspaceType && !f.isDeleted).toArray()
+  const activeFolders = await db.folders.filter((f) => matchesTargetWorkspace(f.workspaceType, targetWorkspaceType) && !f.isDeleted).toArray()
+  const activeFiles = await db.files.filter((f) => matchesTargetWorkspace(f.workspaceType, targetWorkspaceType) && !f.isDeleted).toArray()
 
   // MASS DELETION GUARD / ROOT REMOVAL GUARD:
   // 1. If we had active files in DB but encountered ZERO files on disk, the root folder was deleted or emptied!
@@ -1063,6 +1101,9 @@ export async function scanAndHydrateLocalWorkspace(
   const deleteTimestamp = new Date().toISOString()
 
   for (const file of activeFiles) {
+    if (hasUnsavedLocalEdits(file.id)) {
+      continue
+    }
     if (!encounteredFileIds.has(file.id)) {
       await db.files.update(file.id, {
         isDeleted: true,
@@ -1135,7 +1176,11 @@ export async function writeLocalWorkspaceFile(
     await writable.close()
   } catch (error) {
     if (isMissingDirectoryError(error)) {
-      useWorkspaceStore.getState().setMirrorFolderMissing(true)
+      const rootCheck = await checkDeviceDirectoryHandleValid()
+      if (!rootCheck.valid && isMissingDirectoryError(rootCheck.error)) {
+        await forgetDeviceDirectoryHandle()
+        useWorkspaceStore.getState().setMirrorFolderMissing(true)
+      }
     }
     devLog('warn', 'Could not write local workspace file.', error)
   }
@@ -1204,7 +1249,11 @@ export async function ensureLocalWorkspaceFolder(folderId: string): Promise<File
     return await resolveDirectoryHandleForFolder(root, folderId, true)
   } catch (error) {
     if (isMissingDirectoryError(error)) {
-      useWorkspaceStore.getState().setMirrorFolderMissing(true)
+      const rootCheck = await checkDeviceDirectoryHandleValid()
+      if (!rootCheck.valid && isMissingDirectoryError(rootCheck.error)) {
+        await forgetDeviceDirectoryHandle()
+        useWorkspaceStore.getState().setMirrorFolderMissing(true)
+      }
     }
     devLog('warn', 'Could not ensure local workspace folder.', error)
     return null
