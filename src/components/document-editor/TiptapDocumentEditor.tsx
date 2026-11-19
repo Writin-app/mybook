@@ -3678,7 +3678,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const zoomedIn = pageScale > 1
   const desktopPageWidth = '100%'
   const documentSurfaceClass = 'bg-[var(--app-surface)]'
-  const documentPageClass = `mybook-document-page ${isFullWidth ? '' : 'mybook-document-page--continuous '}mx-auto min-h-[calc(100dvh-13rem)] w-full bg-[var(--app-surface)] px-4 pb-[55vh] pt-6 shadow-none sm:px-8 md:px-20 lg:px-28 md:pb-[55vh] md:pt-7`
+  const documentPageClass = `mybook-document-page ${isFullWidth ? '' : 'mybook-document-page--continuous '}mx-auto min-h-[calc(100dvh-13rem)] w-full bg-[var(--app-surface)] px-6 pb-[55vh] pt-6 shadow-none sm:px-10 md:px-20 lg:px-28 md:pb-[55vh] md:pt-7`
   const placeholderTitle = 'Untitled'
   const validSavedTitle = file.name ? (titleInputValue(file.name) || placeholderTitle) : placeholderTitle
   const documentTitle = duplicateTitleFile ? validSavedTitle : (title.trim() || placeholderTitle)
