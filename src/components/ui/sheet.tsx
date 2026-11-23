@@ -125,17 +125,21 @@ function SheetContent({
   side = "right",
   showCloseButton = true,
   hasOverlay = true,
+  dragToDismiss = true,
+  container,
   ...props
 }: SheetPrimitive.Popup.Props & {
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
   hasOverlay?: boolean
+  dragToDismiss?: boolean
+  container?: HTMLElement | null
 }) {
   const isBottom = side === "bottom"
-  const dragRef = useSheetBottomDragToDismiss(isBottom)
+  const dragRef = useSheetBottomDragToDismiss(isBottom && dragToDismiss)
 
   return (
-    <SheetPortal>
+      <SheetPortal container={container}>
       {hasOverlay ? <SheetOverlay /> : null}
       <SheetPrimitive.Popup
         ref={dragRef}
