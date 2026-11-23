@@ -1,6 +1,5 @@
 import type { Decorator, Preview } from '@storybook/react-vite'
 import { MemoryRouter } from 'react-router-dom'
-import '@fontsource-variable/inter'
 
 import { Toaster } from '../src/components/ui/toast'
 import { TooltipProvider } from '../src/components/ui/tooltip'

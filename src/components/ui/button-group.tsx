@@ -15,6 +15,10 @@ const buttonGroupVariants = cva(
         vertical:
           "flex-col *:data-slot:rounded-b-none [&>[data-slot]:not(:has(~[data-slot]))]:rounded-b-2xl! [&>[data-slot]~[data-slot]]:rounded-t-none [&>[data-slot]~[data-slot]]:border-t-0",
       },
+      variant: {
+        default: "",
+        glass: "gap-1 rounded-full border border-white/55 bg-white/55 p-1 shadow-[inset_0_1px_0_rgb(255_255_255/0.7),0_4px_16px_rgb(15_23_42/0.08)] backdrop-blur-xl [&>[data-slot=button]]:rounded-full [&>[data-slot=button]]:border-transparent [&>[data-slot=button]]:bg-transparent [&>[data-slot=button]]:shadow-none [&>[data-slot=button]:hover]:bg-white/70 dark:border-white/10 dark:bg-white/10",
+      },
     },
     defaultVariants: {
       orientation: "horizontal",
@@ -25,6 +29,7 @@ const buttonGroupVariants = cva(
 function ButtonGroup({
   className,
   orientation,
+  variant = "default",
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof buttonGroupVariants>) {
   return (
@@ -32,7 +37,8 @@ function ButtonGroup({
       role="group"
       data-slot="button-group"
       data-orientation={orientation}
-      className={cn(buttonGroupVariants({ orientation }), className)}
+      data-variant={variant}
+      className={cn(buttonGroupVariants({ orientation, variant }), className)}
       {...props}
     />
   )

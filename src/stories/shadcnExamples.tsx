@@ -7,6 +7,7 @@ import {
   EllipsisHorizontalIcon,
   ExclamationTriangleIcon,
   FolderIcon,
+  InformationCircleIcon,
   MagnifyingGlassIcon,
   PaperClipIcon,
   PencilSquareIcon,
@@ -78,7 +79,7 @@ import {
   AvatarGroupCount,
   AvatarImage,
 } from '@/components/ui/avatar'
-import { Badge } from '@/components/ui/badge'
+import { Badge, BadgeCount } from '@/components/ui/badge'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -295,9 +296,9 @@ const folder = {
   isDeleted: false,
 }
 
-export function AccordionExample() {
+export function AccordionExample({ variant = 'default' }: { variant?: 'default' | 'grouped' }) {
   return (
-    <Accordion defaultValue={['sync']} multiple className="max-w-2xl">
+    <Accordion defaultValue={['sync']} multiple variant={variant} className="max-w-2xl">
       <AccordionItem value="sync">
         <AccordionTrigger>Sync behavior</AccordionTrigger>
         <AccordionContent>Files can stay local or be backed up to Drive with the same visual controls.</AccordionContent>
@@ -321,6 +322,16 @@ export function AlertExample() {
           <Button size="sm" variant="outline">Reconnect</Button>
         </AlertAction>
       </Alert>
+      <Alert variant="info">
+        <InformationCircleIcon aria-hidden="true" />
+        <AlertTitle>Drive backup</AlertTitle>
+        <AlertDescription>Your documents are backed up to Google Drive.</AlertDescription>
+      </Alert>
+      <Alert variant="success">
+        <CheckIcon aria-hidden="true" />
+        <AlertTitle>Saved locally</AlertTitle>
+        <AlertDescription>Your latest changes are safe on this device.</AlertDescription>
+      </Alert>
       <Alert variant="destructive">
         <ExclamationTriangleIcon aria-hidden="true" className="size-5" />
         <AlertTitle>Upload failed</AlertTitle>
@@ -330,18 +341,18 @@ export function AlertExample() {
   )
 }
 
-export function AlertDialogExample() {
+export function AlertDialogExample({ size = 'default' }: { size?: 'default' | 'sm' }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger render={<Button variant="destructive" />}>Move to Trash</AlertDialogTrigger>
-      <AlertDialogContent>
+      <AlertDialogContent size={size}>
         <AlertDialogHeader>
           <AlertDialogTitle>Move this file to Trash?</AlertDialogTitle>
           <AlertDialogDescription>The file can be restored later from Trash.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction>Move to Trash</AlertDialogAction>
+          <AlertDialogAction variant="destructive">Move to Trash</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -386,12 +397,12 @@ export function AttachmentExample() {
 
 export function AvatarExample() {
   return (
-    <div className="flex flex-wrap items-center gap-6">
-      <Avatar>
-        <AvatarImage src="/pwa-192.svg" alt="Writin workspace" />
-        <AvatarFallback>MB</AvatarFallback>
-        <AvatarBadge />
-      </Avatar>
+    <div className="grid gap-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <Avatar size="sm"><AvatarFallback>AL</AvatarFallback></Avatar>
+        <Avatar><AvatarImage src="/pwa-192.svg" alt="Writin workspace" /><AvatarFallback>WR</AvatarFallback><AvatarBadge aria-label="Online" /></Avatar>
+        <Avatar size="lg"><AvatarFallback>MK</AvatarFallback></Avatar>
+      </div>
       <AvatarGroup>
         <Avatar><AvatarFallback>AL</AvatarFallback></Avatar>
         <Avatar><AvatarFallback>RS</AvatarFallback></Avatar>
@@ -406,9 +417,14 @@ export function BadgeExample() {
   return (
     <div className="flex flex-wrap gap-2">
       <Badge>Default</Badge>
+      <Badge variant="tinted">Tinted</Badge>
+      <Badge variant="glass">Glass</Badge>
       <Badge variant="secondary">Secondary</Badge>
       <Badge variant="outline">Outline</Badge>
       <Badge variant="destructive">Destructive</Badge>
+      <span className="relative inline-flex items-center rounded-full bg-muted p-2 text-sm">
+        Inbox<BadgeCount count={12} label="unread" />
+      </span>
     </div>
   )
 }
@@ -446,6 +462,9 @@ export function ButtonExample() {
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center gap-3">
         <Button>Default</Button>
+        <Button variant="glass">Glass</Button>
+        <Button variant="prominent">Prominent</Button>
+        <Button variant="tinted">Tinted</Button>
         <Button variant="secondary">Secondary</Button>
         <Button variant="outline">Outline</Button>
         <Button variant="ghost">Ghost</Button>
@@ -465,7 +484,7 @@ export function ButtonExample() {
 
 export function ButtonGroupExample() {
   return (
-    <ButtonGroup>
+    <ButtonGroup variant="glass">
       <ButtonGroupText>View</ButtonGroupText>
       <Button variant="outline">Grid</Button>
       <ButtonGroupSeparator />
@@ -476,7 +495,7 @@ export function ButtonGroupExample() {
 
 export function CalendarExample() {
   return (
-    <div className="w-fit rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-3">
+    <div className="w-fit rounded-3xl border border-white/60 bg-white/65 p-2 shadow-[0_12px_36px_rgb(15_23_42/0.08)] backdrop-blur-xl">
       <Calendar mode="single" selected={new Date(2026, 8, 13)} />
     </div>
   )
@@ -549,6 +568,10 @@ export function CheckboxExample() {
       <Label className="flex items-center gap-3">
         <Checkbox checked={checked} onCheckedChange={(value) => setChecked(Boolean(value))} />
         <span>Back up this file to Drive</span>
+      </Label>
+      <Label className="flex items-center gap-3">
+        <Checkbox shape="circle" size="lg" defaultChecked />
+        <span>Rounded option</span>
       </Label>
       <Label className="flex items-center gap-3 text-muted-foreground">
         <Checkbox disabled />
@@ -652,7 +675,7 @@ export function DatePickerExample() {
 export function DialogExample() {
   return (
     <Dialog>
-      <DialogTrigger render={<Button />}>Open dialog</DialogTrigger>
+      <DialogTrigger render={<Button variant="glass" />}>Open dialog</DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Rename file</DialogTitle>
@@ -703,7 +726,7 @@ export function DrawerExample() {
 export function DropdownMenuExample() {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="outline" />}>
+      <DropdownMenuTrigger render={<Button variant="glass" />}>
         <EllipsisHorizontalIcon aria-hidden="true" className="size-4" />
         File actions
       </DropdownMenuTrigger>
@@ -1005,9 +1028,13 @@ export function QuestionnaireExample() {
 
 export function RadioGroupExample() {
   return (
-    <RadioGroup defaultValue="local" aria-label="Workspace mode" className="grid gap-3">
-      <Label className="flex items-center gap-3"><RadioGroupItem value="local" /><span>Local workspace</span></Label>
-      <Label className="flex items-center gap-3"><RadioGroupItem value="drive" /><span>Google Drive workspace</span></Label>
+    <RadioGroup defaultValue="local" aria-label="Workspace mode" className="grid max-w-sm gap-2">
+      <Label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-white/65 bg-white/55 p-3 shadow-sm transition-colors hover:bg-white/75 has-[:checked]:border-primary/30 has-[:checked]:bg-primary/5">
+        <RadioGroupItem value="local" /><span className="text-sm">Local workspace</span>
+      </Label>
+      <Label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-white/65 bg-white/55 p-3 shadow-sm transition-colors hover:bg-white/75 has-[:checked]:border-primary/30 has-[:checked]:bg-primary/5">
+        <RadioGroupItem value="drive" /><span className="text-sm">Google Drive workspace</span>
+      </Label>
       <Label className="flex items-center gap-3 text-muted-foreground"><RadioGroupItem value="team" disabled /><span>Team workspace unavailable</span></Label>
     </RadioGroup>
   )
