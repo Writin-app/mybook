@@ -131,7 +131,7 @@ function DropdownMenuContent({
           ref={dragRef}
           data-slot="dropdown-menu-content"
           data-bottom-sheet={bottomSheet || undefined}
-          className={cn("z-50 max-h-(--available-height) w-(--anchor-width) min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95", className, bottomSheet && "w-full min-h-auto max-h-[90dvh] overscroll-contain rounded-b-none rounded-t-2xl p-3 pb-[max(1rem,env(safe-area-inset-bottom))] origin-bottom data-open:slide-in-from-bottom-4 data-closed:slide-out-to-bottom-4 data-open:zoom-in-100 data-closed:zoom-out-100 shadow-2xl [&_[role=menuitem]]:min-h-11 [&_[role=menuitem]]:text-sm [&_[role=menuitem]]:px-3 [&_[role=menuitem]]:gap-2.5" )}
+          className={cn("z-50 max-h-(--available-height) w-[min(280px,calc(100vw-2rem))] min-w-32 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-xl border border-[var(--dropdown-menu-border)] bg-[var(--dropdown-menu-bg)] p-1 text-[var(--dropdown-menu-foreground)] shadow-[0_0_0_0_rgba(15,16,20,0.05),0_2px_2px_rgba(15,16,20,0.05),0_4px_4px_rgba(15,16,20,0.1)] duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95", className, bottomSheet && "w-full min-h-auto max-h-[90dvh] overscroll-contain rounded-b-none rounded-t-xl p-3 pb-[max(1rem,env(safe-area-inset-bottom))] origin-bottom data-open:slide-in-from-bottom-4 data-closed:slide-out-to-bottom-4 data-open:zoom-in-100 data-closed:zoom-out-100 shadow-2xl [&_[role=menuitem]]:min-h-11 [&_[role=menuitem]]:text-sm [&_[role=menuitem]]:px-3 [&_[role=menuitem]]:gap-2.5" )}
           {...props}
         >
           {bottomSheet ? (
@@ -162,7 +162,7 @@ function DropdownMenuLabel({
       data-slot="dropdown-menu-label"
       data-inset={inset}
       className={cn(
-        "px-1.5 py-1 text-xs font-medium text-muted-foreground data-inset:pl-7",
+        "px-2 py-1 font-[family-name:var(--font-editor)] text-xs leading-4 font-medium text-[var(--dropdown-menu-muted)] data-inset:pl-7",
         className
       )}
       {...props}
@@ -185,7 +185,7 @@ function DropdownMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
+        "group/dropdown-menu-item relative flex min-h-8 cursor-default items-center gap-2 rounded-lg px-2 py-1.5 font-[family-name:var(--font-editor)] text-sm leading-[18px] font-normal text-[var(--dropdown-menu-foreground)] outline-hidden select-none hover:bg-[var(--dropdown-menu-hover)] focus-visible:shadow-[0_0_0_2px_var(--dropdown-menu-focus-inner),0_0_1px_3px_var(--dropdown-menu-focus-outer)] data-[pressed]:bg-[var(--dropdown-menu-pressed)] data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:hover:bg-destructive/10 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
         className
       )}
       {...props}
@@ -327,7 +327,7 @@ function DropdownMenuSeparator({
   return (
     <MenuPrimitive.Separator
       data-slot="dropdown-menu-separator"
-      className={cn("-mx-1 my-1 h-px bg-border", className)}
+      className={cn("mx-0 my-1 h-px bg-[var(--dropdown-menu-border)]", className)}
       {...props}
     />
   )

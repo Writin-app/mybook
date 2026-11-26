@@ -59,6 +59,22 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-nav-foreground: #40424f;
+  --sidebar-nav-active-foreground: #202229;
+  --sidebar-nav-group-title: #666875;
+  --sidebar-nav-hover: #ebecf2;
+  --sidebar-nav-active: #dfdfe8;
+  --sidebar-nav-indicator: #0473eb;
+  --sidebar-nav-focus-inner: #48c2ff;
+  --sidebar-nav-focus-outer: #b5e6ff;
+  --dropdown-menu-bg: #ffffff;
+  --dropdown-menu-border: #ebecf2;
+  --dropdown-menu-foreground: #202229;
+  --dropdown-menu-muted: #666875;
+  --dropdown-menu-hover: #ebecf2;
+  --dropdown-menu-pressed: #dfdfe8;
+  --dropdown-menu-focus-inner: #48c2ff;
+  --dropdown-menu-focus-outer: #b5e6ff;
 }
 
 [data-theme="dark"] {
@@ -66,6 +82,14 @@
   --app-border: #323238;
   --app-surface: #1c1c1f;
   --app-subtle: #252529;
+  --dropdown-menu-bg: #1c1c1f;
+  --dropdown-menu-border: #323238;
+  --dropdown-menu-foreground: #f3f4f6;
+  --dropdown-menu-muted: #a1a1aa;
+  --dropdown-menu-hover: #323238;
+  --dropdown-menu-pressed: #40424f;
+  --dropdown-menu-focus-inner: #60a5fa;
+  --dropdown-menu-focus-outer: #2563eb;
 }
 
 @keyframes indeterminate-progress {
@@ -1198,6 +1222,14 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-nav-foreground: #d8d9e1;
+  --sidebar-nav-active-foreground: #f2f2f5;
+  --sidebar-nav-group-title: #a4a5b0;
+  --sidebar-nav-hover: #292a32;
+  --sidebar-nav-active: #34353f;
+  --sidebar-nav-indicator: #48a6ff;
+  --sidebar-nav-focus-inner: #48c2ff;
+  --sidebar-nav-focus-outer: #214e75;
 }
 
 /* Landing Page Visual Craft (WorkOS Atlas / Attio / AlignUI style) */

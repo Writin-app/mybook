@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CloudUploadIcon, Delete02Icon, Download01Icon, File01Icon, Folder01Icon, HelpCircleIcon, Home01Icon, Logout01Icon, MoreHorizontalIcon, Search01Icon, Settings01Icon, Sun01Icon } from '@hugeicons/core-free-icons'
+import { Clock01Icon, CloudSyncIcon, CloudUploadIcon, CommandIcon, Download01Icon, File01Icon, Folder01Icon, HelpCircleIcon, HelpSquareIcon, Layers01Icon, LibraryIcon, Logout01Icon, Moon02Icon, PlusSignIcon, Search01Icon, Settings01Icon, Sun01Icon, TrashIcon, UnfoldMoreIcon, UserIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -38,9 +38,14 @@ import {
 import { WorkspaceModal } from './WorkspaceModal'
 import { MissingMirrorModal } from './MissingMirrorModal'
 import { useLocalMirrorSync } from '../../hooks/useLocalMirrorSync'
-import { CheckIcon, PlusIcon, CloudIcon, FolderIcon } from '@heroicons/react/24/outline'
+import { CheckIcon, FolderIcon } from '@heroicons/react/24/outline'
 import { toast } from '../ui/toast'
 import { Input } from '../ui/input'
+import { InputGroup, InputGroupAddon, InputGroupText } from '../ui/input-group'
+import { Kbd, KbdGroup } from '../ui/kbd'
+import { Avatar, AvatarBadge, AvatarFallback } from '../ui/avatar'
+import { Button } from '../ui/button'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '../ui/item'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
 import {
   DropdownMenu,
@@ -56,7 +61,6 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
-  SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
@@ -98,12 +102,12 @@ export function AppLayout() {
   const importInputRef = useRef<HTMLInputElement>(null)
   const isEditor = pathname.startsWith('/document/') || pathname.startsWith('/spreadsheet/')
   const favorites = activeFavoriteItems(files, folders)
-  const sidebarFavorites = favorites.slice(0, 5)
   const recentFiles = files.filter((file) => !file.isDeleted).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)).slice(0, 5)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false)
   const [isWorkspaceModalOpen, setIsWorkspaceModalOpen] = useState(false)
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false)
   const [workspaces, setWorkspaces] = useState<AppWorkspaceItem[]>([])
   const googleButtonRef = useRef<HTMLDivElement>(null)
   const isLocalWorkspace = workspaceMode === 'local' || !isAuthenticated
@@ -125,7 +129,7 @@ export function AppLayout() {
 
   const activeWorkspace = workspaces.find((w) => w.isActive)
   const vaultName = activeWorkspace?.name || localDetails?.name || 'Local Vault'
-  const displayName = activeWorkspace ? activeWorkspace.name : isLocalWorkspace ? vaultName : accountDisplayName || email || 'Google account'
+  const displayName = accountDisplayName || email?.split('@')[0] || (isLocalWorkspace ? localDetails?.name : 'Google account') || 'Writin user'
   const profileEmail = email
   const initials = displayName.split(/\s+/u).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || (isLocalWorkspace ? 'LV' : 'WR')
 
@@ -174,10 +178,10 @@ export function AppLayout() {
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase()
   const searchResults = normalizedSearchQuery
     ? [
-        ...files.filter((file) => !file.isDeleted && file.name.toLocaleLowerCase().includes(normalizedSearchQuery)).map((file) => ({ kind: 'file' as const, id: file.id, name: file.name, type: file.type })),
-        ...folders.filter((folder) => !folder.isDeleted && folder.name.toLocaleLowerCase().includes(normalizedSearchQuery)).map((folder) => ({ kind: 'folder' as const, id: folder.id, name: folder.name, type: 'folder' as const })),
+        ...files.filter((file) => !file.isDeleted && file.name.toLocaleLowerCase().includes(normalizedSearchQuery)).map((file) => ({ kind: 'file' as const, id: file.id, name: file.name, type: file.type, folderId: file.folderId })),
+        ...folders.filter((folder) => !folder.isDeleted && folder.name.toLocaleLowerCase().includes(normalizedSearchQuery)).map((folder) => ({ kind: 'folder' as const, id: folder.id, name: folder.name, type: 'folder' as const, parentId: folder.parentId })),
       ].slice(0, 8)
-    : recentFiles.map((file) => ({ kind: 'file' as const, id: file.id, name: file.name, type: file.type }))
+    : recentFiles.map((file) => ({ kind: 'file' as const, id: file.id, name: file.name, type: file.type, folderId: file.folderId }))
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
   const [isMoveFolderDialogOpen, setIsMoveFolderDialogOpen] = useState(false)
   const [renameFolderTarget, setRenameFolderTarget] = useState<MyBookFolder | null>(null)
@@ -194,7 +198,7 @@ export function AppLayout() {
   let onBack: (() => void) | undefined = undefined
 
   if (pathname === '/home') {
-    headerTitle = 'Home'
+    headerTitle = 'Recent'
   } else if (pathname === '/favorites') {
     headerTitle = 'Favorites'
   } else if (pathname === '/folders') {
@@ -294,244 +298,169 @@ export function AppLayout() {
       <MobileSidebarRouteDismissal />
       <Sidebar side="left" collapsible="offcanvas">
         <SidebarHeader>
-          <div className="flex items-center px-3 py-2">
-            <DropdownMenu
-              onOpenChange={(open) => {
-                if (open) {
-                  void listAllWorkspaces().then(setWorkspaces)
-                }
-              }}
-            >
+          <div className="px-3 py-2">
+            <DropdownMenu onOpenChange={(open) => { if (open) void listAllWorkspaces().then(setWorkspaces) }}>
               <DropdownMenuTrigger
                 render={<button type="button" />}
-                aria-label="Account options"
-                title="Account options"
-                className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-1 text-left transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={`Select vault, current vault ${vaultName}`}
+                className="flex min-h-12 w-full min-w-0 items-center gap-3 rounded-xl px-3 text-left transition hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background shadow-xs" aria-hidden="true">{initials}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-sidebar-foreground">{displayName}</p>
-                  {activeWorkspace?.hasLocalMirror ? (
-                    <p className="flex items-center gap-1 truncate text-xs text-sidebar-foreground/60" title={profileEmail ? `${profileEmail} (Mirrored locally)` : 'Mirrored locally'}>
-                      <FolderIcon className="size-3 shrink-0" />
-                      <span>Mirrored locally</span>
-                    </p>
-                  ) : profileEmail ? (
-                    <p className="truncate text-xs text-sidebar-foreground/60" title={profileEmail}>{profileEmail}</p>
-                  ) : isLocalWorkspace ? (
-                    <p className="truncate text-xs font-medium text-primary">Local Vault</p>
-                  ) : null}
-                </div>
-                <HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} className="size-5 shrink-0 text-sidebar-foreground/70" />
+                <HugeiconsIcon icon={Layers01Icon} strokeWidth={2} className="size-6 shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-base font-medium">{vaultName}</span>
+                <HugeiconsIcon icon={UnfoldMoreIcon} strokeWidth={2} className="size-5 shrink-0" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-56">
+              <DropdownMenuContent align="start">
                 {workspaces.length > 0 ? (
                   <>
                     <DropdownMenuGroup>
-                      <DropdownMenuLabel className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Workspaces
-                      </DropdownMenuLabel>
+                      <DropdownMenuLabel>Vaults</DropdownMenuLabel>
                       {workspaces.map((ws) => (
-                        <DropdownMenuItem
-                          key={ws.id}
-                          onClick={() => {
-                            if (!ws.isActive) {
-                              void switchWorkspace(ws).then(() => {
-                                toast.add({
-                                  title: 'Workspace Switched',
-                                  description: `Switched to "${ws.name}".`,
-                                  type: 'success',
-                                  priority: 'low',
-                                })
-                              })
-                            }
-                          }}
-                          className="flex items-center justify-between gap-2 py-2"
-                        >
-                          <div className="flex min-w-0 flex-1 items-center gap-2">
-                            {ws.type === 'cloud' ? (
-                              <CloudIcon className="size-4 shrink-0 text-muted-foreground" />
-                            ) : (
-                              <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <p className={`truncate text-sm ${ws.isActive ? 'font-semibold text-foreground' : 'text-foreground/80'}`}>
-                                {ws.name}
-                              </p>
-                              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                                <span>{ws.type === 'cloud' ? 'Google Drive' : 'Local Device'}</span>
-                                {ws.hasLocalMirror && (
-                                  <span className="flex items-center gap-0.5 text-primary">
-                                    • Mirrored{ws.localFolderName ? ` (${ws.localFolderName})` : ''}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          {ws.isActive && (
-                            <CheckIcon className="size-4 shrink-0 text-primary" />
-                          )}
+                        <DropdownMenuItem key={ws.id} onClick={() => {
+                          if (!ws.isActive) void switchWorkspace(ws).then(() => toast.add({ title: 'Vault switched', description: `Switched to “${ws.name}”.`, type: 'success', priority: 'low' }))
+                        }}>
+                          <HugeiconsIcon icon={ws.type === 'cloud' ? CloudSyncIcon : Layers01Icon} strokeWidth={2} className="size-4 shrink-0 text-muted-foreground" />
+                          <span className={`min-w-0 flex-1 truncate text-sm ${ws.isActive ? 'font-semibold' : ''}`}>{ws.name}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground">{ws.type === 'cloud' ? 'Cloud' : 'Local'}{ws.hasLocalMirror ? ' · Mirrored' : ''}</span>
+                          {ws.isActive ? <CheckIcon className="size-4 shrink-0 text-primary" /> : null}
                         </DropdownMenuItem>
                       ))}
                     </DropdownMenuGroup>
                     <DropdownMenuSeparator />
                   </>
                 ) : null}
-
                 <DropdownMenuItem onClick={() => setIsWorkspaceModalOpen(true)}>
-                  <PlusIcon className="size-4 text-muted-foreground" />
-                  <span>Add Workspace...</span>
+                  <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} className="size-4" />Create vault
                 </DropdownMenuItem>
-
                 {!isLocalWorkspace && canPickDeviceDirectory() && !activeWorkspace?.hasLocalMirror ? (
-                  <DropdownMenuItem
-                    onClick={async () => {
-                      try {
-                        const picked = await pickLocalWorkspaceDirectory()
-                        if (picked) {
-                          await mirrorCurrentCloudWorkspaceToLocal(picked.handle)
-                          toast.add({
-                            title: 'Local Mirror Created',
-                            description: `Mirrored "${displayName}" to folder "${picked.name}".`,
-                            type: 'success',
-                            priority: 'low',
-                          })
-                        }
-                      } catch {
-                        // user cancelled
+                  <DropdownMenuItem onClick={async () => {
+                    try {
+                      const picked = await pickLocalWorkspaceDirectory()
+                      if (picked) {
+                        await mirrorCurrentCloudWorkspaceToLocal(picked.handle)
+                        toast.add({ title: 'Local mirror created', description: `Mirrored “${vaultName}” to “${picked.name}”.`, type: 'success', priority: 'low' })
                       }
-                    }}
-                  >
-                    <FolderIcon className="size-4 text-muted-foreground" />
-                    <span>Mirror to Computer Folder</span>
+                    } catch {
+                      // The user cancelled the directory picker.
+                    }
+                  }}>
+                    <FolderIcon className="size-4" />Mirror to local device
                   </DropdownMenuItem>
                 ) : null}
-
                 {!isLocalWorkspace && activeWorkspace?.hasLocalMirror ? (
-                  <DropdownMenuItem
-                    onClick={async () => {
-                      await forgetDeviceDirectoryHandle()
-                      useWorkspaceStore.getState().bumpWorkspaceRevision()
-                      toast.add({
-                        title: 'Mirror Disconnected',
-                        description: 'Local mirror disconnected. Files remain in Google Drive.',
-                        type: 'info',
-                        priority: 'low',
-                      })
-                    }}
-                  >
-                    <FolderIcon className="size-4 text-muted-foreground" />
-                    <span>Disconnect Local Mirror</span>
+                  <DropdownMenuItem onClick={async () => {
+                    await forgetDeviceDirectoryHandle()
+                    useWorkspaceStore.getState().bumpWorkspaceRevision()
+                    toast.add({ title: 'Mirror disconnected', description: 'Files remain in Google Drive.', type: 'info', priority: 'low' })
+                  }}>
+                    <FolderIcon className="size-4" />Disconnect local mirror
                   </DropdownMenuItem>
                 ) : null}
-
-                {isLocalWorkspace && !profileEmail ? (
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setIsGoogleModalOpen(true)
-                    }}
-                  >
-                    <HugeiconsIcon icon={CloudUploadIcon} strokeWidth={2} className="size-4" />
-                    Connect Cloud Vault
-                  </DropdownMenuItem>
-                ) : null}
-
                 <DropdownMenuItem onClick={() => void downloadVaultZip({ vaultName })}>
-                  <HugeiconsIcon icon={Download01Icon} strokeWidth={2} className="size-4" />
-                  Export full vault (ZIP)
-                </DropdownMenuItem>
-
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate('/about')}>
-                  <HugeiconsIcon icon={HelpCircleIcon} strokeWidth={2} className="size-4" />
-                  About Writin
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate('/settings')}>
-                  <HugeiconsIcon icon={Settings01Icon} strokeWidth={2} className="size-4" />
-                  Preferences
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void logout()}>
-                  <HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" />
-                  {isLocalWorkspace ? 'Return to start' : 'Log out'}
+                  <HugeiconsIcon icon={Download01Icon} strokeWidth={2} className="size-4" />Export full vault
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          <div className="px-2 pb-2">
-            <label className="sr-only" htmlFor="sidebar-search">Search</label>
-            <div className="relative">
-              <button type="button" id="sidebar-search" aria-label="Open search" onClick={() => setSearchOpen(true)} className="flex h-11 w-full items-center gap-2 rounded-xl border border-sidebar-border bg-white px-3 pl-9 text-left text-sm text-slate-500 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white dark:text-slate-500">
-                <span className="pointer-events-none absolute ml-[-1.5rem]"><HugeiconsIcon icon={Search01Icon} strokeWidth={2} className="size-4" /></span>
+          <div className="px-3 pb-3">
+            <InputGroup className="h-11 rounded-xl bg-background/70 shadow-xs">
+              <InputGroupAddon>
+                <InputGroupText><HugeiconsIcon icon={Search01Icon} strokeWidth={2} /></InputGroupText>
+              </InputGroupAddon>
+              <button type="button" aria-label="Open search" onClick={() => setSearchOpen(true)} className="flex h-full min-w-0 flex-1 items-center text-left text-sm text-muted-foreground focus-visible:outline-none">
                 <span>Search</span>
-                <kbd className="pointer-events-none ml-auto rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">⌘K</kbd>
+                <KbdGroup className="ml-auto mr-2">
+                  <Kbd>⌘</Kbd><Kbd>K</Kbd>
+                </KbdGroup>
               </button>
-              <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-sidebar-border bg-sidebar px-1.5 py-0.5 text-[10px] text-sidebar-foreground/60">⌘K</kbd>
-            </div>
+            </InputGroup>
           </div>
         </SidebarHeader>
-        <SidebarContent>
-          <SidebarGroup>
+        <SidebarContent className="gap-0">
+          <SidebarGroup className="gap-0.5">
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/home" />} isActive={pathname === '/home'} size="lg" tooltip="Home"><HugeiconsIcon icon={Home01Icon} strokeWidth={2} /><span>Home</span></SidebarMenuButton></SidebarMenuItem>
-                <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/folders" />} isActive={pathname === '/folders' || pathname.startsWith('/folders/')} size="lg" tooltip="Library"><HugeiconsIcon icon={Folder01Icon} strokeWidth={2} /><span>Library</span></SidebarMenuButton></SidebarMenuItem>
+                <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/home" />} isActive={pathname === '/home'} variant="navigation" size="nav" tooltip="Recent"><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={Clock01Icon} strokeWidth={2} /></span><span>Recent</span></SidebarMenuButton></SidebarMenuItem>
+                <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/folders" />} isActive={pathname === '/folders' || pathname.startsWith('/folders/')} variant="navigation" size="nav" tooltip="Library"><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={LibraryIcon} strokeWidth={2} /></span><span>Library</span></SidebarMenuButton></SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-          <SidebarGroup>
-            <SidebarGroupLabel>Recent</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {recentFiles.map((file) => <SidebarMenuItem key={`recent:${file.id}`}><SidebarMenuButton render={<NavLink to={`/${file.type}/${file.id}`} />} isActive={pathname === `/${file.type}/${file.id}`} tooltip={file.name}><HugeiconsIcon icon={File01Icon} strokeWidth={2} /><span>{file.name}</span></SidebarMenuButton></SidebarMenuItem>)}
-                {files.filter((file) => !file.isDeleted).length > 5 ? <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/home" />} tooltip="View more recent documents"><HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} /><span className="font-semibold">View more</span></SidebarMenuButton></SidebarMenuItem> : null}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-          <SidebarGroup>
-            <SidebarGroupLabel>Favorites</SidebarGroupLabel>
-            {favorites.length > 5 ? (
-              <SidebarGroupAction
-                render={<NavLink to="/favorites" />}
-                aria-label="See all favorites"
-                title="See all favorites"
-                className="aspect-auto h-6 w-auto px-2 text-xs"
-              >
-                More
-              </SidebarGroupAction>
-            ) : null}
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {sidebarFavorites.map((favorite) => {
-                  const path = favorite.kind === 'folder'
-                    ? `/folders/${favorite.item.id}`
-                    : `/${favorite.item.type}/${favorite.item.id}`
-                  const label = favorite.kind === 'folder'
-                    ? `Open favorite folder ${favorite.item.name}`
-                    : `Open favorite ${favorite.item.type} ${favorite.item.name}`
-
-                  return (
-                    <SidebarMenuItem key={`${favorite.kind}:${favorite.item.id}`}>
-                      <SidebarMenuButton
-                        render={<NavLink to={path} aria-label={label} />}
-                        isActive={pathname === path}
-                        tooltip={favorite.item.name}
-                      >
-                        <HugeiconsIcon icon={favorite.kind === 'folder' ? Folder01Icon : File01Icon} strokeWidth={2} />
-                        <span>{favorite.item.name}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
+          <SidebarGroup className="min-h-0 flex-1 gap-0.5">
+            <SidebarGroupLabel className="h-6 px-2 py-1 font-editor text-xs leading-4 text-[color:var(--sidebar-nav-group-title)]">Favorites</SidebarGroupLabel>
+            {favorites.length > 0 ? (
+              <SidebarGroupContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                <SidebarMenu>
+                  {favorites.map((favorite) => {
+                    const path = favorite.kind === 'folder' ? `/folders/${favorite.item.id}` : `/${favorite.item.type}/${favorite.item.id}`
+                    const label = favorite.kind === 'folder' ? `Open favorite folder ${favorite.item.name}` : `Open favorite ${favorite.item.type} ${favorite.item.name}`
+                    return (
+                      <SidebarMenuItem key={`${favorite.kind}:${favorite.item.id}`}>
+                        <SidebarMenuButton render={<NavLink to={path} aria-label={label} />} isActive={pathname === path} variant="navigation" size="nav" tooltip={favorite.item.name}>
+                          <span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={favorite.kind === 'folder' ? Folder01Icon : File01Icon} strokeWidth={2} /></span>
+                          <span>{favorite.item.name}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    )
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            ) : (
+              <SidebarGroupContent><p className="px-2 py-2 text-sm text-muted-foreground">Your favorites will appear here.</p></SidebarGroupContent>
+            )}
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
           <SidebarMenu>
-            <SidebarMenuItem><div className="flex items-center justify-between px-3 py-2 text-sm text-sidebar-foreground"><span className="flex items-center gap-2"><HugeiconsIcon icon={Sun01Icon} strokeWidth={2} className="size-4" />Theme</span><div className="flex rounded-lg bg-sidebar-accent p-0.5"><button type="button" aria-label="Use light theme" aria-pressed={theme === 'light'} onClick={() => theme !== 'light' && toggleTheme()} className={`rounded-md px-2 py-1 text-xs ${theme === 'light' ? 'bg-sidebar text-sidebar-foreground shadow-sm' : 'text-sidebar-foreground/60'}`}>Light</button><button type="button" aria-label="Use dark theme" aria-pressed={theme === 'dark'} onClick={() => theme !== 'dark' && toggleTheme()} className={`rounded-md px-2 py-1 text-xs ${theme === 'dark' ? 'bg-sidebar text-sidebar-foreground shadow-sm' : 'text-sidebar-foreground/60'}`}>Dark</button></div></div></SidebarMenuItem>
-            <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/settings" />} isActive={pathname === '/settings'} tooltip="Preferences"><HugeiconsIcon icon={Settings01Icon} strokeWidth={2} /><span>Preferences</span></SidebarMenuButton></SidebarMenuItem>
-            <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/settings" />} tooltip="Help"><HugeiconsIcon icon={HelpCircleIcon} strokeWidth={2} /><span>Help</span></SidebarMenuButton></SidebarMenuItem>
-            <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/trash" />} isActive={pathname === '/trash'} size="lg" tooltip="Trash"><HugeiconsIcon icon={Delete02Icon} strokeWidth={2} /><span>Trash</span></SidebarMenuButton></SidebarMenuItem>
+            <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/trash" />} isActive={pathname === '/trash'} variant="navigation" size="nav" tooltip="Trash"><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={TrashIcon} strokeWidth={2} /></span><span>Trash</span></SidebarMenuButton></SidebarMenuItem>
+            <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/settings" />} isActive={pathname === '/settings'} variant="navigation" size="nav" tooltip="Support & help"><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={HelpSquareIcon} strokeWidth={2} /></span><span>Support &amp; help</span></SidebarMenuButton></SidebarMenuItem>
+            <SidebarMenuItem className="mt-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<Item variant="outline" size="sm" render={<button type="button" />} />}
+                  aria-label="Open account menu"
+                  className="min-h-[100px] flex-nowrap rounded-xl border-sidebar-border bg-background px-3 py-4 text-left shadow-xs transition hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <ItemMedia className="size-16">
+                    <Avatar size="lg" className="size-16 border border-border data-[size=lg]:size-16">
+                      <AvatarFallback className="bg-muted text-[28px] font-medium text-foreground">{initials}</AvatarFallback>
+                      <AvatarBadge className={`size-6 [&>svg]:size-4 ${isLocalWorkspace ? 'bg-muted text-muted-foreground' : 'bg-emerald-500 text-white'}`}>
+                        <HugeiconsIcon icon={isLocalWorkspace ? Layers01Icon : CloudSyncIcon} strokeWidth={2} />
+                      </AvatarBadge>
+                    </Avatar>
+                  </ItemMedia>
+                  <ItemContent className="min-w-0 gap-0">
+                    <ItemTitle className="w-full truncate text-base font-semibold leading-6 text-foreground">{displayName}</ItemTitle>
+                    <ItemDescription className="truncate text-sm leading-5 text-muted-foreground">{isLocalWorkspace ? 'Local device' : 'Cloud sync'}</ItemDescription>
+                  </ItemContent>
+                  <ItemActions>
+                    <HugeiconsIcon icon={UnfoldMoreIcon} strokeWidth={2} className="size-5 shrink-0 text-muted-foreground" />
+                  </ItemActions>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" side="top" sideOffset={8}>
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>App actions</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => navigate('/settings')}><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={UserIcon} strokeWidth={2} className="size-4" /></span>Profile</DropdownMenuItem>
+                    {isLocalWorkspace && !profileEmail ? <DropdownMenuItem onClick={() => setIsGoogleModalOpen(true)}><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={CloudUploadIcon} strokeWidth={2} className="size-4" /></span>Connect cloud vault</DropdownMenuItem> : null}
+                  <div className="flex min-h-8 items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm leading-[18px]">
+                    <span className="flex items-center gap-2 text-sm"><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={Sun01Icon} strokeWidth={2} className="size-4" /></span>Appearance</span>
+                    <div className="flex rounded-full bg-muted p-1">
+                      <Button type="button" variant={theme === 'light' ? 'secondary' : 'ghost'} size="icon" aria-label="Use light theme" aria-pressed={theme === 'light'} className="size-8 rounded-full" onClick={() => theme !== 'light' && toggleTheme()}><HugeiconsIcon icon={Sun01Icon} strokeWidth={2} className="size-4" /></Button>
+                      <Button type="button" variant={theme === 'dark' ? 'secondary' : 'ghost'} size="icon" aria-label="Use dark theme" aria-pressed={theme === 'dark'} className="size-8 rounded-full" onClick={() => theme !== 'dark' && toggleTheme()}><HugeiconsIcon icon={Moon02Icon} strokeWidth={2} className="size-4" /></Button>
+                    </div>
+                  </div>
+                    <DropdownMenuItem onClick={() => setIsShortcutsOpen(true)}><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={CommandIcon} strokeWidth={2} className="size-4" /></span>Shortcuts</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate('/settings')}><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={Settings01Icon} strokeWidth={2} className="size-4" /></span>Settings</DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Links</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => navigate('/about')}><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={HelpCircleIcon} strokeWidth={2} className="size-4" /></span>About Writin</DropdownMenuItem>
+                    <DropdownMenuItem render={<a href="mailto:writin.app@gmail.com?subject=Writin%20support%20request" />}><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={HelpCircleIcon} strokeWidth={2} className="size-4" /></span>Report an issue</DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => void logout()}><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" /></span>{isLocalWorkspace ? 'Return to start' : 'Log out'}</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
       </Sidebar>
@@ -719,6 +648,18 @@ export function AppLayout() {
                 <p className="mt-1 text-xs text-muted-foreground">Try a different document or folder name.</p>
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isShortcutsOpen} onOpenChange={setIsShortcutsOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Keyboard shortcuts</DialogTitle>
+            <DialogDescription>Quick ways to navigate Writin.</DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+            <span>Open search</span>
+            <KbdGroup><Kbd>⌘</Kbd><Kbd>K</Kbd></KbdGroup>
           </div>
         </DialogContent>
       </Dialog>
