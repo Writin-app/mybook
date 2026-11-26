@@ -1,9 +1,31 @@
-html,
-body,
-#storybook-root {
+html {
+  height: auto !important;
   min-width: 320px;
   min-height: 100%;
-  overflow: auto;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: auto !important;
+}
+
+body {
+  height: auto !important;
+  min-width: 320px;
+  min-height: 100%;
+  overflow: visible !important;
+  overscroll-behavior: auto !important;
+}
+
+#storybook-root,
+#storybook-docs {
+  height: auto !important;
+  min-height: 100%;
+  overflow: visible !important;
+}
+
+#storybook-root main {
+  overflow: visible !important;
+  scrollbar-width: auto !important;
+  overscroll-behavior-y: auto !important;
 }
 
 .sb-show-main.sb-main-padded {

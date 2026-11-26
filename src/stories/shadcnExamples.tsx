@@ -450,14 +450,26 @@ export function ButtonExample() {
         <Button variant="outline">Outline</Button>
         <Button variant="ghost">Ghost</Button>
         <Button variant="destructive">Destructive</Button>
+        <Button variant="assist">Assist</Button>
         <Button variant="link">Link</Button>
+        <Button variant="link-destructive">Destructive Link</Button>
+        <Button variant="link-assistive">Assistive Link</Button>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <Button size="xs">Extra small</Button>
         <Button size="sm">Small</Button>
         <Button>Default</Button>
         <Button size="lg">Large</Button>
-        <Button aria-label="More actions" size="icon"><EllipsisHorizontalIcon aria-hidden="true" className="size-4" /></Button>
+        <Button aria-label="More actions xs" size="icon-xs"><EllipsisHorizontalIcon aria-hidden="true" /></Button>
+        <Button aria-label="More actions sm" size="icon-sm"><EllipsisHorizontalIcon aria-hidden="true" /></Button>
+        <Button aria-label="More actions" size="icon"><EllipsisHorizontalIcon aria-hidden="true" /></Button>
+        <Button aria-label="More actions lg" size="icon-lg"><EllipsisHorizontalIcon aria-hidden="true" /></Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button disabled>Disabled</Button>
+        <Button variant="outline" disabled>Disabled Outline</Button>
+        <Button loading loadingText="Loading...">Submit</Button>
+        <Button size="icon" loading aria-label="Loading" />
       </div>
     </div>
   )
