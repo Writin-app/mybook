@@ -12,16 +12,18 @@ const ToggleGroupContext = React.createContext<
     orientation?: "horizontal" | "vertical"
   }
 >({
-  size: "default",
+  size: "md",
   variant: "default",
+  iconOnly: false,
   spacing: 2,
   orientation: "horizontal",
 })
 
 function ToggleGroup({
   className,
-  variant,
-  size,
+  variant = "default",
+  size = "md",
+  iconOnly = false,
   spacing = 2,
   orientation = "horizontal",
   children,
@@ -38,15 +40,16 @@ function ToggleGroup({
       data-size={size}
       data-spacing={spacing}
       data-orientation={orientation}
+      orientation={orientation}
       style={{ "--gap": spacing } as React.CSSProperties}
       className={cn(
-        "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] rounded-lg data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-vertical:flex-col data-vertical:items-stretch",
+        "group/toggle-group flex w-fit flex-row flex-wrap items-center gap-[--spacing(var(--gap))] data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch",
         className
       )}
       {...props}
     >
       <ToggleGroupContext.Provider
-        value={{ variant, size, spacing, orientation }}
+        value={{ variant, size, iconOnly, spacing, orientation }}
       >
         {children}
       </ToggleGroupContext.Provider>
@@ -57,23 +60,35 @@ function ToggleGroup({
 function ToggleGroupItem({
   className,
   children,
-  variant = "default",
-  size = "default",
+  variant,
+  size,
+  iconOnly,
   ...props
 }: TogglePrimitive.Props & VariantProps<typeof toggleVariants>) {
   const context = React.useContext(ToggleGroupContext)
+  const resolvedVariant = variant ?? context.variant ?? "default"
+  const resolvedSize = size ?? context.size ?? "md"
+  const resolvedIconOnly = iconOnly ?? context.iconOnly ?? false
 
   return (
     <TogglePrimitive
       data-slot="toggle-group-item"
-      data-variant={context.variant || variant}
-      data-size={context.size || size}
+      data-variant={resolvedVariant}
+      data-size={resolvedSize}
       data-spacing={context.spacing}
       className={cn(
-        "shrink-0 group-data-[spacing=0]/toggle-group:rounded-none group-data-[spacing=0]/toggle-group:px-2 focus:z-10 focus-visible:z-10 group-data-[spacing=0]/toggle-group:has-data-[icon=inline-end]:pr-1.5 group-data-[spacing=0]/toggle-group:has-data-[icon=inline-start]:pl-1.5 group-data-horizontal/toggle-group:data-[spacing=0]:first:rounded-l-lg group-data-vertical/toggle-group:data-[spacing=0]:first:rounded-t-lg group-data-horizontal/toggle-group:data-[spacing=0]:last:rounded-r-lg group-data-vertical/toggle-group:data-[spacing=0]:last:rounded-b-lg group-data-horizontal/toggle-group:data-[spacing=0]:data-[variant=outline]:border-l-0 group-data-vertical/toggle-group:data-[spacing=0]:data-[variant=outline]:border-t-0 group-data-horizontal/toggle-group:data-[spacing=0]:data-[variant=outline]:first:border-l group-data-vertical/toggle-group:data-[spacing=0]:data-[variant=outline]:first:border-t",
+        "shrink-0 focus:z-10 focus-visible:z-10",
+        "group-data-[spacing=0]/toggle-group:rounded-none",
+        "group-data-[orientation=horizontal]/toggle-group:group-data-[spacing=0]/toggle-group:first:rounded-l-[var(--token-dimension-radius-rounded)]",
+        "group-data-[orientation=horizontal]/toggle-group:group-data-[spacing=0]/toggle-group:last:rounded-r-[var(--token-dimension-radius-rounded)]",
+        "group-data-[orientation=vertical]/toggle-group:group-data-[spacing=0]/toggle-group:first:rounded-t-[var(--token-dimension-radius-16)]",
+        "group-data-[orientation=vertical]/toggle-group:group-data-[spacing=0]/toggle-group:last:rounded-b-[var(--token-dimension-radius-16)]",
+        "group-data-[orientation=horizontal]/toggle-group:group-data-[spacing=0]/toggle-group:data-[variant=outline]:border-l-0",
+        "group-data-[orientation=horizontal]/toggle-group:group-data-[spacing=0]/toggle-group:data-[variant=outline]:first:border-l",
         toggleVariants({
-          variant: context.variant || variant,
-          size: context.size || size,
+          variant: resolvedVariant,
+          size: resolvedSize,
+          iconOnly: resolvedIconOnly,
         }),
         className
       )}

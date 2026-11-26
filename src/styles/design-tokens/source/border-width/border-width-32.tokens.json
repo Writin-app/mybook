@@ -1,0 +1,21 @@
+{
+  "border-width": {
+    "$type": "number",
+    "$value": 1.75,
+    "$extensions": {
+      "com.figma.variableId": "VariableID:60:31",
+      "com.figma.scopes": [
+        "STROKE_FLOAT"
+      ],
+      "com.figma.aliasData": {
+        "targetVariableId": "VariableID:89d170d85e410b6483918f45bf8fcaad4a280e47/-1:-1",
+        "targetVariableName": "border-width/5",
+        "targetVariableSetId": "VariableCollectionId:ec6cdf0ded561c4fe742fed1174c35a6670ae674/-1:-1",
+        "targetVariableSetName": "dimension"
+      }
+    }
+  },
+  "$extensions": {
+    "com.figma.modeName": "32"
+  }
+}
