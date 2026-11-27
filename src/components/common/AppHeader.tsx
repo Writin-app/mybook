@@ -5,8 +5,6 @@ import {
   MoreHorizontalIcon,
   PlusSignIcon,
   Share08Icon,
-  SidebarLeft01Icon,
-  SidebarRight01Icon,
   StarIcon,
 } from '@hugeicons/core-free-icons'
 import { BookOpenIcon as BookOpenOutlineIcon } from '@heroicons/react/24/outline'
@@ -225,12 +223,6 @@ export function AppHeader({
   const hasLeading = leadingAction !== 'none' && !(isMobile && hideLeadingOnMobile)
   const leadingHandler = leadingAction === 'back' ? onBack : (onSidebarToggle ?? sidebarToggle)
   const leadingLabel = leadingAction === 'back' ? 'Go back' : 'Open navigation'
-  const leadingIcon =
-    leadingAction === 'back'
-      ? ArrowLeft01Icon
-      : isSidebarCollapsed
-        ? SidebarRight01Icon
-        : SidebarLeft01Icon
 
   const hasTrailingActions = addNewAction || shareAction || lockAction || favoriteAction || moreAction || !!trailingActionsSlot
   const showRightSide = !!status || (showTrailingActions && hasTrailingActions)
@@ -287,7 +279,16 @@ export function AppHeader({
             onClick={leadingHandler}
             className={cn('shrink-0 rounded-lg', leadingAction === 'sidebar' && onBack && 'hidden md:inline-flex')}
           >
-            <HugeiconsIcon icon={leadingIcon} strokeWidth={2} className="size-5" />
+            {leadingAction === 'back' ? (
+              <HugeiconsIcon icon={ArrowLeft01Icon} strokeWidth={2} className="size-5" />
+            ) : (
+              <img
+                src={isSidebarCollapsed ? '/icons/sidebar-right.svg' : '/icons/sidebar-left.svg'}
+                alt=""
+                aria-hidden="true"
+                className="size-5"
+              />
+            )}
           </Button>
         ) : null}
 

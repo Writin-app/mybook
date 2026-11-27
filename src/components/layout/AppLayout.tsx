@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Clock01Icon, CloudSyncIcon, CloudUploadIcon, CommandIcon, Download01Icon, File01Icon, Folder01Icon, HelpCircleIcon, HelpSquareIcon, Layers01Icon, LibraryIcon, Logout01Icon, Moon02Icon, PlusSignIcon, Search01Icon, Settings01Icon, Sun01Icon, TrashIcon, UnfoldMoreIcon, UserIcon } from '@hugeicons/core-free-icons'
+import { Bug01Icon, Clock01Icon, CloudUploadIcon, CommandIcon, Delete03Icon, Download01Icon, File01Icon, FilterHorizontalIcon, Folder01Icon, HelpSquareIcon, InformationSquareIcon, LibraryIcon, LogoutSquare01Icon, Moon02Icon, PaintBoardIcon, PlusSignIcon, Search01Icon, Settings02Icon, StarsIcon, Sun01Icon, UnfoldMoreIcon, UserIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useAppStore } from '../../stores/useAppStore'
@@ -26,7 +26,8 @@ import { deletedToast } from '../../utils/deleteToast'
 import type { MyBookFolder } from '../../types/files'
 import {
   canPickDeviceDirectory,
-  forgetDeviceDirectoryHandle,
+  findFolderConflict,
+  forgetCloudMirrorEntry,
   pickLocalWorkspaceDirectory,
 } from '../../services/localWorkspace'
 import {
@@ -38,14 +39,15 @@ import {
 import { WorkspaceModal } from './WorkspaceModal'
 import { MissingMirrorModal } from './MissingMirrorModal'
 import { useLocalMirrorSync } from '../../hooks/useLocalMirrorSync'
-import { CheckIcon, FolderIcon } from '@heroicons/react/24/outline'
 import { toast } from '../ui/toast'
 import { Input } from '../ui/input'
-import { InputGroup, InputGroupAddon, InputGroupText } from '../ui/input-group'
 import { Kbd, KbdGroup } from '../ui/kbd'
-import { Avatar, AvatarBadge, AvatarFallback } from '../ui/avatar'
-import { Button } from '../ui/button'
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '../ui/item'
+import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar'
+import { Badge } from '../ui/badge'
+import { FolderIllustration } from '../ui/folder-illustration'
+import { IconWrapper } from '../ui/icon-wrapper'
+import { SegmentedControl, SegmentedControlButton } from '../ui/segmented-control'
+import { NavGroup, NavItem, TrailingContent } from './sidenav/SidenavPrimitives'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
 import {
   DropdownMenu,
@@ -53,6 +55,8 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu'
@@ -60,14 +64,8 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarProvider,
   useSidebar,
 } from '../ui/sidebar'
@@ -90,8 +88,8 @@ function MobileSidebarRouteDismissal() {
 }
 
 export function AppLayout() {
-  const { theme, toggleTheme } = useAppStore()
-  const { email, displayName: accountDisplayName, isAuthenticated, completeLogin, logout } = useAuthStore()
+  const { themePreference, setThemePreference } = useAppStore()
+  const { email, displayName: accountDisplayName, avatarUrl, isAuthenticated, completeLogin, logout } = useAuthStore()
   const { mode: workspaceMode, workspaceRevision, isMirrorFolderMissing, isMirroring, mirrorProgress, selectGoogleWorkspace } = useWorkspaceStore()
   const { files, folders, isLoading } = useLibraryData()
   const { isFetchingFiles = false, fetchProgress = 0 } = useDriveBootstrap() ?? {}
@@ -129,9 +127,18 @@ export function AppLayout() {
 
   const activeWorkspace = workspaces.find((w) => w.isActive)
   const vaultName = activeWorkspace?.name || localDetails?.name || 'Local Vault'
-  const displayName = accountDisplayName || email?.split('@')[0] || (isLocalWorkspace ? localDetails?.name : 'Google account') || 'Writin user'
+  const isSignedInAccount = !isLocalWorkspace && isAuthenticated && Boolean(email)
+  const accountTitle = isSignedInAccount
+    ? (accountDisplayName || email?.split('@')[0] || 'Google account')
+    : 'Local device'
   const profileEmail = email
-  const initials = displayName.split(/\s+/u).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || (isLocalWorkspace ? 'LV' : 'WR')
+  const accountNameParts = accountTitle.trim().split(/\s+/u).filter(Boolean)
+  const firstInitial = accountNameParts[0]?.[0] ?? ''
+  const lastInitial = accountNameParts.at(-1)?.[0] ?? ''
+  const initials =
+    accountNameParts.length >= 2
+      ? `${firstInitial}${lastInitial}`.toUpperCase()
+      : (accountNameParts[0]?.slice(0, 2).toUpperCase() || 'WR')
 
   useEffect(() => {
     if (!isGoogleModalOpen || isBackendAuthEnabled) return
@@ -296,172 +303,351 @@ export function AppLayout() {
   return (
     <SidebarProvider className="h-full min-h-0 overflow-hidden bg-background text-foreground">
       <MobileSidebarRouteDismissal />
-      <Sidebar side="left" collapsible="offcanvas">
-        <SidebarHeader>
-          <div className="px-3 py-2">
-            <DropdownMenu onOpenChange={(open) => { if (open) void listAllWorkspaces().then(setWorkspaces) }}>
-              <DropdownMenuTrigger
-                render={<button type="button" />}
-                aria-label={`Select vault, current vault ${vaultName}`}
-                className="flex min-h-12 w-full min-w-0 items-center gap-3 rounded-xl px-3 text-left transition hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      <Sidebar
+        side="left"
+        collapsible="offcanvas"
+        className="border-r border-[var(--token-colors-border-primary)] [&_[data-slot=sidebar-inner]]:gap-[var(--token-dimension-spacing-16,16px)] [&_[data-slot=sidebar-inner]]:bg-[var(--token-overlay-backdrop-overlay-backdrop-light,rgba(108,113,128,0.05))] [&_[data-slot=sidebar-inner]]:p-[var(--token-dimension-spacing-12,12px)] [&_[data-slot=sidebar-inner]]:backdrop-blur-[20px]"
+      >
+        <SidebarHeader className="shrink-0 gap-[var(--token-dimension-spacing-16,16px)] p-0">
+          {/* Top inline vault dropdown trigger */}
+          <DropdownMenu onOpenChange={(open) => { if (open) void listAllWorkspaces().then(setWorkspaces) }}>
+            <DropdownMenuTrigger
+              render={<button type="button" />}
+              aria-label={`Select vault, current vault ${vaultName}`}
+              className="inline-flex w-fit max-w-full items-center gap-[var(--token-dimension-spacing-6,6px)] rounded-[var(--token-dimension-radius-8,8px)] px-[var(--token-dimension-spacing-8,8px)] py-[var(--token-dimension-spacing-6,6px)] text-left text-[var(--token-colors-foreground-secondary)] transition-colors hover:bg-[var(--token-colors-background-muted)] focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--token-focus-ring-default-inner),0_0_1px_3px_var(--token-focus-ring-default-outer)]"
+            >
+              <span className="min-w-0 truncate font-[family-name:var(--token-typography-font-family-primary)] text-[length:var(--token-typography-font-size-14,14px)] font-[number:var(--token-typography-font-weight-medium,500)] leading-[18px] antialiased">
+                {vaultName}
+              </span>
+              <Badge
+                variant={isLocalWorkspace ? 'outline' : 'secondary'}
+                size="sm"
+                className="shrink-0"
               >
-                <HugeiconsIcon icon={Layers01Icon} strokeWidth={2} className="size-6 shrink-0" />
-                <span className="min-w-0 flex-1 truncate text-base font-medium">{vaultName}</span>
-                <HugeiconsIcon icon={UnfoldMoreIcon} strokeWidth={2} className="size-5 shrink-0" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                {workspaces.length > 0 ? (
-                  <>
-                    <DropdownMenuGroup>
-                      <DropdownMenuLabel>Vaults</DropdownMenuLabel>
+                <span>
+                  {isLocalWorkspace
+                    ? 'On local'
+                    : activeWorkspace?.hasLocalMirror
+                      ? 'On cloud • Mirrored'
+                      : 'On cloud'}
+                </span>
+              </Badge>
+              <IconWrapper size="20">
+                <HugeiconsIcon icon={UnfoldMoreIcon} strokeWidth={1.75} />
+              </IconWrapper>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[256px]">
+              {workspaces.length > 0 ? (
+                <>
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Vaults</DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                      value={workspaces.find((ws) => ws.isActive)?.id ?? ''}
+                      onValueChange={(value) => {
+                        const target = workspaces.find((ws) => ws.id === value)
+                        if (target && !target.isActive) {
+                          void switchWorkspace(target).then(() =>
+                            toast.add({
+                              title: 'Vault switched',
+                              description: `Switched to “${target.name}”.`,
+                              type: 'success',
+                              priority: 'low',
+                            }),
+                          )
+                        }
+                      }}
+                    >
                       {workspaces.map((ws) => (
-                        <DropdownMenuItem key={ws.id} onClick={() => {
-                          if (!ws.isActive) void switchWorkspace(ws).then(() => toast.add({ title: 'Vault switched', description: `Switched to “${ws.name}”.`, type: 'success', priority: 'low' }))
-                        }}>
-                          <HugeiconsIcon icon={ws.type === 'cloud' ? CloudSyncIcon : Layers01Icon} strokeWidth={2} className="size-4 shrink-0 text-muted-foreground" />
-                          <span className={`min-w-0 flex-1 truncate text-sm ${ws.isActive ? 'font-semibold' : ''}`}>{ws.name}</span>
-                          <span className="shrink-0 text-xs text-muted-foreground">{ws.type === 'cloud' ? 'Cloud' : 'Local'}{ws.hasLocalMirror ? ' · Mirrored' : ''}</span>
-                          {ws.isActive ? <CheckIcon className="size-4 shrink-0 text-primary" /> : null}
-                        </DropdownMenuItem>
+                        <DropdownMenuRadioItem
+                          key={ws.id}
+                          value={ws.id}
+                          trailingContent={
+                            <Badge
+                              variant={ws.type === 'cloud' ? 'secondary' : 'outline'}
+                              size="sm"
+                            >
+                              <span>
+                                {ws.type === 'cloud'
+                                  ? ws.hasLocalMirror
+                                    ? 'On cloud • Mirrored'
+                                    : 'On cloud'
+                                  : 'On local'}
+                              </span>
+                            </Badge>
+                          }
+                        >
+                          <span className={ws.isActive ? 'font-medium' : undefined}>{ws.name}</span>
+                        </DropdownMenuRadioItem>
                       ))}
-                    </DropdownMenuGroup>
-                    <DropdownMenuSeparator />
-                  </>
-                ) : null}
-                <DropdownMenuItem onClick={() => setIsWorkspaceModalOpen(true)}>
-                  <HugeiconsIcon icon={PlusSignIcon} strokeWidth={2} className="size-4" />Create vault
-                </DropdownMenuItem>
-                {!isLocalWorkspace && canPickDeviceDirectory() && !activeWorkspace?.hasLocalMirror ? (
-                  <DropdownMenuItem onClick={async () => {
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                </>
+              ) : null}
+              <DropdownMenuItem
+                leadingIcon={<HugeiconsIcon icon={PlusSignIcon} strokeWidth={1.75} className="size-4 text-[var(--token-colors-foreground-secondary)]" />}
+                onClick={() => setIsWorkspaceModalOpen(true)}
+              >
+                Create vault
+              </DropdownMenuItem>
+              {!isLocalWorkspace && canPickDeviceDirectory() && !activeWorkspace?.hasLocalMirror ? (
+                <DropdownMenuItem
+                  leadingIcon={<HugeiconsIcon icon={Folder01Icon} strokeWidth={1.75} className="size-4 text-[var(--token-colors-foreground-secondary)]" />}
+                  onClick={async () => {
                     try {
                       const picked = await pickLocalWorkspaceDirectory()
                       if (picked) {
+                        const conflict = await findFolderConflict(picked.handle, activeWorkspace?.driveFolderId)
+                        if (conflict) {
+                          toast.add({
+                            title: conflict.isSameVault ? 'Already mirrored' : 'Folder already in use',
+                            description: conflict.isSameVault
+                              ? `“${vaultName}” is already mirrored to “${picked.name}”.`
+                              : `“${picked.name}” is already used by “${conflict.vaultName}”. Please choose a different folder.`,
+                            type: 'error',
+                            priority: 'high',
+                          })
+                          return
+                        }
                         await mirrorCurrentCloudWorkspaceToLocal(picked.handle)
                         toast.add({ title: 'Local mirror created', description: `Mirrored “${vaultName}” to “${picked.name}”.`, type: 'success', priority: 'low' })
                       }
                     } catch {
                       // The user cancelled the directory picker.
                     }
-                  }}>
-                    <FolderIcon className="size-4" />Mirror to local device
-                  </DropdownMenuItem>
-                ) : null}
-                {!isLocalWorkspace && activeWorkspace?.hasLocalMirror ? (
-                  <DropdownMenuItem onClick={async () => {
-                    await forgetDeviceDirectoryHandle()
+                  }}
+                >
+                  Mirror to local device
+                </DropdownMenuItem>
+              ) : null}
+              {!isLocalWorkspace && activeWorkspace?.hasLocalMirror ? (
+                <DropdownMenuItem
+                  leadingIcon={<HugeiconsIcon icon={Folder01Icon} strokeWidth={1.75} className="size-4 text-[var(--token-colors-foreground-secondary)]" />}
+                  onClick={async () => {
+                    await forgetCloudMirrorEntry(activeWorkspace?.driveFolderId)
                     useWorkspaceStore.getState().bumpWorkspaceRevision()
                     toast.add({ title: 'Mirror disconnected', description: 'Files remain in Google Drive.', type: 'info', priority: 'low' })
-                  }}>
-                    <FolderIcon className="size-4" />Disconnect local mirror
-                  </DropdownMenuItem>
-                ) : null}
-                <DropdownMenuItem onClick={() => void downloadVaultZip({ vaultName })}>
-                  <HugeiconsIcon icon={Download01Icon} strokeWidth={2} className="size-4" />Export full vault
+                  }}
+                >
+                  Disconnect local mirror
                 </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-          <div className="px-3 pb-3">
-            <InputGroup className="h-11 rounded-xl bg-background/70 shadow-xs">
-              <InputGroupAddon>
-                <InputGroupText><HugeiconsIcon icon={Search01Icon} strokeWidth={2} /></InputGroupText>
-              </InputGroupAddon>
-              <button type="button" aria-label="Open search" onClick={() => setSearchOpen(true)} className="flex h-full min-w-0 flex-1 items-center text-left text-sm text-muted-foreground focus-visible:outline-none">
-                <span>Search</span>
-                <KbdGroup className="ml-auto mr-2">
-                  <Kbd>⌘</Kbd><Kbd>K</Kbd>
-                </KbdGroup>
-              </button>
-            </InputGroup>
+              ) : null}
+              <DropdownMenuItem
+                leadingIcon={<HugeiconsIcon icon={Download01Icon} strokeWidth={1.75} className="size-4 text-[var(--token-colors-foreground-secondary)]" />}
+                onClick={() => void downloadVaultZip({ vaultName })}
+              >
+                Export full vault
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Search trigger */}
+          <button
+            type="button"
+            aria-label="Open search"
+            onClick={() => setSearchOpen(true)}
+            className="flex h-[40px] w-full items-center gap-[var(--token-dimension-spacing-8,8px)] rounded-[var(--token-dimension-radius-10,10px)] border border-[var(--token-colors-border-secondary)] bg-[var(--token-colors-background-default)] px-[var(--token-dimension-spacing-10,10px)] text-left transition-colors hover:bg-[var(--token-colors-background-quiet)] focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--token-focus-ring-default-inner),0_0_1px_3px_var(--token-focus-ring-default-outer)]"
+          >
+            <IconWrapper size="20" className="text-[var(--token-colors-foreground-secondary)]">
+              <HugeiconsIcon icon={Search01Icon} strokeWidth={1.75} />
+            </IconWrapper>
+            <span className="min-w-0 flex-1 font-[family-name:var(--token-typography-font-family-primary)] text-[length:var(--token-typography-font-size-14,14px)] font-[number:var(--token-typography-font-weight-regular,400)] leading-[18px] text-[var(--token-colors-foreground-muted)] antialiased">
+              Search
+            </span>
+            <TrailingContent type="kbd" size="sm" label="⌘K" />
+          </button>
+
+          {/* Primary nav items */}
+          <div className="flex w-full flex-col gap-[var(--token-dimension-spacing-4,4px)]">
+            <NavItem
+              to="/home"
+              label="Recent"
+              active={pathname === '/home'}
+              icon={<HugeiconsIcon icon={Clock01Icon} strokeWidth={1.75} />}
+            />
+            <NavItem
+              to="/folders"
+              label="Library"
+              active={pathname === '/folders' || pathname.startsWith('/folders/')}
+              icon={<HugeiconsIcon icon={LibraryIcon} strokeWidth={1.75} />}
+            />
           </div>
         </SidebarHeader>
-        <SidebarContent className="gap-0">
-          <SidebarGroup className="gap-0.5">
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/home" />} isActive={pathname === '/home'} variant="navigation" size="nav" tooltip="Recent"><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={Clock01Icon} strokeWidth={2} /></span><span>Recent</span></SidebarMenuButton></SidebarMenuItem>
-                <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/folders" />} isActive={pathname === '/folders' || pathname.startsWith('/folders/')} variant="navigation" size="nav" tooltip="Library"><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={LibraryIcon} strokeWidth={2} /></span><span>Library</span></SidebarMenuButton></SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-          <SidebarGroup className="min-h-0 flex-1 gap-0.5">
-            <SidebarGroupLabel className="h-6 px-2 py-1 font-editor text-xs leading-4 text-[color:var(--sidebar-nav-group-title)]">Favorites</SidebarGroupLabel>
+
+        <SidebarContent className="min-h-0 flex-1 gap-0 overflow-y-auto overscroll-contain">
+          <NavGroup
+            title="Favorites"
+            actionLabel={favorites.length > 0 ? 'See all' : undefined}
+            actionHref={favorites.length > 0 ? '/favorites' : undefined}
+            showSeparator={false}
+          >
             {favorites.length > 0 ? (
-              <SidebarGroupContent className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                <SidebarMenu>
-                  {favorites.map((favorite) => {
-                    const path = favorite.kind === 'folder' ? `/folders/${favorite.item.id}` : `/${favorite.item.type}/${favorite.item.id}`
-                    const label = favorite.kind === 'folder' ? `Open favorite folder ${favorite.item.name}` : `Open favorite ${favorite.item.type} ${favorite.item.name}`
-                    return (
-                      <SidebarMenuItem key={`${favorite.kind}:${favorite.item.id}`}>
-                        <SidebarMenuButton render={<NavLink to={path} aria-label={label} />} isActive={pathname === path} variant="navigation" size="nav" tooltip={favorite.item.name}>
-                          <span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={favorite.kind === 'folder' ? Folder01Icon : File01Icon} strokeWidth={2} /></span>
-                          <span>{favorite.item.name}</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    )
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
+              favorites.map((favorite) => {
+                const path = favorite.kind === 'folder' ? `/folders/${favorite.item.id}` : `/${favorite.item.type}/${favorite.item.id}`
+                const label = favorite.kind === 'folder' ? `Open favorite folder ${favorite.item.name}` : `Open favorite ${favorite.item.type} ${favorite.item.name}`
+                return (
+                  <NavItem
+                    key={`${favorite.kind}:${favorite.item.id}`}
+                    to={path}
+                    ariaLabel={label}
+                    label={favorite.item.name}
+                    active={pathname === path}
+                    icon={
+                      favorite.kind === 'folder' ? (
+                        <FolderIllustration size="xs" aria-hidden="true" />
+                      ) : (
+                        <HugeiconsIcon icon={File01Icon} strokeWidth={1.75} />
+                      )
+                    }
+                  />
+                )
+              })
             ) : (
-              <SidebarGroupContent><p className="px-2 py-2 text-sm text-muted-foreground">Your favorites will appear here.</p></SidebarGroupContent>
+              <p className="px-[var(--token-dimension-spacing-8,8px)] py-[var(--token-dimension-spacing-8,8px)] font-[family-name:var(--token-typography-font-family-primary)] text-xs text-[var(--token-colors-foreground-muted)]">
+                Your favorites will appear here.
+              </p>
             )}
-          </SidebarGroup>
+          </NavGroup>
         </SidebarContent>
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/trash" />} isActive={pathname === '/trash'} variant="navigation" size="nav" tooltip="Trash"><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={TrashIcon} strokeWidth={2} /></span><span>Trash</span></SidebarMenuButton></SidebarMenuItem>
-            <SidebarMenuItem><SidebarMenuButton render={<NavLink to="/settings" />} isActive={pathname === '/settings'} variant="navigation" size="nav" tooltip="Support & help"><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={HelpSquareIcon} strokeWidth={2} /></span><span>Support &amp; help</span></SidebarMenuButton></SidebarMenuItem>
-            <SidebarMenuItem className="mt-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={<Item variant="outline" size="sm" render={<button type="button" />} />}
-                  aria-label="Open account menu"
-                  className="min-h-[100px] flex-nowrap rounded-xl border-sidebar-border bg-background px-3 py-4 text-left shadow-xs transition hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
+        <SidebarFooter className="shrink-0 gap-[var(--token-dimension-spacing-16,16px)] p-0">
+          <div className="flex w-full flex-col gap-[var(--token-dimension-spacing-4,4px)]">
+            <NavItem
+              to="/trash"
+              label="Trash"
+              active={pathname === '/trash'}
+              icon={<HugeiconsIcon icon={Delete03Icon} strokeWidth={1.75} />}
+            />
+            <NavItem
+              label="Support & help"
+              onClick={() => {
+                window.location.href = 'mailto:support@writin.app?subject=Writin%20support%20request'
+              }}
+              icon={<HugeiconsIcon icon={HelpSquareIcon} strokeWidth={1.75} />}
+            />
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<button type="button" />}
+              aria-label="Open account menu"
+              className="flex h-[46px] w-full items-center gap-[var(--token-dimension-spacing-8,8px)] rounded-[var(--token-dimension-radius-12,12px)] border border-[var(--token-colors-border-secondary)] bg-[var(--token-colors-background-default)] px-[var(--token-dimension-spacing-8,8px)] py-[var(--token-dimension-spacing-6,6px)] text-left transition-colors hover:bg-[var(--token-colors-background-quiet)] focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--token-focus-ring-default-inner),0_0_1px_3px_var(--token-focus-ring-default-outer)]"
+            >
+              <Avatar size="sm" className="size-[32px] shrink-0">
+                {isSignedInAccount && avatarUrl ? (
+                  <AvatarImage src={avatarUrl} alt={accountTitle} />
+                ) : null}
+                <AvatarFallback
+                  size="sm"
+                  initials={isSignedInAccount ? initials : undefined}
+                />
+              </Avatar>
+
+              <div className="flex min-w-0 flex-1 flex-col gap-[var(--token-dimension-spacing-2,2px)]">
+                <span className="truncate font-[family-name:var(--token-typography-font-family-primary)] text-[length:var(--token-typography-font-size-12,12px)] font-[number:var(--token-typography-font-weight-medium,500)] leading-[var(--token-typography-line-height-16,16px)] text-[var(--token-colors-foreground-primary)] antialiased">
+                  {accountTitle}
+                </span>
+                {isSignedInAccount && profileEmail ? (
+                  <span className="truncate font-[family-name:var(--token-typography-font-family-primary)] text-[length:var(--token-typography-font-size-10,10px)] font-[number:var(--token-typography-font-weight-regular,400)] leading-[14px] text-[var(--token-colors-foreground-subtle)] antialiased">
+                    {profileEmail}
+                  </span>
+                ) : null}
+              </div>
+
+              <span className="flex size-8 shrink-0 items-center justify-center text-[var(--token-colors-foreground-secondary)]">
+                <HugeiconsIcon icon={UnfoldMoreIcon} size={16} strokeWidth={1.75} />
+              </span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="top" sideOffset={8} className="w-[260px]">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>App actions</DropdownMenuLabel>
+                <DropdownMenuItem
+                  leadingIcon={<IconWrapper size="20"><HugeiconsIcon icon={UserIcon} strokeWidth={1.75} /></IconWrapper>}
+                  onClick={() => navigate('/settings')}
                 >
-                  <ItemMedia className="size-16">
-                    <Avatar size="lg" className="size-16 border border-border data-[size=lg]:size-16">
-                      <AvatarFallback className="bg-muted text-[28px] font-medium text-foreground">{initials}</AvatarFallback>
-                      <AvatarBadge className={`size-6 [&>svg]:size-4 ${isLocalWorkspace ? 'bg-muted text-muted-foreground' : 'bg-emerald-500 text-white'}`}>
-                        <HugeiconsIcon icon={isLocalWorkspace ? Layers01Icon : CloudSyncIcon} strokeWidth={2} />
-                      </AvatarBadge>
-                    </Avatar>
-                  </ItemMedia>
-                  <ItemContent className="min-w-0 gap-0">
-                    <ItemTitle className="w-full truncate text-base font-semibold leading-6 text-foreground">{displayName}</ItemTitle>
-                    <ItemDescription className="truncate text-sm leading-5 text-muted-foreground">{isLocalWorkspace ? 'Local device' : 'Cloud sync'}</ItemDescription>
-                  </ItemContent>
-                  <ItemActions>
-                    <HugeiconsIcon icon={UnfoldMoreIcon} strokeWidth={2} className="size-5 shrink-0 text-muted-foreground" />
-                  </ItemActions>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" side="top" sideOffset={8}>
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel>App actions</DropdownMenuLabel>
-                    <DropdownMenuItem onClick={() => navigate('/settings')}><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={UserIcon} strokeWidth={2} className="size-4" /></span>Profile</DropdownMenuItem>
-                    {isLocalWorkspace && !profileEmail ? <DropdownMenuItem onClick={() => setIsGoogleModalOpen(true)}><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={CloudUploadIcon} strokeWidth={2} className="size-4" /></span>Connect cloud vault</DropdownMenuItem> : null}
-                  <div className="flex min-h-8 items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm leading-[18px]">
-                    <span className="flex items-center gap-2 text-sm"><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={Sun01Icon} strokeWidth={2} className="size-4" /></span>Appearance</span>
-                    <div className="flex rounded-full bg-muted p-1">
-                      <Button type="button" variant={theme === 'light' ? 'secondary' : 'ghost'} size="icon" aria-label="Use light theme" aria-pressed={theme === 'light'} className="size-8 rounded-full" onClick={() => theme !== 'light' && toggleTheme()}><HugeiconsIcon icon={Sun01Icon} strokeWidth={2} className="size-4" /></Button>
-                      <Button type="button" variant={theme === 'dark' ? 'secondary' : 'ghost'} size="icon" aria-label="Use dark theme" aria-pressed={theme === 'dark'} className="size-8 rounded-full" onClick={() => theme !== 'dark' && toggleTheme()}><HugeiconsIcon icon={Moon02Icon} strokeWidth={2} className="size-4" /></Button>
-                    </div>
-                  </div>
-                    <DropdownMenuItem onClick={() => setIsShortcutsOpen(true)}><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={CommandIcon} strokeWidth={2} className="size-4" /></span>Shortcuts</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => navigate('/settings')}><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={Settings01Icon} strokeWidth={2} className="size-4" /></span>Settings</DropdownMenuItem>
-                  </DropdownMenuGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel>Links</DropdownMenuLabel>
-                    <DropdownMenuItem onClick={() => navigate('/about')}><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={HelpCircleIcon} strokeWidth={2} className="size-4" /></span>About Writin</DropdownMenuItem>
-                    <DropdownMenuItem render={<a href="mailto:writin.app@gmail.com?subject=Writin%20support%20request" />}><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={HelpCircleIcon} strokeWidth={2} className="size-4" /></span>Report an issue</DropdownMenuItem>
-                  </DropdownMenuGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => void logout()}><span className="flex size-5 shrink-0 items-center justify-center"><HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" /></span>{isLocalWorkspace ? 'Return to start' : 'Log out'}</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </SidebarMenuItem>
-          </SidebarMenu>
+                  Profile
+                </DropdownMenuItem>
+                {isLocalWorkspace && !profileEmail ? (
+                  <DropdownMenuItem
+                    leadingIcon={<IconWrapper size="20"><HugeiconsIcon icon={CloudUploadIcon} strokeWidth={1.75} /></IconWrapper>}
+                    onClick={() => setIsGoogleModalOpen(true)}
+                  >
+                    Connect cloud vault
+                  </DropdownMenuItem>
+                ) : null}
+                <div className="flex h-8 items-center gap-[var(--token-dimension-spacing-8)] rounded-[var(--token-dimension-radius-8)] px-[var(--token-dimension-spacing-8)] py-[var(--token-dimension-spacing-6)] text-[length:var(--token-typography-font-size-14)] leading-[18px] text-[var(--token-colors-foreground-primary)]">
+                  <IconWrapper size="20">
+                    <HugeiconsIcon icon={PaintBoardIcon} strokeWidth={1.75} />
+                  </IconWrapper>
+                  <span className="min-w-0 flex-1 truncate">Appearance</span>
+                  <SegmentedControl
+                    size="xs"
+                    iconOnly
+                    value={themePreference}
+                    onValueChange={(value) => setThemePreference(value as 'system' | 'light' | 'dark')}
+                    aria-label="Appearance theme"
+                  >
+                    <SegmentedControlButton value="system" aria-label="Use system theme">
+                      <IconWrapper size="16">
+                        <HugeiconsIcon icon={Settings02Icon} strokeWidth={1.75} />
+                      </IconWrapper>
+                    </SegmentedControlButton>
+                    <SegmentedControlButton value="light" aria-label="Use light theme">
+                      <IconWrapper size="16">
+                        <HugeiconsIcon icon={Sun01Icon} strokeWidth={1.75} />
+                      </IconWrapper>
+                    </SegmentedControlButton>
+                    <SegmentedControlButton value="dark" aria-label="Use dark theme">
+                      <IconWrapper size="16">
+                        <HugeiconsIcon icon={Moon02Icon} strokeWidth={1.75} />
+                      </IconWrapper>
+                    </SegmentedControlButton>
+                  </SegmentedControl>
+                </div>
+                <DropdownMenuItem
+                  leadingIcon={<IconWrapper size="20"><HugeiconsIcon icon={CommandIcon} strokeWidth={1.75} /></IconWrapper>}
+                  onClick={() => setIsShortcutsOpen(true)}
+                >
+                  Shortcuts
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  leadingIcon={<IconWrapper size="20"><HugeiconsIcon icon={FilterHorizontalIcon} strokeWidth={1.75} /></IconWrapper>}
+                  onClick={() => navigate('/settings')}
+                >
+                  Settings
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Links</DropdownMenuLabel>
+                <DropdownMenuItem
+                  leadingIcon={<IconWrapper size="20"><HugeiconsIcon icon={InformationSquareIcon} strokeWidth={1.75} /></IconWrapper>}
+                  onClick={() => navigate('/about')}
+                >
+                  About Writin
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  leadingIcon={<IconWrapper size="20"><HugeiconsIcon icon={StarsIcon} strokeWidth={1.75} /></IconWrapper>}
+                  onClick={() => navigate('/about')}
+                >
+                  What’s new
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  leadingIcon={<IconWrapper size="20"><HugeiconsIcon icon={Bug01Icon} strokeWidth={1.75} /></IconWrapper>}
+                  render={<a href="mailto:support@writin.app?subject=Writin%20issue%20report" />}
+                >
+                  Report an issue
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                leadingIcon={<IconWrapper size="20"><HugeiconsIcon icon={LogoutSquare01Icon} strokeWidth={1.75} /></IconWrapper>}
+                onClick={() => void logout()}
+              >
+                {isLocalWorkspace ? 'Return to start' : 'Logout'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </SidebarFooter>
       </Sidebar>
 

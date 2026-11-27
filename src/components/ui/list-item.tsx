@@ -5,6 +5,7 @@ import { LinkSquare02Icon, FavouriteIcon, MoreHorizontalSquare01Icon } from "@hu
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Separator } from "@/components/ui/separator"
 
 // ─── ListItemMedia ─────────────────────────────────────────────────────────────
@@ -26,7 +27,8 @@ function ListItemMedia({
       data-media-type={mediaType}
       className={cn(
         "flex shrink-0 items-center justify-center",
-        mediaType === "image" && "overflow-hidden rounded-[var(--token-dimension-radius-8,8px)] [&_img]:size-full [&_img]:object-cover",
+        mediaType === "image" &&
+          "overflow-hidden rounded-[var(--token-dimension-radius-8,8px)] [&_img]:size-full [&_img]:object-cover",
         className
       )}
       {...props}
@@ -49,7 +51,7 @@ function ListItemActions({
     <div
       data-slot="list-item-actions"
       className={cn(
-        "flex items-center gap-[var(--token-dimension-spacing-4,4px)]",
+        "flex items-center gap-[var(--token-dimension-spacing-8,8px)]",
         align === "right" && "ml-auto",
         className
       )}
@@ -59,17 +61,18 @@ function ListItemActions({
 }
 
 /** Default action buttons used in list items */
-function ListItemDefaultActions() {
+function ListItemDefaultActions({ size = "md" }: { size?: ListItemSize }) {
+  const btnSize = size === "lg" ? "size-10" : "size-8"
   return (
     <>
-      <Button variant="ghost" size="xs" className="size-7 p-0">
-        <HugeiconsIcon icon={LinkSquare02Icon} size={14} color="currentColor" strokeWidth={1.5} />
+      <Button variant="ghost" size="icon" className={cn(btnSize, "rounded-full p-0")} aria-label="Open link">
+        <HugeiconsIcon icon={LinkSquare02Icon} size={16} color="currentColor" strokeWidth={1.5} />
       </Button>
-      <Button variant="ghost" size="xs" className="size-7 p-0">
-        <HugeiconsIcon icon={FavouriteIcon} size={14} color="currentColor" strokeWidth={1.5} />
+      <Button variant="ghost" size="icon" className={cn(btnSize, "rounded-full p-0")} aria-label="Favorite">
+        <HugeiconsIcon icon={FavouriteIcon} size={16} color="currentColor" strokeWidth={1.5} />
       </Button>
-      <Button variant="ghost" size="xs" className="size-7 p-0">
-        <HugeiconsIcon icon={MoreHorizontalSquare01Icon} size={14} color="currentColor" strokeWidth={1.5} />
+      <Button variant="ghost" size="icon" className={cn(btnSize, "rounded-full p-0")} aria-label="More options">
+        <HugeiconsIcon icon={MoreHorizontalSquare01Icon} size={16} color="currentColor" strokeWidth={1.5} />
       </Button>
     </>
   )
@@ -95,10 +98,6 @@ function ListItemFooter({ className, ...props }: React.ComponentProps<"div">) {
 const listItemVariants = cva(
   [
     "group/list-item relative flex w-full overflow-hidden",
-    "rounded-[var(--token-dimension-radius-12,12px)]",
-    "px-[var(--token-dimension-spacing-12,12px)]",
-    "py-[var(--token-dimension-spacing-10,10px)]",
-    "gap-[var(--token-dimension-spacing-10,10px)]",
     "transition-colors duration-100",
     "outline-none",
     "focus-visible:ring-2 focus-visible:ring-[var(--token-colors-border-focus)]",
@@ -107,60 +106,109 @@ const listItemVariants = cva(
   {
     variants: {
       orientation: {
-        horizontal: "flex-row items-center min-h-[56px]",
-        vertical:   "flex-col min-h-[174px]",
+        horizontal: "flex-row items-center",
+        vertical: "flex-col",
+      },
+      size: {
+        sm: [
+          "rounded-[var(--token-dimension-radius-10,10px)]",
+          "px-[var(--token-dimension-spacing-12,12px)]",
+          "py-[var(--token-dimension-spacing-8,8px)]",
+          "gap-[var(--token-dimension-spacing-8,8px)]",
+        ],
+        md: [
+          "rounded-[var(--token-dimension-radius-12,12px)]",
+          "px-[var(--token-dimension-spacing-12,12px)]",
+          "py-[var(--token-dimension-spacing-10,10px)]",
+          "gap-[var(--token-dimension-spacing-10,10px)]",
+        ],
+        lg: [
+          "rounded-[var(--token-dimension-radius-16,16px)]",
+          "px-[var(--token-dimension-spacing-16,16px)]",
+          "py-[var(--token-dimension-spacing-12,12px)]",
+          "gap-[var(--token-dimension-spacing-12,12px)]",
+        ],
       },
       variant: {
-        default: "bg-transparent border border-transparent hover:bg-[var(--token-colors-background-quiet)]",
-        muted:   "bg-[var(--token-colors-background-quiet)] border border-transparent",
-        outline: "bg-transparent border border-[var(--token-colors-border-primary)] hover:bg-[var(--token-colors-background-quiet)]",
+        default:
+          "bg-[var(--token-colors-background-default)] border border-transparent hover:bg-[var(--token-colors-background-quiet)]",
+        muted: "bg-[var(--token-colors-background-quiet)] border border-transparent",
+        outline:
+          "bg-transparent border border-[var(--token-colors-border-primary)] hover:bg-[var(--token-colors-background-quiet)]",
       },
       state: {
-        default:  "",
-        hover:    "bg-[var(--token-colors-background-quiet)]",
-        focus:    "ring-2 ring-[var(--token-colors-border-focus)]",
-        selected: "bg-[var(--token-colors-background-informative-quiet,#eaf3ff)] border-[var(--token-colors-border-informative-subtle)]",
+        default: "",
+        hover: "bg-[var(--token-colors-background-quiet)]",
+        focus: "ring-2 ring-[var(--token-colors-border-focus)]",
+        selected:
+          "bg-[var(--token-colors-background-informative-quiet,#eaf3ff)] border-[var(--token-colors-border-informative-subtle)]",
         disabled: "opacity-50 pointer-events-none",
       },
     },
+    compoundVariants: [
+      { orientation: "horizontal", size: "sm", className: "min-h-[48px]" },
+      { orientation: "horizontal", size: "md", className: "min-h-[56px]" },
+      { orientation: "horizontal", size: "lg", className: "min-h-[64px]" },
+      { orientation: "vertical", size: "sm", className: "min-h-[152px]" },
+      { orientation: "vertical", size: "md", className: "min-h-[174px]" },
+      { orientation: "vertical", size: "lg", className: "min-h-[196px]" },
+    ],
     defaultVariants: {
       orientation: "horizontal",
-      variant:     "default",
-      state:       "default",
+      size: "md",
+      variant: "default",
+      state: "default",
     },
   }
 )
 
+const TITLE_SIZE_CLASSES: Record<ListItemSize, string> = {
+  sm: "text-[length:var(--token-typography-font-size-12,12px)] leading-[var(--token-typography-line-height-16,16px)]",
+  md: "text-[length:var(--token-typography-font-size-14,14px)] leading-[18px]",
+  lg: "text-[length:var(--token-typography-font-size-16,16px)] leading-[var(--token-typography-line-height-20,20px)]",
+}
+
+const DESCRIPTION_SIZE_CLASSES: Record<ListItemSize, string> = {
+  sm: "text-[length:var(--token-typography-font-size-10,10px)] leading-[14px]",
+  md: "text-[length:var(--token-typography-font-size-12,12px)] leading-[var(--token-typography-line-height-16,16px)]",
+  lg: "text-[length:var(--token-typography-font-size-14,14px)] leading-[18px]",
+}
+
 export type ListItemOrientation = "horizontal" | "vertical"
-export type ListItemVariant     = "default" | "muted" | "outline"
-export type ListItemState       = "default" | "hover" | "focus" | "selected" | "disabled"
-export type ListItemSelection   = "none" | "single" | "multi"
+export type ListItemSize = "sm" | "md" | "lg"
+export type ListItemVariant = "default" | "muted" | "outline"
+export type ListItemState = "default" | "hover" | "focus" | "selected" | "disabled"
+export type ListItemSelection = "none" | "single" | "multi"
 
 export interface ListItemProps
   extends Omit<React.ComponentProps<"div">, "children" | "title">,
     VariantProps<typeof listItemVariants> {
   orientation?: ListItemOrientation
-  variant?:     ListItemVariant
-  state?:       ListItemState
-  selection?:   ListItemSelection
-  selected?:    boolean
-  disabled?:    boolean
-  media?:       React.ReactNode
-  actions?:     React.ReactNode
-  footer?:      React.ReactNode
-  title?:       React.ReactNode
+  size?: ListItemSize
+  variant?: ListItemVariant
+  state?: ListItemState
+  selection?: ListItemSelection
+  selected?: boolean
+  disabled?: boolean
+  actionsVisibility?: "always" | "hover"
+  media?: React.ReactNode
+  actions?: React.ReactNode
+  footer?: React.ReactNode
+  title?: React.ReactNode
   description?: React.ReactNode
-  children?:    React.ReactNode
+  children?: React.ReactNode
 }
 
 function ListItem({
   className,
   orientation = "horizontal",
-  variant     = "default",
-  state       = "default",
-  selection   = "none",
-  selected    = false,
-  disabled    = false,
+  size = "md",
+  variant = "default",
+  state = "default",
+  selection = "none",
+  selected = false,
+  disabled = false,
+  actionsVisibility = "always",
   media,
   actions,
   footer,
@@ -172,20 +220,49 @@ function ListItem({
   const computedState: ListItemState = disabled
     ? "disabled"
     : selected
-    ? "selected"
-    : state
+      ? "selected"
+      : state
+
+  const supportsAriaSelected =
+    props.role === "option" ||
+    props.role === "row" ||
+    props.role === "gridcell" ||
+    props.role === "tab"
+
+  const isInteractiveContainer = Boolean(props.onClick || props.role)
 
   return (
     <div
       data-slot="list-item"
       data-orientation={orientation}
+      data-size={size}
       data-variant={variant}
       data-state={computedState}
       data-selection={selection}
-      aria-selected={selected}
-      aria-disabled={disabled}
-      tabIndex={disabled ? -1 : 0}
-      className={cn(listItemVariants({ orientation, variant, state: computedState }), className)}
+      data-selected={selected || undefined}
+      aria-selected={supportsAriaSelected ? selected : undefined}
+      aria-disabled={disabled || undefined}
+      tabIndex={
+        props.tabIndex ??
+        (isInteractiveContainer ? (disabled ? -1 : 0) : undefined)
+      }
+      onKeyDown={(e) => {
+        props.onKeyDown?.(e)
+        if (
+          !e.defaultPrevented &&
+          !disabled &&
+          props.onClick &&
+          e.target === e.currentTarget &&
+          (e.key === "Enter" || e.key === " ")
+        ) {
+          e.preventDefault()
+          props.onClick(e as unknown as React.MouseEvent<HTMLDivElement>)
+        }
+      }}
+      className={cn(
+        listItemVariants({ orientation, size, variant, state: computedState }),
+        className
+      )}
       {...props}
     >
       {children ?? (
@@ -194,25 +271,27 @@ function ListItem({
           {selection !== "none" && (
             <div className="flex shrink-0 items-center justify-center">
               {selection === "multi" ? (
-                <input
-                  type="checkbox"
-                  readOnly
+                <Checkbox
                   checked={selected}
                   disabled={disabled}
-                  className="size-4 accent-[var(--token-colors-background-informative)]"
-                  aria-hidden
-                  tabIndex={-1}
+                  aria-label={
+                    typeof title === "string" ? `Select ${title}` : "Select item"
+                  }
                 />
               ) : (
-                <input
-                  type="radio"
-                  readOnly
-                  checked={selected}
-                  disabled={disabled}
-                  className="size-4 accent-[var(--token-colors-background-informative)]"
+                <span
                   aria-hidden
-                  tabIndex={-1}
-                />
+                  className={cn(
+                    "flex size-4 shrink-0 items-center justify-center rounded-full border transition-colors",
+                    selected
+                      ? "border-[var(--token-colors-background-informative)] bg-[var(--token-colors-background-informative)]"
+                      : "border-[var(--token-colors-border-primary)] bg-transparent"
+                  )}
+                >
+                  {selected && (
+                    <span className="size-1.5 rounded-full bg-[var(--token-colors-foreground-primary-inverse,#ffffff)]" />
+                  )}
+                </span>
               )}
             </div>
           )}
@@ -225,16 +304,17 @@ function ListItem({
                   {media}
                 </div>
               )}
-              <div className="flex flex-1 flex-col gap-[var(--token-dimension-spacing-2,2px)] min-w-0">
+              <div className="flex min-w-0 flex-1 flex-col gap-[var(--token-dimension-spacing-2,2px)]">
                 {title && (
                   <div
                     data-slot="list-item-title"
                     className={cn(
                       "font-[family-name:var(--token-typography-font-family-primary)]",
-                      "font-[number:var(--token-typography-font-weight-semibold)]",
-                      "text-[14px] leading-[18px] antialiased",
+                      "font-[number:var(--token-typography-font-weight-semibold,600)]",
+                      "tracking-[var(--token-typography-letter-spacing-normal,0px)] antialiased",
                       "text-[var(--token-colors-foreground-primary)]",
-                      "line-clamp-1 truncate"
+                      "line-clamp-1 truncate",
+                      TITLE_SIZE_CLASSES[size]
                     )}
                   >
                     {title}
@@ -245,10 +325,11 @@ function ListItem({
                     data-slot="list-item-description"
                     className={cn(
                       "font-[family-name:var(--token-typography-font-family-primary)]",
-                      "font-[number:var(--token-typography-font-weight-regular)]",
-                      "text-[12px] leading-[16px] antialiased",
+                      "font-[number:var(--token-typography-font-weight-regular,400)]",
+                      "tracking-[var(--token-typography-letter-spacing-normal,0px)] antialiased",
                       "text-[var(--token-colors-foreground-secondary)]",
-                      "line-clamp-1 truncate"
+                      "line-clamp-1 truncate",
+                      DESCRIPTION_SIZE_CLASSES[size]
                     )}
                   >
                     {description}
@@ -256,7 +337,13 @@ function ListItem({
                 )}
               </div>
               {actions && (
-                <div className="flex shrink-0 items-center gap-[var(--token-dimension-spacing-4,4px)] opacity-0 group-hover/list-item:opacity-100 group-focus-visible/list-item:opacity-100 transition-opacity duration-100">
+                <div
+                  className={cn(
+                    "flex shrink-0 items-center gap-[var(--token-dimension-spacing-8,8px)]",
+                    actionsVisibility === "hover" &&
+                      "opacity-0 transition-opacity duration-100 group-hover/list-item:opacity-100 group-focus-visible/list-item:opacity-100"
+                  )}
+                >
                   {actions}
                 </div>
               )}
@@ -267,20 +354,21 @@ function ListItem({
           {orientation === "vertical" && (
             <>
               {media && (
-                <div className="flex shrink-0 items-start justify-start w-full">
+                <div className="flex w-full shrink-0 items-start justify-start">
                   {media}
                 </div>
               )}
-              <div className="flex flex-1 flex-col gap-[var(--token-dimension-spacing-2,2px)] w-full min-w-0">
+              <div className="flex w-full min-w-0 flex-1 flex-col gap-[var(--token-dimension-spacing-2,2px)]">
                 {title && (
                   <div
                     data-slot="list-item-title"
                     className={cn(
                       "font-[family-name:var(--token-typography-font-family-primary)]",
-                      "font-[number:var(--token-typography-font-weight-semibold)]",
-                      "text-[14px] leading-[18px] antialiased",
+                      "font-[number:var(--token-typography-font-weight-semibold,600)]",
+                      "tracking-[var(--token-typography-letter-spacing-normal,0px)] antialiased",
                       "text-[var(--token-colors-foreground-primary)]",
-                      "line-clamp-2"
+                      "line-clamp-2",
+                      TITLE_SIZE_CLASSES[size]
                     )}
                   >
                     {title}
@@ -291,10 +379,11 @@ function ListItem({
                     data-slot="list-item-description"
                     className={cn(
                       "font-[family-name:var(--token-typography-font-family-primary)]",
-                      "font-[number:var(--token-typography-font-weight-regular)]",
-                      "text-[12px] leading-[16px] antialiased",
+                      "font-[number:var(--token-typography-font-weight-regular,400)]",
+                      "tracking-[var(--token-typography-letter-spacing-normal,0px)] antialiased",
                       "text-[var(--token-colors-foreground-secondary)]",
-                      "line-clamp-2"
+                      "line-clamp-2",
+                      DESCRIPTION_SIZE_CLASSES[size]
                     )}
                   >
                     {description}

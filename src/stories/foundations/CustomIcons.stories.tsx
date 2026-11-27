@@ -7,6 +7,8 @@ const writinIcons = [
   '/icons/more-horizontal-strong.svg',
   '/icons/vault.svg',
   '/icons/writin-folder.svg',
+  '/icons/sidebar-left.svg',
+  '/icons/sidebar-right.svg',
 ]
 
 const appIcons = [

@@ -107,6 +107,29 @@ describe('workspaceManager', () => {
     expect(list[0]?.name).toBe('Work')
   })
 
+  it('keeps standalone local vault in list after switching to cloud mode', async () => {
+    useAuthStore.setState({ email: 'user@example.com', isAuthenticated: true })
+    useWorkspaceStore.setState({ mode: 'drive', workspaceRevision: 0 })
+
+    await localWorkspace.saveLocalWorkspaceDetails({
+      name: 'Personal Notes',
+      storage: 'file-system',
+      createdAt: new Date().toISOString(),
+      isStandalone: true,
+    })
+
+    vi.spyOn(googleDrive, 'listExistingDriveVaults').mockResolvedValue([
+      { id: 'vault-1', name: 'Work' },
+    ])
+    vi.spyOn(googleDrive, 'getDriveVaultRootName').mockResolvedValue('Work')
+    await db.settings.put({ key: 'google-drive.mybook-folder-id', value: 'vault-1', updatedAt: new Date().toISOString() })
+
+    const list = await listAllWorkspaces()
+    expect(list).toHaveLength(2)
+    expect(list.find((w) => w.type === 'cloud')).toMatchObject({ name: 'Work', isActive: true })
+    expect(list.find((w) => w.type === 'local')).toMatchObject({ name: 'Personal Notes', isActive: false })
+  })
+
   it('switches between cloud and local workspaces', async () => {
     useAuthStore.setState({ email: 'user@example.com', isAuthenticated: true })
     useWorkspaceStore.setState({ mode: 'drive', workspaceRevision: 0 })

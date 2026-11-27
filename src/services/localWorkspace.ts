@@ -11,6 +11,9 @@ const LEGACY_ROOT_DIR = 'Writin'
 const LEGACY_FILES_DIR = 'files'
 export const LOCAL_DIRECTORY_HANDLE_KEY = 'local-workspace.directory-handle'
 export const LOCAL_WORKSPACE_DETAILS_KEY = 'local-workspace.details'
+export const STANDALONE_LOCAL_VAULTS_KEY = 'local-workspace.standalone-vaults'
+export const ACTIVE_STANDALONE_LOCAL_ID_KEY = 'local-workspace.active-id'
+export const CLOUD_MIRROR_HANDLES_KEY = 'cloud-workspace.mirror-handles'
 
 type StorageNavigator = Navigator & {
   storage?: StorageManager & {
@@ -41,6 +44,28 @@ export interface LocalWorkspaceDetails {
   name: string
   storage: LocalWorkspaceStorageKind
   createdAt: string
+  isStandalone?: boolean
+}
+
+export interface StandaloneLocalVault {
+  id: string
+  name: string
+  storage: LocalWorkspaceStorageKind
+  createdAt: string
+  handle?: FileSystemDirectoryHandle
+}
+
+export interface CloudMirrorEntry {
+  driveFolderId: string
+  vaultName: string
+  handle: FileSystemDirectoryHandle
+  updatedAt: string
+}
+
+export interface FolderConflict {
+  vaultName: string
+  kind: 'cloud-mirror' | 'local'
+  isSameVault: boolean
 }
 
 export interface PickedLocalWorkspaceDirectory {
@@ -112,6 +137,177 @@ export async function saveLocalWorkspaceDetails(details: LocalWorkspaceDetails) 
 export async function getLocalWorkspaceDetails(): Promise<LocalWorkspaceDetails | null> {
   const record = await db.settings.get(LOCAL_WORKSPACE_DETAILS_KEY)
   return (record?.value as LocalWorkspaceDetails | undefined) ?? null
+}
+
+export async function listStandaloneLocalVaults(): Promise<StandaloneLocalVault[]> {
+  const record = await db.settings.get(STANDALONE_LOCAL_VAULTS_KEY)
+  const list = record?.value as StandaloneLocalVault[] | undefined
+  return Array.isArray(list) ? list : []
+}
+
+export async function getActiveStandaloneLocalId(): Promise<string | undefined> {
+  const record = await db.settings.get(ACTIVE_STANDALONE_LOCAL_ID_KEY)
+  return record?.value as string | undefined
+}
+
+export async function setActiveStandaloneLocalId(id: string) {
+  await db.settings.put({
+    key: ACTIVE_STANDALONE_LOCAL_ID_KEY,
+    value: id,
+    updatedAt: new Date().toISOString(),
+  })
+}
+
+async function isSameDirectoryEntry(
+  a: FileSystemDirectoryHandle,
+  b: FileSystemDirectoryHandle,
+): Promise<boolean> {
+  const entryA = a as FileSystemDirectoryHandle & {
+    isSameEntry?: (other: FileSystemHandle) => Promise<boolean>
+  }
+  if (typeof entryA.isSameEntry === 'function') {
+    try {
+      return await entryA.isSameEntry(b)
+    } catch {
+      return false
+    }
+  }
+  return a === b
+}
+
+export async function saveStandaloneLocalVault(
+  vault: Omit<StandaloneLocalVault, 'id'> & { id?: string },
+): Promise<StandaloneLocalVault> {
+  const existing = await listStandaloneLocalVaults()
+  let matchIndex = -1
+  if (vault.id) {
+    matchIndex = existing.findIndex((item) => item.id === vault.id)
+  }
+  if (matchIndex === -1 && vault.handle) {
+    for (let i = 0; i < existing.length; i += 1) {
+      const candidate = existing[i]?.handle
+      if (candidate && (await isSameDirectoryEntry(candidate, vault.handle))) {
+        matchIndex = i
+        break
+      }
+    }
+  }
+
+  const resolvedId =
+    matchIndex >= 0
+      ? existing[matchIndex]!.id
+      : vault.id ?? `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+
+  const entry: StandaloneLocalVault = {
+    id: resolvedId,
+    name: vault.name,
+    storage: vault.storage,
+    createdAt: vault.createdAt,
+    handle: vault.handle,
+  }
+
+  const next =
+    matchIndex >= 0
+      ? existing.map((item, idx) => (idx === matchIndex ? entry : item))
+      : [...existing, entry]
+
+  await db.settings.put({
+    key: STANDALONE_LOCAL_VAULTS_KEY,
+    value: next,
+    updatedAt: new Date().toISOString(),
+  })
+  await setActiveStandaloneLocalId(resolvedId)
+  return entry
+}
+
+export async function listCloudMirrorEntries(): Promise<Record<string, CloudMirrorEntry>> {
+  const record = await db.settings.get(CLOUD_MIRROR_HANDLES_KEY)
+  const map = record?.value as Record<string, CloudMirrorEntry> | undefined
+  return map && typeof map === 'object' ? map : {}
+}
+
+export async function getCloudMirrorEntry(driveFolderId?: string): Promise<CloudMirrorEntry | null> {
+  if (!driveFolderId) return null
+  const map = await listCloudMirrorEntries()
+  return map[driveFolderId] ?? null
+}
+
+export async function saveCloudMirrorEntry(
+  driveFolderId: string,
+  handle: FileSystemDirectoryHandle,
+  vaultName: string,
+) {
+  const map = await listCloudMirrorEntries()
+  map[driveFolderId] = {
+    driveFolderId,
+    vaultName,
+    handle,
+    updatedAt: new Date().toISOString(),
+  }
+  await db.settings.put({
+    key: CLOUD_MIRROR_HANDLES_KEY,
+    value: map,
+    updatedAt: new Date().toISOString(),
+  })
+}
+
+export async function forgetCloudMirrorEntry(driveFolderId?: string) {
+  if (driveFolderId) {
+    const map = await listCloudMirrorEntries()
+    if (map[driveFolderId]) {
+      delete map[driveFolderId]
+      await db.settings.put({
+        key: CLOUD_MIRROR_HANDLES_KEY,
+        value: map,
+        updatedAt: new Date().toISOString(),
+      })
+    }
+  }
+  const details = await getLocalWorkspaceDetails()
+  if (!details?.isStandalone) {
+    await forgetDeviceDirectoryHandle()
+  } else {
+    await db.settings.delete(LOCAL_DIRECTORY_HANDLE_KEY)
+  }
+}
+
+export async function findFolderConflict(
+  handle: FileSystemDirectoryHandle,
+  activeCloudDriveFolderId?: string,
+): Promise<FolderConflict | null> {
+  const mirrors = await listCloudMirrorEntries()
+  for (const entry of Object.values(mirrors)) {
+    if (entry.handle && (await isSameDirectoryEntry(entry.handle, handle))) {
+      return {
+        vaultName: entry.vaultName,
+        kind: 'cloud-mirror',
+        isSameVault: Boolean(activeCloudDriveFolderId && entry.driveFolderId === activeCloudDriveFolderId),
+      }
+    }
+  }
+
+  const standaloneVaults = await listStandaloneLocalVaults()
+  for (const vault of standaloneVaults) {
+    if (vault.handle && (await isSameDirectoryEntry(vault.handle, handle))) {
+      return {
+        vaultName: vault.name,
+        kind: 'local',
+        isSameVault: false,
+      }
+    }
+  }
+
+  const details = await getLocalWorkspaceDetails()
+  const rawHandle = await getDeviceDirectoryHandle()
+  if (rawHandle && (await isSameDirectoryEntry(rawHandle, handle))) {
+    return {
+      vaultName: details?.name || rawHandle.name,
+      kind: details?.isStandalone ? 'local' : 'cloud-mirror',
+      isSameVault: Boolean(!details?.isStandalone && activeCloudDriveFolderId),
+    }
+  }
+
+  return null
 }
 
 export async function pickLocalWorkspaceDirectory(): Promise<PickedLocalWorkspaceDirectory | null> {
@@ -326,7 +522,8 @@ export async function initializeLocalWorkspace({
   if (storagePreference === 'private' || !canPickDeviceDirectory()) {
     await forgetDeviceDirectoryHandle()
     const storage = privateStorageKind()
-    await saveLocalWorkspaceDetails({ name, storage, createdAt })
+    await saveLocalWorkspaceDetails({ name, storage, createdAt, isStandalone: true })
+    await saveStandaloneLocalVault({ name, storage, createdAt })
     await scanAndHydrateLocalWorkspace()
     return { storage }
   }
@@ -339,12 +536,14 @@ export async function initializeLocalWorkspace({
     if (!handle) {
       if (!allowPrivateFallback) return { storage: privateStorageKind(), cancelled: true }
       const storage = privateStorageKind()
-      await saveLocalWorkspaceDetails({ name, storage, createdAt })
+      await saveLocalWorkspaceDetails({ name, storage, createdAt, isStandalone: true })
+      await saveStandaloneLocalVault({ name, storage, createdAt })
       return { storage }
     }
     await saveDeviceDirectoryHandle(handle)
-    const workspaceName = handle.name || name
-    await saveLocalWorkspaceDetails({ name: workspaceName, storage: 'file-system', createdAt })
+    const workspaceName = name.trim() || handle.name
+    await saveLocalWorkspaceDetails({ name: workspaceName, storage: 'file-system', createdAt, isStandalone: true })
+    await saveStandaloneLocalVault({ name: workspaceName, storage: 'file-system', createdAt, handle })
     await scanAndHydrateLocalWorkspace(handle)
     return { storage: 'file-system' as const }
   } catch (error) {
