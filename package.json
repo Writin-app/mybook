@@ -59,7 +59,7 @@
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.1.0",
     "react-resizable-panels": "^4.12.3",
-    "react-router-dom": "^7.6.0",
+    "react-router-dom": "^7.18.7",
     "recharts": "^3.8.0",
     "rtf.js": "^3.0.9",
     "shadcn": "^4.22.1",
