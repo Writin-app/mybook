@@ -482,7 +482,7 @@ export function AppLayout() {
             showSeparator={false}
           >
             {favorites.length > 0 ? (
-              favorites.map((favorite) => {
+              favorites.slice(0, 5).map((favorite) => {
                 const path = favorite.kind === 'folder' ? `/folders/${favorite.item.id}` : `/${favorite.item.type}/${favorite.item.id}`
                 const label = favorite.kind === 'folder' ? `Open favorite folder ${favorite.item.name}` : `Open favorite ${favorite.item.type} ${favorite.item.name}`
                 return (
