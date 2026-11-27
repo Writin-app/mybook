@@ -119,7 +119,7 @@ describe('AppLayout sidebar favorites', () => {
 
     expect(screen.getAllByRole('link', { name: /Open favorite document Favorite/i })).toHaveLength(5)
     expect(screen.queryByText('Favorite 1')).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'See all favorites' })).toHaveAttribute('href', '/favorites')
+    expect(screen.getByRole('link', { name: 'See all' })).toHaveAttribute('href', '/favorites')
   })
 
   it('navigates favorite files and folders by stable ID', () => {
@@ -169,7 +169,7 @@ describe('AppLayout sidebar favorites', () => {
 
     renderLayout()
 
-    fireEvent.click(screen.getByRole('link', { name: 'See all favorites' }))
+    fireEvent.click(screen.getByRole('link', { name: 'See all' }))
 
     expect(screen.getByText('Favorites page')).toBeInTheDocument()
   })
@@ -249,11 +249,11 @@ describe('AppLayout sidebar favorites', () => {
     useAuthStore.setState({ email: null, isAuthenticated: false })
     renderLayout()
 
-    const accountButton = screen.getByRole('button', { name: 'Account options' })
+    const accountButton = screen.getByRole('button', { name: 'Open account menu' })
     expect(accountButton).toBeInTheDocument()
     fireEvent.click(accountButton)
 
-    const connectButton = screen.getByText('Connect Cloud Vault')
+    const connectButton = screen.getByText('Connect cloud vault')
     expect(connectButton).toBeInTheDocument()
 
     fireEvent.click(connectButton)
@@ -264,7 +264,7 @@ describe('AppLayout sidebar favorites', () => {
   })
 
   it('displays the connected Google email address under the vault name when signed in', () => {
-    useWorkspaceStore.setState({ mode: 'local' })
+    useWorkspaceStore.setState({ mode: 'drive' })
     useAuthStore.setState({ email: 'author@example.com', isAuthenticated: true })
     renderLayout()
 
@@ -291,14 +291,14 @@ describe('AppLayout sidebar favorites', () => {
     useAuthStore.setState({ email: 'author@example.com', isAuthenticated: true })
     renderLayout()
 
-    const accountButton = screen.getByRole('button', { name: 'Account options' })
-    expect(accountButton).toBeInTheDocument()
-    fireEvent.click(accountButton)
+    const vaultButton = screen.getByRole('button', { name: /Select vault/i })
+    expect(vaultButton).toBeInTheDocument()
+    fireEvent.click(vaultButton)
 
-    expect(screen.getByText('Add Workspace...')).toBeInTheDocument()
-    expect(screen.getByText('Export full vault (ZIP)')).toBeInTheDocument()
+    expect(screen.getByText('Create vault')).toBeInTheDocument()
+    expect(screen.getByText('Export full vault')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByText('Add Workspace...'))
+    fireEvent.click(screen.getByText('Create vault'))
     expect(await screen.findByRole('dialog', { name: 'Add New Workspace' })).toBeInTheDocument()
   })
 

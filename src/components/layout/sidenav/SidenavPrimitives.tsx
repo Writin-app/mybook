@@ -1,5 +1,5 @@
 import * as React from "react"
-import { NavLink } from "react-router-dom"
+import { Link, NavLink } from "react-router-dom"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { MoreHorizontalSquare01Icon } from "@hugeicons/core-free-icons"
 
@@ -359,8 +359,14 @@ function NavGroup({
             <InlineLink
               size="sm"
               variant="primary"
-              href={actionHref}
-              render={actionHref ? undefined : <button type="button" />}
+              href={actionHref && !actionHref.startsWith("/") ? actionHref : undefined}
+              render={
+                actionHref
+                  ? actionHref.startsWith("/")
+                    ? <Link to={actionHref} />
+                    : undefined
+                  : <button type="button" />
+              }
               onClick={onActionClick}
             >
               {actionLabel}

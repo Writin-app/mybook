@@ -34,7 +34,7 @@ describe('FolderNameDialog', () => {
     fireEvent.change(screen.getByLabelText('Folder name'), { target: { value: ' projects ' } })
 
     expect(screen.getByRole('alert')).toHaveTextContent('"Projects" already exists. Use a different name.')
-    expect(screen.getByRole('alert')).toHaveClass('text-destructive')
+    expect(screen.getByRole('alert')).toHaveClass('text-[var(--token-colors-foreground-destructive-muted)]')
     expect(screen.getByRole('alert')).not.toHaveClass('bg-destructive/10')
     expect(screen.getByLabelText('Folder name')).toHaveAttribute('aria-invalid', 'true')
     expect(screen.getByLabelText('Folder name')).toHaveClass('aria-invalid:border-destructive')

@@ -189,14 +189,17 @@ function SegmentedControl({
       attributeFilter: ["data-checked", "aria-checked"],
     })
 
-    const resizeObserver = new ResizeObserver(() => {
-      measureIndicator()
-    })
-    resizeObserver.observe(container)
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            measureIndicator()
+          })
+        : null
+    resizeObserver?.observe(container)
 
     return () => {
       mutationObserver.disconnect()
-      resizeObserver.disconnect()
+      resizeObserver?.disconnect()
     }
   }, [measureIndicator])
 
