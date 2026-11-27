@@ -4,6 +4,7 @@ import { CloudIcon, FolderIcon, ArrowPathIcon, CheckIcon } from '@heroicons/reac
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
 import {
   canPickDeviceDirectory,
+  findFolderConflict,
   pickLocalWorkspaceDirectory,
   type LocalWorkspaceStoragePreference,
   type PickedLocalWorkspaceDirectory,
@@ -110,6 +111,13 @@ export function WorkspaceModal({ isOpen, onClose, onWorkspaceCreated, initialTab
     try {
       const picked = await pickLocalWorkspaceDirectory()
       if (picked) {
+        const conflict = await findFolderConflict(picked.handle)
+        if (conflict) {
+          setErrorMessage(
+            `This folder is already used by “${conflict.vaultName}” (${conflict.kind === 'cloud-mirror' ? 'Cloud mirror' : 'Local vault'}). Please choose a different empty folder.`,
+          )
+          return
+        }
         setCloudMirrorDirectory(picked)
         setShouldMirrorCloud(true)
       }
@@ -123,6 +131,13 @@ export function WorkspaceModal({ isOpen, onClose, onWorkspaceCreated, initialTab
     try {
       const picked = await pickLocalWorkspaceDirectory()
       if (picked) {
+        const conflict = await findFolderConflict(picked.handle)
+        if (conflict) {
+          setErrorMessage(
+            `This folder is already used by “${conflict.vaultName}” (${conflict.kind === 'cloud-mirror' ? 'Cloud mirror' : 'Local vault'}). Please choose a different empty folder.`,
+          )
+          return
+        }
         setSelectedLocalDirectory(picked)
         setLocalStoragePreference('file-system')
         if (!localName.trim()) {

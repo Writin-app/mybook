@@ -1,9 +1,11 @@
-import { ArrowDownTrayIcon, ArrowPathIcon, ArrowRightStartOnRectangleIcon, ArrowUpTrayIcon, CloudArrowUpIcon, FolderOpenIcon, MoonIcon, ShieldCheckIcon, SunIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { ArrowDownTrayIcon, ArrowPathIcon, ArrowRightStartOnRectangleIcon, ArrowUpTrayIcon, CheckIcon, CloudArrowUpIcon, FolderOpenIcon, MoonIcon, PlusIcon, ShieldCheckIcon, SunIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { AppButton } from '../components/common/AppButton'
+import { WorkspaceModal } from '../components/layout/WorkspaceModal'
+import { Badge } from '../components/ui/badge'
 import { Progress } from '../components/ui/progress'
 import { usePwaStore } from '../stores/usePwaStore'
 import { useDriveBootstrap } from '../hooks/useDriveBootstrap'
@@ -12,6 +14,8 @@ import { exportLocalWorkspaceBackup, importLocalWorkspaceBackup } from '../servi
 import { downloadVaultZip } from '../services/vaultExport'
 import {
   canPickDeviceDirectory,
+  findFolderConflict,
+  forgetCloudMirrorEntry,
   getLocalStorageProtectionStatus,
   getLocalWorkspaceDetails,
   pickLocalWorkspaceDirectory,
@@ -20,6 +24,12 @@ import {
   saveLocalWorkspaceDetails,
   writeLocalWorkspaceFile,
 } from '../services/localWorkspace'
+import {
+  listAllWorkspaces,
+  mirrorCurrentCloudWorkspaceToLocal,
+  switchWorkspace,
+  type AppWorkspaceItem,
+} from '../services/workspaceManager'
 import { useAuthStore } from '../stores/useAuthStore'
 import { db } from '../database/db'
 import { processPendingDriveFolderSync } from '../database/repositories'
@@ -31,7 +41,7 @@ import { LocalAiPreferencesSection } from '../features/writing-assistant/LocalAi
 
 export function SettingsPage() {
   const { email, logout, reconnect } = useAuthStore()
-  const { mode: workspaceMode, clearWorkspace, selectGoogleWorkspace } = useWorkspaceStore()
+  const { mode: workspaceMode, clearWorkspace, selectGoogleWorkspace, workspaceRevision, bumpWorkspaceRevision } = useWorkspaceStore()
   const { theme, toggleTheme } = useAppStore()
   const navigate = useNavigate()
   const backupInputRef = useRef<HTMLInputElement>(null)
@@ -43,6 +53,8 @@ export function SettingsPage() {
   const [mirroredFolder, setMirroredFolder] = useState<string | null>(null)
   const [isMirroring, setIsMirroring] = useState(false)
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
+  const [workspaces, setWorkspaces] = useState<AppWorkspaceItem[]>([])
+  const [isWorkspaceModalOpen, setIsWorkspaceModalOpen] = useState(false)
   const needRefresh = usePwaStore((state) => state.needRefresh)
   const isUpdating = usePwaStore((state) => state.isUpdating)
   const updateProgress = usePwaStore((state) => state.updateProgress)
@@ -96,6 +108,13 @@ export function SettingsPage() {
     })
     return () => { active = false }
   }, [])
+  useEffect(() => {
+    let active = true
+    void listAllWorkspaces().then((list) => {
+      if (active) setWorkspaces(list)
+    })
+    return () => { active = false }
+  }, [workspaceRevision, workspaceMode, email])
 
   const handleLogout = async () => {
     await logout()
@@ -126,6 +145,65 @@ export function SettingsPage() {
   }
 
   const isLocalMode = workspaceMode === 'local'
+  const activeWorkspace = workspaces.find((ws) => ws.isActive)
+  const activeVaultName = activeWorkspace?.name || mirroredFolder || 'Local Vault'
+
+  const getVaultBadgeLabel = (type: 'cloud' | 'local', hasLocalMirror?: boolean) =>
+    type === 'cloud'
+      ? hasLocalMirror
+        ? 'On cloud • Mirrored'
+        : 'On cloud'
+      : 'On local'
+
+  const handleSwitchVault = async (target: AppWorkspaceItem) => {
+    if (target.isActive) return
+    await switchWorkspace(target)
+    toast.add({
+      title: 'Vault switched',
+      description: `Switched to “${target.name}”.`,
+      type: 'success',
+      priority: 'low',
+    })
+  }
+
+  const handleMirrorActiveVault = async () => {
+    try {
+      const picked = await pickLocalWorkspaceDirectory()
+      if (!picked) return
+      const conflict = await findFolderConflict(picked.handle, activeWorkspace?.driveFolderId)
+      if (conflict) {
+        toast.add({
+          title: conflict.isSameVault ? 'Already mirrored' : 'Folder already in use',
+          description: conflict.isSameVault
+            ? `“${activeVaultName}” is already mirrored to “${picked.name}”.`
+            : `“${picked.name}” is already used by “${conflict.vaultName}”. Please choose a different folder.`,
+          type: 'error',
+          priority: 'high',
+        })
+        return
+      }
+      await mirrorCurrentCloudWorkspaceToLocal(picked.handle)
+      toast.add({
+        title: 'Local mirror created',
+        description: `Mirrored “${activeVaultName}” to “${picked.name}”.`,
+        type: 'success',
+        priority: 'low',
+      })
+    } catch {
+      // The user cancelled the directory picker.
+    }
+  }
+
+  const handleDisconnectMirror = async () => {
+    await forgetCloudMirrorEntry(activeWorkspace?.driveFolderId)
+    bumpWorkspaceRevision()
+    toast.add({
+      title: 'Mirror disconnected',
+      description: 'Files remain in Google Drive.',
+      type: 'info',
+      priority: 'low',
+    })
+  }
 
   const handleMakeAllAvailableLocally = async () => {
     setIsMirroring(true)
@@ -225,6 +303,80 @@ export function SettingsPage() {
           <ArrowRightStartOnRectangleIcon aria-hidden="true" className="size-5" />
           {isLocalMode ? 'Return to start' : 'Log out'}
         </AppButton>
+      </section>
+      <section aria-labelledby="vaults-heading" className="rounded-2xl bg-muted/70 p-4">
+        <h2 id="vaults-heading" className="text-base font-semibold leading-6">Manage vaults</h2>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+          Switch between vaults, create a new vault, mirror cloud vaults, or export your data.
+        </p>
+        <div className="mt-4 rounded-xl border border-[var(--app-border)] bg-background/60 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-muted-foreground">Active vault</p>
+              <p className="truncate text-sm font-semibold">{activeVaultName}</p>
+            </div>
+            <Badge variant={isLocalMode ? 'outline' : 'secondary'} size="sm">
+              <span>
+                {getVaultBadgeLabel(isLocalMode ? 'local' : 'cloud', activeWorkspace?.hasLocalMirror)}
+              </span>
+            </Badge>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <AppButton variant="secondary" onPress={() => setIsWorkspaceModalOpen(true)}>
+              <PlusIcon aria-hidden="true" className="size-5" />
+              Create vault
+            </AppButton>
+            {!isLocalMode && supportsDeviceFolder && !activeWorkspace?.hasLocalMirror ? (
+              <AppButton variant="secondary" onPress={() => void handleMirrorActiveVault()}>
+                <FolderOpenIcon aria-hidden="true" className="size-5" />
+                Mirror to local device
+              </AppButton>
+            ) : null}
+            {!isLocalMode && activeWorkspace?.hasLocalMirror ? (
+              <AppButton variant="secondary" onPress={() => void handleDisconnectMirror()}>
+                <FolderOpenIcon aria-hidden="true" className="size-5" />
+                Disconnect local mirror
+              </AppButton>
+            ) : null}
+            <AppButton variant="secondary" onPress={() => void downloadVaultZip({ vaultName: activeVaultName })}>
+              <ArrowUpTrayIcon aria-hidden="true" className="size-5" />
+              Export full vault
+            </AppButton>
+          </div>
+        </div>
+        {workspaces.length > 0 ? (
+          <div className="mt-4 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">All vaults</p>
+            {workspaces.map((ws) => (
+              <div
+                key={ws.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-[var(--app-border)] bg-background/60 px-3 py-2.5"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-sm font-medium">{ws.name}</span>
+                  <Badge variant={ws.type === 'cloud' ? 'secondary' : 'outline'} size="sm" className="shrink-0">
+                    <span>{getVaultBadgeLabel(ws.type, ws.hasLocalMirror)}</span>
+                  </Badge>
+                </div>
+                {ws.isActive ? (
+                  <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
+                    <CheckIcon aria-hidden="true" className="size-4" />
+                    Active
+                  </span>
+                ) : (
+                  <AppButton
+                    variant="secondary"
+                    size="sm"
+                    className="min-h-9 shrink-0 px-3 text-sm"
+                    onPress={() => void handleSwitchVault(ws)}
+                  >
+                    Switch
+                  </AppButton>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </section>
       <section aria-labelledby="drive-heading" className="rounded-2xl bg-muted/70 p-4">
         <h2 id="drive-heading" className="text-base font-semibold leading-6">Google Drive</h2>
@@ -411,6 +563,10 @@ export function SettingsPage() {
         {!isLocalMode && syncQueue.some((item) => item.status === 'failed') ? <div role="alert" className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm"><p className="font-medium">Some Drive operations need attention.</p>{syncQueue.filter((item) => item.status === 'failed').slice(0, 5).map((item) => <p key={item.id} className="mt-1 text-muted-foreground">{item.entityType} {item.operation}: {item.errorMessage ?? 'Retry required.'}</p>)}</div> : null}
         <AppButton className="mt-4" variant="secondary" isDisabled={isLocalMode} onPress={() => void processPendingDriveFolderSync()}>Retry Drive sync</AppButton>
       </section>
+      <WorkspaceModal
+        isOpen={isWorkspaceModalOpen}
+        onClose={() => setIsWorkspaceModalOpen(false)}
+      />
     </div>
   )
 }

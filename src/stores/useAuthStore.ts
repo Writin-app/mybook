@@ -21,6 +21,7 @@ interface AuthState {
   error: string | null
   email: string | null
   displayName: string | null
+  avatarUrl: string | null
   accessToken: string | null
   accessTokenExpiresAt: number | null
   initializeSession: () => Promise<void>
@@ -67,10 +68,11 @@ export function getFriendlyGoogleAuthError(error: unknown) {
   return error instanceof Error ? error.message : 'We could not sign you in.'
 }
 
-function safeStoredState(state: Pick<AuthState, 'email' | 'displayName' | 'accessToken' | 'accessTokenExpiresAt'>) {
+function safeStoredState(state: Pick<AuthState, 'email' | 'displayName' | 'avatarUrl' | 'accessToken' | 'accessTokenExpiresAt'>) {
   return {
     email: state.email,
     displayName: state.displayName,
+    avatarUrl: state.avatarUrl,
     accessToken: isBackendAuthEnabled ? null : state.accessToken,
     accessTokenExpiresAt: isBackendAuthEnabled ? null : state.accessTokenExpiresAt,
   }
@@ -190,6 +192,7 @@ async function completeLoginWithCredential(credential: string, prompt: '' | 'con
   return {
     email,
     displayName: typeof payload.name === 'string' ? payload.name.trim() || null : null,
+    avatarUrl: typeof payload.picture === 'string' ? payload.picture.trim() || null : null,
     accessToken,
     accessTokenExpiresAt: Date.now() + expiresIn * 1000,
   }
@@ -203,6 +206,7 @@ export const useAuthStore = create<AuthState>()(
       error: null,
       email: null,
       displayName: null,
+      avatarUrl: null,
       accessToken: null,
       accessTokenExpiresAt: null,
       clearError: () => set({ error: null }),
@@ -247,6 +251,7 @@ export const useAuthStore = create<AuthState>()(
             error: null,
             email: session.email,
             displayName: session.displayName,
+            avatarUrl: session.avatarUrl,
             accessToken: session.accessToken,
             accessTokenExpiresAt: session.accessTokenExpiresAt,
           })
@@ -398,6 +403,7 @@ export const useAuthStore = create<AuthState>()(
           error: null,
           email: null,
           displayName: null,
+          avatarUrl: null,
           accessToken: null,
           accessTokenExpiresAt: null,
         })

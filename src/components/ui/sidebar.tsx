@@ -23,8 +23,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { SidebarLeftIcon } from "@hugeicons/core-free-icons"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
@@ -252,7 +250,7 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar()
+  const { toggleSidebar, state } = useSidebar()
 
   return (
     <Button
@@ -267,7 +265,12 @@ function SidebarTrigger({
       }}
       {...props}
     >
-      <HugeiconsIcon icon={SidebarLeftIcon} strokeWidth={2} />
+      <img
+        src={state === 'collapsed' ? '/icons/sidebar-right.svg' : '/icons/sidebar-left.svg'}
+        alt=""
+        aria-hidden="true"
+        className="size-4"
+      />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   )
@@ -479,12 +482,16 @@ const sidebarMenuButtonVariants = cva(
     variants: {
       variant: {
         default: "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        navigation:
+          "relative gap-1.5 rounded-lg px-3 py-1.5 font-editor text-[14px] leading-[18px] text-[color:var(--sidebar-nav-foreground)] hover:bg-[var(--sidebar-nav-hover)] hover:text-[color:var(--sidebar-nav-foreground)] focus-visible:bg-background focus-visible:ring-0 focus-visible:shadow-[0_0_0_2px_var(--sidebar-nav-focus-inner),0_0_1px_3px_var(--sidebar-nav-focus-outer)] data-active:bg-[var(--sidebar-nav-active)] data-active:font-medium data-active:text-[color:var(--sidebar-nav-active-foreground)] data-active:before:absolute data-active:before:left-1 data-active:before:top-1/2 data-active:before:h-3 data-active:before:w-1 data-active:before:-translate-y-1/2 data-active:before:rounded-full data-active:before:bg-[var(--sidebar-nav-indicator)]",
         outline:
           "bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]",
       },
       size: {
         default: "h-8 text-sm",
         sm: "h-7 text-xs",
+        md: "h-10 text-base leading-5",
+        nav: "h-8 text-[14px] leading-[18px]",
         lg: "h-12 px-3 text-sm group-data-[collapsible=icon]:p-0!",
       },
     },

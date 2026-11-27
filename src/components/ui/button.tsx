@@ -1,36 +1,46 @@
+import * as React from "react"
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
+import { Spinner } from "@/components/ui/spinner"
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center gap-[var(--token-dimension-spacing-4)] rounded-[var(--token-dimension-radius-full,9999px)] border border-transparent bg-clip-padding font-[family-name:var(--token-typography-font-family-primary)] font-semibold tracking-[var(--token-typography-letter-spacing-normal)] antialiased whitespace-nowrap transition-all outline-none select-none focus-visible:shadow-[0_0_0_2px_var(--token-focus-ring-default-inner),0_0_1px_3px_var(--token-focus-ring-default-outer)] active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:bg-[var(--token-actions-disabled-background)] disabled:text-[var(--token-actions-disabled-foreground)] aria-invalid:border-[var(--token-colors-border-destructive-strong)] aria-invalid:shadow-[0_0_0_2px_var(--token-focus-ring-destructive)] in-data-[slot=button-group]:rounded-lg [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/80",
+        default:
+          "bg-[var(--token-actions-primary-background)] text-[var(--token-actions-primary-foreground)] hover:bg-[var(--token-actions-primary-background-hover)] active:bg-[var(--token-actions-primary-background-pressed)]",
         outline:
-          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+          "border-[var(--token-actions-outline-border)] bg-[var(--token-actions-outline-background)] text-[var(--token-actions-outline-foreground)] hover:bg-[var(--token-actions-outline-background-hover)] active:bg-[var(--token-actions-outline-background-pressed)] aria-expanded:bg-[var(--token-actions-outline-background-selected)] aria-expanded:text-[var(--token-actions-outline-foreground-selected)] disabled:border-[var(--token-actions-disabled-border)]",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+          "bg-[var(--token-actions-secondary-background)] text-[var(--token-actions-secondary-foreground)] hover:bg-[var(--token-actions-secondary-background-hover)] active:bg-[var(--token-actions-secondary-background-pressed)] aria-expanded:bg-[var(--token-actions-secondary-background-selected)] aria-expanded:text-[var(--token-actions-secondary-foreground-selected)]",
         ghost:
-          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+          "bg-[var(--token-actions-ghost-background)] text-[var(--token-actions-ghost-foreground)] hover:bg-[var(--token-actions-ghost-background-hover)] active:bg-[var(--token-actions-ghost-background-pressed)] aria-expanded:bg-[var(--token-actions-ghost-background-selected)] aria-expanded:text-[var(--token-actions-ghost-foreground-selected)] disabled:bg-transparent",
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-[var(--token-actions-destructive-background)] text-[var(--token-actions-destructive-foreground)] hover:bg-[var(--token-actions-destructive-background-hover)] active:bg-[var(--token-actions-destructive-background-pressed)]",
+        assist:
+          "bg-[var(--token-actions-assist-background)] text-[var(--token-actions-assist-foreground)] hover:bg-[var(--token-actions-assist-background-hover)] active:bg-[var(--token-actions-assist-background-pressed)]",
+        link: "bg-transparent text-[var(--token-actions-primary-link-foreground)] underline-offset-4 hover:underline hover:text-[var(--token-actions-primary-link-foreground-hover)] active:text-[var(--token-actions-primary-link-foreground-pressed)] disabled:bg-transparent",
+        "link-destructive":
+          "bg-transparent text-[var(--token-actions-destructive-link-foreground)] underline-offset-4 hover:underline hover:text-[var(--token-actions-destructive-link-foreground-hover)] active:text-[var(--token-actions-destructive-link-foreground-pressed)] disabled:bg-transparent",
+        "link-assistive":
+          "bg-transparent text-[var(--token-actions-assistive-link-foreground)] underline-offset-4 hover:underline hover:text-[var(--token-actions-assistive-link-foreground-hover)] active:text-[var(--token-actions-assistive-link-foreground-pressed)] disabled:bg-transparent",
       },
       size: {
         default:
-          "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        icon: "size-8",
+          "h-[var(--token-dimension-size-40)] px-[var(--token-dimension-spacing-16)] py-[var(--token-dimension-spacing-8)] text-[length:var(--token-typography-font-size-14)] leading-[18px] [&_svg:not([class*='size-'])]:size-4",
+        xs: "h-[var(--token-dimension-size-24)] px-[var(--token-dimension-spacing-10)] py-[var(--token-dimension-spacing-4)] text-[length:var(--token-typography-font-size-12)] leading-[var(--token-typography-line-height-16)] [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-[var(--token-dimension-size-32)] px-[var(--token-dimension-spacing-12)] py-[var(--token-dimension-spacing-4)] text-[length:var(--token-typography-font-size-14)] leading-[18px] [&_svg:not([class*='size-'])]:size-4",
+        lg: "h-[var(--token-dimension-size-48)] px-[var(--token-dimension-spacing-20)] py-[var(--token-dimension-spacing-12)] text-[length:var(--token-typography-font-size-16)] leading-[var(--token-typography-line-height-20)] [&_svg:not([class*='size-'])]:size-5",
+        icon: "size-[var(--token-dimension-size-40)] p-0 [&_svg:not([class*='size-'])]:size-4",
         "icon-xs":
-          "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
+          "size-[var(--token-dimension-size-24)] p-0 [&_svg:not([class*='size-'])]:size-3",
         "icon-sm":
-          "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
-        "icon-lg": "size-9",
+          "size-[var(--token-dimension-size-32)] p-0 [&_svg:not([class*='size-'])]:size-4",
+        "icon-lg":
+          "size-[var(--token-dimension-size-48)] p-0 [&_svg:not([class*='size-'])]:size-5",
       },
     },
     defaultVariants: {
@@ -40,19 +50,67 @@ const buttonVariants = cva(
   }
 )
 
+type ButtonProps = ButtonPrimitive.Props &
+  VariantProps<typeof buttonVariants> & {
+    loading?: boolean
+    loadingText?: React.ReactNode
+    leadingIcon?: React.ReactNode
+    trailingIcon?: React.ReactNode
+  }
+
 function Button({
   className,
   variant = "default",
   size = "default",
+  loading = false,
+  loadingText,
+  leadingIcon,
+  trailingIcon,
+  disabled,
+  children,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonProps) {
+  const isIconOnly =
+    size === "icon" ||
+    size === "icon-xs" ||
+    size === "icon-sm" ||
+    size === "icon-lg"
+
+  const spinnerSizeClass =
+    size === "xs" || size === "icon-xs"
+      ? "size-3"
+      : size === "lg" || size === "icon-lg"
+        ? "size-5"
+        : "size-4"
+
   return (
     <ButtonPrimitive
       data-slot="button"
+      data-loading={loading ? "" : undefined}
+      aria-busy={loading || undefined}
+      disabled={disabled || loading}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
-    />
+    >
+      {loading ? (
+        isIconOnly ? (
+          <Spinner className={spinnerSizeClass} />
+        ) : (
+          <>
+            <Spinner className={spinnerSizeClass} />
+            {loadingText ?? children ?? "Loading..."}
+          </>
+        )
+      ) : (
+        <>
+          {leadingIcon}
+          {children}
+          {trailingIcon}
+        </>
+      )}
+    </ButtonPrimitive>
   )
 }
 
 export { Button, buttonVariants }
+export type { ButtonProps }

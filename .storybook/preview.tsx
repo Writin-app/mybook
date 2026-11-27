@@ -1,6 +1,6 @@
 import type { Decorator, Preview } from '@storybook/react-vite'
 import { MemoryRouter } from 'react-router-dom'
-import '@fontsource-variable/inter'
+import '@fontsource-variable/figtree'
 
 import { Toaster } from '../src/components/ui/toast'
 import { TooltipProvider } from '../src/components/ui/tooltip'
@@ -18,7 +18,7 @@ const withAppShell: Decorator = (Story, context) => {
   return (
     <MemoryRouter initialEntries={['/home']}>
       <TooltipProvider>
-        <main className={fullWidth ? "min-h-screen bg-background text-foreground" : "min-h-screen overflow-auto bg-background p-6 text-foreground"}>
+        <main className={fullWidth ? "min-h-screen bg-background text-foreground" : "min-h-screen bg-background p-6 text-foreground"}>
           <div className={fullWidth ? "w-full min-w-0" : "mx-auto w-full max-w-5xl"}>
             <Story />
           </div>

@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/figtree";
+@import "./design-tokens.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -14,58 +15,34 @@
   --font-heading: var(--font-editor);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", monospace;
-  --radius-control: 10px;
-  --radius-surface: 12px;
-  --radius-dialog: 14px;
+  --radius-control: var(--token-dimension-radius-10);
+  --radius-surface: var(--token-dimension-radius-12);
+  --radius-dialog: var(--token-dimension-radius-16);
 }
 
 :root {
   --font-interface: var(--font-sans);
   --font-editor: "Figtree Variable", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  --focus-ring: #2563eb;
-  --app-border: #e5e7eb;
-  --app-surface: #ffffff;
-  --app-subtle: #f7f7f8;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.488 0.243 264.376);
-  --primary-foreground: oklch(0.97 0.014 254.604);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.546 0.245 262.881);
-  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-nav-foreground: #40424f;
+  --sidebar-nav-active-foreground: #202229;
+  --sidebar-nav-group-title: #666875;
+  --sidebar-nav-hover: #ebecf2;
+  --sidebar-nav-active: #dfdfe8;
+  --sidebar-nav-indicator: #0473eb;
+  --sidebar-nav-focus-inner: #48c2ff;
+  --sidebar-nav-focus-outer: #b5e6ff;
 }
 
-[data-theme="dark"] {
-  --focus-ring: #60a5fa;
-  --app-border: #323238;
-  --app-surface: #1c1c1f;
-  --app-subtle: #252529;
+.dark {
+  --sidebar-nav-foreground: #d8d9e1;
+  --sidebar-nav-active-foreground: #f2f2f5;
+  --sidebar-nav-group-title: #a4a5b0;
+  --sidebar-nav-hover: #292a32;
+  --sidebar-nav-active: #34353f;
+  --sidebar-nav-indicator: #48a6ff;
+  --sidebar-nav-focus-inner: #48c2ff;
+  --sidebar-nav-focus-outer: #214e75;
 }
 
 @keyframes indeterminate-progress {
@@ -1166,38 +1143,20 @@
   background: var(--muted);
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.424 0.199 265.638);
-  --primary-foreground: oklch(0.97 0.014 254.604);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.623 0.214 259.815);
-  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+[data-slot="icon-wrapper"] {
+  width: var(--icon-wrapper-size, var(--token-dimension-size-24));
+  height: var(--icon-wrapper-size, var(--token-dimension-size-24));
+}
+
+[data-slot="icon-wrapper"] > svg {
+  width: var(--icon-inner-size, var(--token-dimension-size-20));
+  height: var(--icon-inner-size, var(--token-dimension-size-20));
+  stroke-width: var(--icon-stroke-width, var(--token-border-width-standalone-24));
+}
+
+[data-slot="inline-link"][aria-disabled="true"] {
+  pointer-events: none;
+  color: var(--token-actions-disabled-foreground);
 }
 
 /* Landing Page Visual Craft (WorkOS Atlas / Attio / AlignUI style) */

@@ -11,11 +11,18 @@ import {
   checkDeviceDirectoryHandleValid,
   ensureLocalWorkspaceFolder,
   forgetDeviceDirectoryHandle,
+  getActiveStandaloneLocalId,
+  getCloudMirrorEntry,
   getDeviceDirectoryHandle,
   getLocalWorkspaceDetails,
   initializeLocalWorkspace,
+  listCloudMirrorEntries,
+  listStandaloneLocalVaults,
+  LOCAL_DIRECTORY_HANDLE_KEY,
+  saveCloudMirrorEntry,
   saveDeviceDirectoryHandle,
   saveLocalWorkspaceDetails,
+  setActiveStandaloneLocalId,
   writeLocalWorkspaceFile,
   type LocalWorkspaceStoragePreference,
 } from './localWorkspace'
@@ -42,9 +49,11 @@ export async function listAllWorkspaces(): Promise<AppWorkspaceItem[]> {
   const activeDriveFolderId = (await db.settings.get('google-drive.mybook-folder-id'))?.value as string | undefined
 
   let localHandle: FileSystemDirectoryHandle | null = null
+  let fallbackLocalFolderName: string | undefined
   if (!isMirrorMissing) {
     const rawHandle = await getDeviceDirectoryHandle()
     if (rawHandle) {
+      fallbackLocalFolderName = rawHandle.name
       const validity = await checkDeviceDirectoryHandleValid(rawHandle)
       if (validity.valid) {
         localHandle = validity.handle ?? rawHandle
@@ -52,6 +61,7 @@ export async function listAllWorkspaces(): Promise<AppWorkspaceItem[]> {
         await forgetDeviceDirectoryHandle()
         useWorkspaceStore.getState().setMirrorFolderMissing(true)
         localHandle = null
+        fallbackLocalFolderName = undefined
       }
     }
   }
@@ -59,6 +69,7 @@ export async function listAllWorkspaces(): Promise<AppWorkspaceItem[]> {
   const workspaces: AppWorkspaceItem[] = []
 
   // 1. Cloud Workspaces (if authenticated with Google)
+  const cloudMirrors = await listCloudMirrorEntries()
   if (isAuthenticated) {
     let driveVaults: DriveVaultSummary[] = []
     try {
@@ -82,35 +93,69 @@ export async function listAllWorkspaces(): Promise<AppWorkspaceItem[]> {
 
     for (const vault of driveVaults) {
       const isThisActive = workspaceMode === 'drive' && (vault.id === activeDriveFolderId || vault.name.toLowerCase() === activeDriveName.toLowerCase())
+      const mirrorEntry = cloudMirrors[vault.id]
+      const hasLegacyMirror =
+        isThisActive && !localDetails?.isStandalone && Boolean(localHandle) && !isMirrorMissing
+      const hasLocalMirror = Boolean(mirrorEntry?.handle) || hasLegacyMirror
+      const localFolderName =
+        mirrorEntry?.handle?.name ??
+        (hasLegacyMirror && localHandle ? localHandle.name : undefined)
       workspaces.push({
         id: vault.id,
         name: vault.name,
         type: 'cloud',
         driveFolderId: vault.id,
-        hasLocalMirror: isThisActive && Boolean(localHandle) && !isMirrorMissing,
-        localFolderName: isThisActive && localHandle && !isMirrorMissing ? localHandle.name : undefined,
+        hasLocalMirror,
+        localFolderName,
         isActive: isThisActive,
       })
     }
   }
 
-  // 2. Local Workspace item
-  // Only include local workspace if:
-  // - Not authenticated (offline/local only), OR
-  // - Currently in local mode
+  // 2. Standalone Local Workspaces
   const isLocalActive = workspaceMode === 'local'
-  const shouldIncludeLocalWorkspace = !isAuthenticated || isLocalActive
-
-  if (shouldIncludeLocalWorkspace) {
-    const localName = localDetails?.name || (localHandle ? localHandle.name : 'Local Vault')
-    workspaces.push({
-      id: 'local-workspace',
-      name: localName,
-      type: 'local',
-      hasLocalMirror: Boolean(localHandle) && !isMirrorMissing,
-      localFolderName: !isMirrorMissing && localHandle ? localHandle.name : undefined,
-      isActive: isLocalActive,
+  const standaloneVaults = await listStandaloneLocalVaults()
+  if (standaloneVaults.length > 0) {
+    const activeStandaloneId = await getActiveStandaloneLocalId()
+    standaloneVaults.forEach((vault, idx) => {
+      const isThisLocalActive =
+        isLocalActive && (activeStandaloneId ? vault.id === activeStandaloneId : idx === 0)
+      workspaces.push({
+        id: vault.id,
+        name: vault.name,
+        type: 'local',
+        hasLocalMirror: vault.storage === 'file-system' && Boolean(vault.handle),
+        localFolderName: vault.handle?.name,
+        isActive: isThisLocalActive,
+      })
     })
+  } else {
+    const shouldIncludeLocalWorkspace =
+      !isAuthenticated || isLocalActive || Boolean(localDetails?.isStandalone)
+
+    if (shouldIncludeLocalWorkspace) {
+      const explicitLocalName =
+        localDetails?.name && localDetails.name !== 'Local Vault'
+          ? localDetails.name
+          : undefined
+      const localName =
+        explicitLocalName ||
+        localHandle?.name ||
+        fallbackLocalFolderName ||
+        localDetails?.name ||
+        'Local Vault'
+      workspaces.push({
+        id: 'local-workspace',
+        name: localName,
+        type: 'local',
+        hasLocalMirror: Boolean(localHandle) && !isMirrorMissing,
+        localFolderName:
+          !isMirrorMissing && (localHandle || fallbackLocalFolderName)
+            ? (localHandle?.name ?? fallbackLocalFolderName)
+            : undefined,
+        isActive: isLocalActive,
+      })
+    }
   }
 
   return workspaces
@@ -120,6 +165,22 @@ export async function switchWorkspace(target: AppWorkspaceItem): Promise<void> {
   if (target.isActive) return
 
   if (target.type === 'local') {
+    const standaloneVaults = await listStandaloneLocalVaults()
+    const match = standaloneVaults.find((v) => v.id === target.id)
+    if (match) {
+      await setActiveStandaloneLocalId(match.id)
+      await saveLocalWorkspaceDetails({
+        name: match.name,
+        storage: match.storage,
+        createdAt: match.createdAt,
+        isStandalone: true,
+      })
+      if (match.handle) {
+        await saveDeviceDirectoryHandle(match.handle)
+      } else {
+        await db.settings.delete(LOCAL_DIRECTORY_HANDLE_KEY)
+      }
+    }
     useWorkspaceStore.getState().createLocalWorkspace()
     return
   }
@@ -128,6 +189,12 @@ export async function switchWorkspace(target: AppWorkspaceItem): Promise<void> {
   await clearAccountDriveCache().catch(() => undefined)
   if (target.driveFolderId && target.driveFolderId !== 'active-drive-vault') {
     await selectExistingDriveVault(target.driveFolderId, target.name)
+    const mirror = await getCloudMirrorEntry(target.driveFolderId)
+    if (mirror?.handle) {
+      await saveDeviceDirectoryHandle(mirror.handle)
+    } else {
+      await db.settings.delete(LOCAL_DIRECTORY_HANDLE_KEY)
+    }
   } else {
     await setDriveVaultRootName(target.name)
   }
@@ -169,6 +236,7 @@ export async function createLocalWorkspaceAction({
     allowPrivateFallback: storagePreference !== 'file-system',
   })
   useWorkspaceStore.getState().createLocalWorkspace()
+  useWorkspaceStore.getState().bumpWorkspaceRevision()
 }
 
 export async function mirrorCurrentCloudWorkspaceToLocal(
@@ -190,11 +258,18 @@ export async function mirrorCurrentCloudWorkspaceToLocal(
       }
     }
     await saveDeviceDirectoryHandle(targetHandle)
-    await saveLocalWorkspaceDetails({
-      name: activeDriveName,
-      storage: 'file-system',
-      createdAt: new Date().toISOString(),
-    })
+    const activeDriveFolderId = (await db.settings.get('google-drive.mybook-folder-id'))?.value as string | undefined
+    if (activeDriveFolderId) {
+      await saveCloudMirrorEntry(activeDriveFolderId, targetHandle, activeDriveName)
+    }
+    const existingDetails = await getLocalWorkspaceDetails()
+    if (!existingDetails?.isStandalone) {
+      await saveLocalWorkspaceDetails({
+        name: activeDriveName,
+        storage: 'file-system',
+        createdAt: new Date().toISOString(),
+      })
+    }
     const activeFolders = await db.folders.filter((f) => !f.isDeleted && f.workspaceType !== 'local').toArray()
     const activeFiles = await db.files.filter((f) => !f.isDeleted && f.workspaceType !== 'local').toArray()
     const totalItems = activeFolders.length + activeFiles.length

@@ -12,6 +12,7 @@ Each guide documents the module's behavior, data flow, implementation files, ver
 | Account-free onboarding, device folders, private storage and discovery | [Local vaults](./local-vaults.md) |
 | JSON recovery, Markdown/DOCX/XLSX and ZIP downloads | [Backup, import and export](./backup-and-export.md) |
 | Google sign-in, sessions, tokens and reconnect | [Authentication and Drive tokens](./auth-and-drive-tokens.md) |
+| Design token sources and regeneration | [Design tokens](./design-tokens.md) |
 | Cloud bootstrap, queues, imports and conflicts | [Google Drive synchronization](./google-drive-sync.md) |
 | Local/base/remote versions, reconciler and conflicts; groundwork for collaboration | [Collaboration-ready sync](./collaboration-ready-sync.md) |
 | Navigation, theme, diagnostics, branding, install and offline behavior | [App settings and PWA](./app-settings-and-pwa.md) |

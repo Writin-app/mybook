@@ -52,9 +52,18 @@ vi.mock('../stores/useAuthStore', () => ({
 
 const mockCanPick = vi.hoisted(() => ({ value: true }))
 const mockPickLocal = vi.hoisted(() => vi.fn())
+const mockListAllWorkspaces = vi.hoisted(() =>
+  vi.fn().mockResolvedValue([
+    { id: 'cloud:1', name: 'Personal', type: 'cloud', driveFolderId: '1', isActive: true, hasLocalMirror: false },
+    { id: 'local:abc', name: 'Notes Folder', type: 'local', localId: 'abc', isActive: false },
+  ]),
+)
+const mockSwitchWorkspace = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('../services/localWorkspace', () => ({
   canPickDeviceDirectory: () => mockCanPick.value,
+  findFolderConflict: vi.fn().mockResolvedValue(null),
+  forgetCloudMirrorEntry: vi.fn().mockResolvedValue(undefined),
   getLocalStorageProtectionStatus: vi.fn().mockResolvedValue({ persisted: true }),
   getLocalWorkspaceDetails: vi.fn().mockResolvedValue(null),
   pickLocalWorkspaceDirectory: mockPickLocal,
@@ -62,6 +71,16 @@ vi.mock('../services/localWorkspace', () => ({
   saveDeviceDirectoryHandle: vi.fn().mockResolvedValue(undefined),
   saveLocalWorkspaceDetails: vi.fn().mockResolvedValue(undefined),
   writeLocalWorkspaceFile: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../services/workspaceManager', () => ({
+  listAllWorkspaces: mockListAllWorkspaces,
+  mirrorCurrentCloudWorkspaceToLocal: vi.fn().mockResolvedValue(undefined),
+  switchWorkspace: mockSwitchWorkspace,
+}))
+
+vi.mock('../components/layout/WorkspaceModal', () => ({
+  WorkspaceModal: ({ isOpen }: { isOpen: boolean }) => (isOpen ? <div role="dialog" aria-label="Create vault modal" /> : null),
 }))
 
 describe('SettingsPage', () => {
@@ -121,5 +140,22 @@ describe('SettingsPage', () => {
     render(<MemoryRouter><SettingsPage /></MemoryRouter>)
 
     expect(screen.queryByRole('heading', { name: /Local AI Model/i })).not.toBeInTheDocument()
+  })
+
+  it('renders Manage vaults section and allows switching vaults', async () => {
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>)
+
+    expect(screen.getByRole('heading', { name: /Manage vaults/i })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('Notes Folder')).toBeInTheDocument()
+    })
+    expect(screen.getByText('On local')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^Switch$/i }))
+    await waitFor(() => {
+      expect(mockSwitchWorkspace).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'local:abc', name: 'Notes Folder' }),
+      )
+    })
   })
 })
